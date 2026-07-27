@@ -7,6 +7,10 @@
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "com.unraiddash.app"
-    }
+    },
+    "plugins": [
+      "expo-video",
+      "expo-audio"
+    ]
   }
 }

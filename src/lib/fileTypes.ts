@@ -36,11 +36,13 @@ const EXTENSION_MAP: Record<string, IconName> = {
 }
 
 const IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp','svg','ico','heic','heif','tiff','tif'])
+const VIDEO_EXTS = new Set(['mp4','mkv','avi','mov','wmv','flv','webm','m4v','mpg','mpeg'])
+const AUDIO_EXTS = new Set(['mp3','flac','wav','aac','ogg','m4a','wma','opus'])
 const TEXT_EXTS = new Set(['txt','md','log','yml','yaml','json','xml','csv','ini','cfg','conf','toml','env','gitignore',
   'js','ts','jsx','tsx','py','java','go','rs','c','cpp','h','hpp','css','html','htm','php','swift','kt','sh','bash',
   'rb','pl','lua','dart','sql','r','scala','zig','tex','ps1','bat','cmd','makefile','dockerfile','gradle','vue','svelte'])
 
-export type FileCategory = 'text' | 'image' | 'html' | 'pdf' | 'system' | 'other'
+export type FileCategory = 'text' | 'image' | 'html' | 'pdf' | 'system' | 'video' | 'audio' | 'other'
 
 export function getFileCategory(fileName: string): FileCategory {
   const parts = fileName.split('.')
@@ -50,6 +52,8 @@ export function getFileCategory(fileName: string): FileCategory {
   if (ext === 'html' || ext === 'htm') return 'html'
   if (ext === 'pdf') return 'pdf'
   if (['doc','docx','xls','xlsx','ppt','pptx'].includes(ext)) return 'system'
+  if (VIDEO_EXTS.has(ext)) return 'video'
+  if (AUDIO_EXTS.has(ext)) return 'audio'
   if (TEXT_EXTS.has(ext)) return 'text'
   return 'other'
 }

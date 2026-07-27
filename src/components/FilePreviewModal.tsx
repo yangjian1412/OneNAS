@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { View, Text, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, StatusBar, StyleSheet, Image } from 'react-native'
+import { View, Text, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, StatusBar, StyleSheet, Image, Pressable } from 'react-native'
 import * as FileSystem from 'expo-file-system/legacy'
 import { startActivityAsync } from 'expo-intent-launcher'
 import { WebView } from 'react-native-webview'
+import { VideoView, useVideoPlayer } from 'expo-video'
+import { useAudioPlayer } from 'expo-audio'
 import { useTheme } from '@/lib/theme'
 import { getFileContent, saveFileContent } from '@/lib/api/filebrowser'
 import { getFileCategory, getFileIcon } from '@/lib/fileTypes'
@@ -125,6 +127,10 @@ export default function FilePreviewModal({ visible, file, server, token, onClose
           </View>
         ) : category === 'image' ? (
           <ImageFromUrl url={rawUrl} token={token} fileName={file.name} />
+        ) : category === 'video' ? (
+          <VideoViewer url={rawUrl} token={token} />
+        ) : category === 'audio' ? (
+          <AudioPlayer url={rawUrl} token={token} />
         ) : category === 'html' && !editing ? (
           <WebView source={{ uri: rawUrl }} style={{ flex: 1, backgroundColor: t.bg }} />
         ) : category === 'pdf' || category === 'system' ? (
@@ -264,6 +270,67 @@ function SystemViewer({ url, token, fileName, onOpened }: { url: string; token: 
   )
 }
 
+function VideoViewer({ url, token }: { url: string; token: string }) {
+  const player = useVideoPlayer({ uri: url, headers: { 'X-Auth': token } })
+
+  return (
+    <View style={styles.mediaContainer}>
+      <VideoView
+        player={player}
+        style={styles.mediaPlayer}
+        allowsFullscreen
+        allowsPictureInPicture
+      />
+    </View>
+  )
+}
+
+function AudioPlayer({ url, token }: { url: string; token: string }) {
+  const t = useTheme()
+  const player = useAudioPlayer({ uri: url, headers: { 'X-Auth': token } })
+  const [playing, setPlaying] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [currentTime, setCurrentTime] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (player.duration && player.currentTime) {
+        setDuration(player.duration)
+        setCurrentTime(player.currentTime)
+        setProgress(player.duration > 0 ? player.currentTime / player.duration : 0)
+      }
+    }, 500)
+    return () => clearInterval(interval)
+  }, [player])
+
+  const togglePlay = () => {
+    if (playing) { player.pause(); setPlaying(false) }
+    else { player.play(); setPlaying(true) }
+  }
+
+  const formatTime = (ms: number) => {
+    const total = Math.floor(ms / 1000)
+    const m = Math.floor(total / 60)
+    const s = total % 60
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
+
+  return (
+    <View style={styles.audioContainer}>
+      <Pressable onPress={togglePlay} style={[styles.audioPlayBtn, { backgroundColor: t.primary }]}>
+        <Text style={styles.audioPlayText}>{playing ? '暂停' : '播放'}</Text>
+      </Pressable>
+      <View style={styles.audioProgress}>
+        <View style={[styles.audioProgressBar, { width: `${progress * 100}%`, backgroundColor: t.primary }]} />
+      </View>
+      <Text style={[styles.audioTime, { color: t.text }]}>
+        {formatTime(currentTime)} / {formatTime(duration)}
+      </Text>
+    </View>
+  )
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -283,4 +350,12 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 16 },
   contentText: { fontSize: 14, lineHeight: 22 },
   editor: { flex: 1, padding: 16, fontSize: 14, lineHeight: 22, fontFamily: 'monospace', borderWidth: 0, borderRadius: 0 },
+  mediaContainer: { flex: 1, backgroundColor: '#000' },
+  mediaPlayer: { flex: 1 },
+  audioContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
+  audioPlayBtn: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginVertical: 24 },
+  audioPlayText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  audioProgress: { width: '100%', height: 4, backgroundColor: '#333', borderRadius: 2, marginTop: 16 },
+  audioProgressBar: { height: '100%', borderRadius: 2 },
+  audioTime: { marginTop: 12, fontSize: 13 },
 })
