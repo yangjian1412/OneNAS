@@ -204,3 +204,92 @@ export async function searchFiles(server: ServerConfig, token: string, query: st
     return { ok: false as const, error: err.message ?? 'Search failed' }
   }
 }
+
+export async function searchFilesStream(
+  server: ServerConfig, token: string, query: string, signal?: AbortSignal
+): Promise<{ ok: true; data: FileItem[] } | { ok: false; error: string }> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 120_000)
+  const onExtAbort = () => { clearTimeout(timeout); controller.abort() }
+  signal?.addEventListener('abort', onExtAbort)
+
+  try {
+    const base = buildUrl(server.protocol, server.host, server.port)
+    const url = `${base}/api/search?query=${encodeURIComponent(query)}`
+    const response = await fetch(url, {
+      headers: { 'X-Auth': token },
+      signal: controller.signal,
+    })
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
+
+    const items: FileItem[] = []
+
+    const tryBody = (response as any).body
+    if (tryBody?.getReader) {
+      const reader = tryBody.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+          try {
+            const raw = JSON.parse(trimmed)
+            const pathParts = (raw.path ?? '').split('/').filter(Boolean)
+            items.push({
+              name: pathParts.pop() ?? '',
+              path: raw.path ?? '',
+              isDirectory: raw.dir ?? false,
+              size: raw.size ?? 0,
+              modified: raw.modified ?? raw.modTime ?? '',
+            })
+          } catch {}
+        }
+      }
+      if (buffer.trim()) {
+        try {
+          const raw = JSON.parse(buffer.trim())
+          const pathParts = (raw.path ?? '').split('/').filter(Boolean)
+          items.push({
+            name: pathParts.pop() ?? '',
+            path: raw.path ?? '',
+            isDirectory: raw.dir ?? false,
+            size: raw.size ?? 0,
+            modified: raw.modified ?? raw.modTime ?? '',
+          })
+        } catch {}
+      }
+    } else {
+      const text = await response.text()
+      const lines = text.split('\n').filter(Boolean)
+      for (const line of lines) {
+        try {
+          const raw = JSON.parse(line)
+          const pathParts = (raw.path ?? '').split('/').filter(Boolean)
+          items.push({
+            name: pathParts.pop() ?? '',
+            path: raw.path ?? '',
+            isDirectory: raw.dir ?? false,
+            size: raw.size ?? 0,
+            modified: raw.modified ?? raw.modTime ?? '',
+          })
+        } catch {}
+      }
+    }
+    return { ok: true, data: items }
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      if (signal?.aborted) return { ok: false, error: 'Cancelled' }
+      return { ok: false, error: '搜索超时' }
+    }
+    return { ok: false, error: err.message ?? '搜索失败' }
+  } finally {
+    clearTimeout(timeout)
+    signal?.removeEventListener('abort', onExtAbort)
+  }
+}

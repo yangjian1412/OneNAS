@@ -3,7 +3,7 @@ import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, A
 import * as DocumentPicker from 'expo-document-picker'
 import { useAppStore, FileSortBy, FileSortDir } from '@/stores/appStore'
 import { ServerConfig, FileItem, ServiceConfig, ShareInfo } from '@/types'
-import { login, listFiles, searchFiles, createFolder, deleteResource, renameResource, copyResource, uploadResource, getShares, createShare, deleteShare } from '@/lib/api/filebrowser'
+import { login, listFiles, searchFilesStream, createFolder, deleteResource, renameResource, copyResource, uploadResource, getShares, createShare, deleteShare } from '@/lib/api/filebrowser'
 import { getFileIcon } from '@/lib/fileTypes'
 import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '@/lib/theme'
@@ -35,8 +35,7 @@ export default function FileScreen() {
   const [token, setToken] = useState<string | null>(null)
   const [files, setFiles] = useState<FileItem[]>([])
   const [currentPath, setCurrentPath] = useState('/')
-  const [searchText, setSearchText] = useState('')
-  const [searchOpen, setSearchOpen] = useState(false)
+  
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [isSearchResults, setIsSearchResults] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -68,6 +67,27 @@ export default function FileScreen() {
 
   const [storageAccess, setStorageAccess] = useState<boolean | null>(null)
   const [downloadManageOpen, setDownloadManageOpen] = useState(false)
+
+  const SEARCH_CATEGORIES = [
+    { label: '所有类型', value: 'all' },
+    { label: '文件夹', value: 'folder' },
+    { label: '文件', value: 'file' },
+    { label: '图片', value: 'image' },
+    { label: '视频', value: 'video' },
+    { label: '音频', value: 'audio' },
+    { label: '文档', value: 'doc' },
+    { label: '压缩包', value: 'archive' },
+  ] as const
+  type SearchCategory = (typeof SEARCH_CATEGORIES)[number]['value']
+
+  const [searchModalOpen, setSearchModalOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchCategory, setSearchCategory] = useState<SearchCategory>('all')
+  const [searchCategoryOpen, setSearchCategoryOpen] = useState(false)
+  const [searchResults, setSearchResults] = useState<FileItem[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const searchAbortRef = useRef<AbortController | null>(null)
   
 
   const checkStorage = useCallback(async () => {
@@ -108,21 +128,33 @@ export default function FileScreen() {
 
   const loadDir = useCallback(async (path: string) => {
     if (!selectedServer || !token) return
-    setLoading(true); setError(null); setIsSearchResults(false); setSearchText(''); setSearchOpen(false)
+    setLoading(true); setError(null); setIsSearchResults(false)
     const result = await listFiles(selectedServer, token, path)
     if (result.ok) { setFiles(sortFiles(result.data, fileSort)); setCurrentPath(path) }
     else setError(result.error ?? '加载失败')
     setLoading(false)
   }, [selectedServer, token, fileSort])
 
-  const search = async () => {
-    if (!selectedServer || !token || !searchText.trim()) return
-    setLoading(true); setError(null)
-    const result = await searchFiles(selectedServer, token, searchText.trim())
-    if (result.ok) { setFiles(sortFiles(result.data, fileSort)); setIsSearchResults(true) }
-    else setError(result.error ?? '搜索失败')
-    setLoading(false)
-  }
+  const doSearch = useCallback(async (query: string, category: SearchCategory) => {
+    if (!selectedServer || !token || !query.trim()) return
+    searchAbortRef.current?.abort()
+    const controller = new AbortController()
+    searchAbortRef.current = controller
+    setSearchLoading(true); setSearchError(null)
+    try {
+      const typeSuffix = category === 'all' ? '' : ` type:${category}`
+      const result = await searchFilesStream(selectedServer, token, query.trim() + typeSuffix, controller.signal)
+      if (result.ok) setSearchResults(result.data)
+      else {
+        if (result.error === 'Cancelled') return
+        setSearchError(result.error ?? '搜索失败')
+      }
+    } catch (e: any) {
+      setSearchError(e.message ?? '搜索失败')
+    }
+    setSearchLoading(false)
+    searchAbortRef.current = null
+  }, [selectedServer, token])
 
   const autoLoaded = useRef(false)
   useEffect(() => {
@@ -428,40 +460,14 @@ export default function FileScreen() {
         <TouchableOpacity style={styles.headerButton} onPress={() => { loadShares(); setShareManageOpen(true) }}>
           <Icon name="shareManage" size={22} color={t.primary} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerButton} onPress={() => setSearchOpen(true)}>
+        <TouchableOpacity style={styles.headerButton} onPress={() => { setSearchQuery(''); setSearchResults([]); setSearchError(null); setSearchCategory('all'); setSearchModalOpen(true) }}>
           <Icon name="search" size={22} color={t.primary} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerButton} onPress={() => selectedServer && loadDir(currentPath)}>
           <Icon name="refresh" size={22} color={t.primary} />
         </TouchableOpacity>
       </View>
-      {searchOpen && (
-        <View style={[styles.searchBar, { backgroundColor: t.card, borderBottomColor: t.border }]}>
-          <TextInput
-            autoFocus
-            style={[styles.searchInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-            value={searchText}
-            onChangeText={setSearchText}
-            onSubmitEditing={search}
-            placeholder="搜索文件和文件夹"
-            placeholderTextColor={t.textMuted}
-            returnKeyType="search"
-          />
-          <TouchableOpacity onPress={search} style={styles.searchAction}>
-            <Text style={[styles.searchActionText, { color: t.primary }]}>搜索</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              setSearchText('')
-              setSearchOpen(false)
-              if (isSearchResults) loadDir(currentPath)
-            }}
-            style={styles.searchAction}
-          >
-            <Text style={[styles.searchActionText, { color: t.textMuted }]}>取消</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      
       {!isSearchResults && (
         <View style={[styles.pathRow, { borderBottomColor: t.border }]}>
           <Text style={[styles.pathLabel, { color: t.textMuted }]} numberOfLines={1}>{currentPath}</Text>
@@ -743,7 +749,7 @@ export default function FileScreen() {
                 renderItem={({ item }) => {
                   const p = item.progress
                   const pct = p.totalBytes > 0 ? Math.round(p.bytesDownloaded / p.totalBytes * 100) : 0
-                  const statusText = p.status === 'pending' ? '等待中' : p.status === 'running' ? `下载中 ${pct}%` : p.status === 'paused' ? '已暂停' : p.status === 'successful' ? '已完成' : p.status === 'failed' ? '失败' : ''
+                  const statusText = p.status === 'pending' ? '等待中' : p.status === 'running' ? `下载中 ${pct}%` : p.status === 'paused' ? '已暂停' : p.status === 'successful' ? '已完成' : p.status === 'failed' ? `失败${p.reason ? `: ${p.reason}` : ''}` : ''
                   const isActive = p.status === 'pending' || p.status === 'running' || p.status === 'paused'
                   return (
                     <View style={[styles.downloadItem, { borderBottomColor: t.border }]}>
@@ -774,6 +780,86 @@ export default function FileScreen() {
                 }}
               />
             )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={searchModalOpen} animationType="slide" onRequestClose={() => { searchAbortRef.current?.abort(); setSearchModalOpen(false) }}>
+        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
+          <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
+            <Text style={[styles.modalTitle, { color: t.text }]}>搜索</Text>
+            <TouchableOpacity onPress={() => { searchAbortRef.current?.abort(); setSearchModalOpen(false) }}>
+              <Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.searchModalBar, { backgroundColor: t.card, borderBottomColor: t.border }]}>
+            <TextInput
+              autoFocus
+              style={[styles.searchModalInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={() => doSearch(searchQuery, searchCategory)}
+              placeholder="搜索文件和文件夹"
+              placeholderTextColor={t.textMuted}
+              returnKeyType="search"
+            />
+            <TouchableOpacity style={styles.searchCategoryBtn} onPress={() => setSearchCategoryOpen(true)}>
+              <Text style={[styles.searchCategoryText, { color: t.text }]}>{SEARCH_CATEGORIES.find((c) => c.value === searchCategory)?.label ?? '所有类型'}</Text>
+              <Icon name="sortArrow" size={12} color={t.textMuted} style={{ marginLeft: 2 }} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.searchActionBtn} onPress={() => doSearch(searchQuery, searchCategory)}>
+              <Text style={[styles.searchActionText2, { color: t.primary }]}>搜索</Text>
+            </TouchableOpacity>
+          </View>
+          {searchLoading ? (
+            <View style={styles.center}>
+              <ActivityIndicator size="large" color={t.primary} />
+              <Text style={[styles.emptySub, { color: t.textMuted, marginTop: 8 }]}>搜索中...</Text>
+            </View>
+          ) : searchError ? (
+            <View style={styles.center}>
+              <Text style={[styles.errorText, { color: t.danger }]}>{searchError}</Text>
+            </View>
+          ) : searchResults.length === 0 && !searchLoading && !searchError ? (
+            <View style={styles.center}>
+              <Text style={[styles.emptySub, { color: t.textMuted }]}>输入关键词开始搜索</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item, index) => `${item.path}-${index}`}
+              renderItem={({ item }) => {
+                const parentDir = item.path.split('/').filter(Boolean).slice(0, -1).join('/')
+                return (
+                  <TouchableOpacity style={[styles.searchResultItem, { borderBottomColor: t.border }]} onPress={() => { setSearchModalOpen(false); if (item.isDirectory) loadDir(item.path); else loadDir(parentDir ? `/${parentDir}` : '/') }}>
+                    <Icon name={item.isDirectory ? 'folderContent' : getFileIcon(item.name)} size={24} color={t.primary} />
+                    <View style={styles.searchResultInfo}>
+                      <Text style={[styles.searchResultName, { color: t.text }]} numberOfLines={1}>{item.name}</Text>
+                      <Text style={[styles.searchResultPath, { color: t.textMuted }]} numberOfLines={1}>{item.path}</Text>
+                    </View>
+                    {!item.isDirectory && <Text style={[styles.searchResultSize, { color: t.textMuted }]}>{(item.size / 1024).toFixed(1)} KB</Text>}
+                  </TouchableOpacity>
+                )
+              }}
+            />
+          )}
+        </View>
+      </Modal>
+
+      <Modal visible={searchCategoryOpen} transparent animationType="slide" onRequestClose={() => setSearchCategoryOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} onPress={() => setSearchCategoryOpen(false)} activeOpacity={1} />
+          <View style={[styles.categorySheet, { backgroundColor: t.card }]}>
+            <Text style={[styles.categorySheetTitle, { color: t.text }]}>搜索类别</Text>
+            {SEARCH_CATEGORIES.map((cat) => (
+              <TouchableOpacity key={cat.value} style={[styles.categoryOption, { borderBottomColor: t.border }]} onPress={() => { setSearchCategory(cat.value as SearchCategory); setSearchCategoryOpen(false) }}>
+                <Text style={[styles.categoryOptionText, { color: t.text }]}>{cat.label}</Text>
+                <Text style={[styles.categoryOptionMark, { color: searchCategory === cat.value ? t.primary : 'transparent' }]}>●</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={styles.sortCancel} onPress={() => setSearchCategoryOpen(false)}>
+              <Text style={[styles.actionText, { color: t.primary }]}>关闭</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -851,4 +937,22 @@ const styles = StyleSheet.create({
   downloadItemStatus: { fontSize: 12, minWidth: 60, textAlign: 'right' },
   downloadItemCancel: { paddingHorizontal: 8, paddingVertical: 4 },
   downloadItemCancelText: { fontSize: 13, fontWeight: '600' },
+
+  searchModalBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, gap: 4 },
+  searchModalInput: { flex: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, borderWidth: 1 },
+  searchCategoryBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6 },
+  searchCategoryText: { fontSize: 12, fontWeight: '600' },
+  searchActionBtn: { minWidth: 56, paddingHorizontal: 6, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
+  searchActionText2: { fontSize: 14, fontWeight: '600' },
+  searchResultItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, minHeight: 64, borderBottomWidth: StyleSheet.hairlineWidth, gap: 8 },
+  searchResultInfo: { flex: 1 },
+  searchResultName: { fontSize: 15 },
+  searchResultPath: { fontSize: 12, marginTop: 1 },
+  searchResultSize: { fontSize: 12, minWidth: 60, textAlign: 'right' },
+
+  categorySheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 },
+  categorySheetTitle: { fontSize: 15, fontWeight: '700', marginBottom: 6 },
+  categoryOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
+  categoryOptionText: { fontSize: 16, fontWeight: '500' },
+  categoryOptionMark: { fontSize: 18, marginLeft: 12 },
 })
