@@ -1,7 +1,7 @@
 # 下一步计划
 
 > 本文档记录接下来要做的事项，按优先级排序。
-> 最近更新：2026-07-27（FileBrowser P1 ⑨ 文件预览+编辑（文本/代码/图片/HTML/PDF）；待开发：P1 ③ 音视频、P2 下载管理打开文件、NAS CPU/内存）
+> 最近更新：2026-07-27（FileBrowser P1 全部完成 ✅；音视频预览已完成；下一步：媒体服务器集成 或 主题颜色设置）
 
 ---
 
@@ -9,7 +9,7 @@
 
 ## 今日完成 (2026-07-27)
 
-### FileBrowser P1 ⑨ 文件预览+编辑（文本/代码/图片/HTML）
+### FileBrowser P1 ⑨ 文件预览+编辑（文本/代码/图片/HTML/PDF）+ 音视频 ✅
 
 - **新组件** `src/components/FilePreviewModal.tsx`
 - **文本/代码文件** (.txt/.md/.json/.js/.py/.go/...) — `fetch` + `X-Encoding: true` 获取内容，`<ScrollView>` 只读预览，点「编辑」切换 `<TextInput multiline>`，`PUT` 保存
@@ -19,95 +19,30 @@
 - 编辑态：header 显示「保存」按钮，有未保存更改时返回弹确认框
 - 保存后自动刷新文件列表
 
+#### 音视频预览（新增 ✅）
+- **expo-video** (`VideoView` + `useVideoPlayer`) — 视频播放，支持全屏、画中画，Media3/ExoPlayer 后端
+- **expo-audio** (`useAudioPlayer`) — 音频播放，自定义播放按钮 + 进度条 + 时间显示，Media3/ExoPlayer 后端
+- **均支持 `headers` 参数** — `useVideoPlayer({ uri, headers: { 'X-Auth': token } })`，X-Auth 认证直接传
+- **不依赖 FFmpeg** — 服务器负责转码，APK 无需增加 50~100MB
+
 #### 新增 API（`filebrowser.ts`）
 - `getFileContent()` — `GET /api/resources/{path}` + `X-Encoding: true`
 - `saveFileContent()` — `PUT /api/resources/{path}` + body
 
 #### 新工具函数
-- `getFileCategory()` — 按扩展名返回 `text` / `image` / `html` / `other`
+- `getFileCategory()` — 按扩展名返回 `text` / `image` / `html` / `pdf` / `video` / `audio` / `system` / `other`
 
-### FileBrowser P1 ⑧ 下载管理全屏 + 详情 Modal + 多选 ZIP 修复 + 进度轮询
+#### GBK 编码修复
+- `iconv-lite` + `buffer` polyfill 解决中文文件名乱码
+- `decodeText()` 链：UTF-8 strict → iconv gbk → UTF-8 loose
 
-#### 下载管理全屏页面
-- **下载按钮常驻** — 工具栏始终显示，不再仅限活跃任务
-- **全屏 Modal** — 从透明底部 Sheet 改为 `animationType="slide"` 全屏页，与搜索/分享管理统一
-- **全部清除** — ModalHeader 新增红色「全部清除」按钮，一键取消+移除所有下载任务
-- **下载进度轮询** — `useEffect` 每 2s 调用 `pollTaskProgress` + `updateDownload` 实时更新 UI
+#### PDF / Office 系统阅读器
+- `expo-intent-launcher` + `startActivityAsync(ACTION_VIEW)`
+- > 20MB 提示下载；< 20MB 下载到缓存 → `getContentUriAsync` → 系统 App 打开
 
-#### 文件大小格式化
-- **`formatFileSize()`** — 自动 B/KB/MB/GB/TB 显示，替换硬编码的 `(size/1024).toFixed(1) + " KB"`
-- 文件列表 + 搜索结果统一使用
-
-#### 多选 ZIP 只打包选中文件
-- **`commonParent()`** — 计算选中文件的公共父目录
-- **`?files=relPath1,relPath2`** — 传给服务端 `parseQueryFiles`，不再下载整个文件夹
-- 服务端无需修改
-
-#### 详细信息 Modal（P1 新功能）
-- Action sheet 新增"详细信息"（在移动到...和删除之间）
-- 展示：名称、路径、大小、修改时间
-- 文件夹：文件数量、文件夹数量
-- 图片：分辨率
-- 文件：MD5 / SHA1 / SHA256 / SHA512 点击计算显示 hash
-- **`getResourceInfo()`** — `GET /api/resources/{path}` 获取完整资源数据
-- **`getFileChecksum()`** — `GET /api/resources/{path}?checksum={algo}` 获取 hash
-
-#### 技术债务
-- **`coerceAtLeast(0)` 移除** — `DownloadManagerModule.kt` 中 `contentLengthLong` 保留原始值
-- **`appStore.ts`** — 新增 `clearDownloads()` action
-- **`filebrowser.ts`** — 新增 `getResourceInfo()`、`getFileChecksum()`、`ResourceInfo` 接口
-- **`FileScreen.tsx`** — 新增 `commonParent()`、`formatFileSize()`、`formatDateTime()`、`DetailsChecksums` 组件
-
-### FileBrowser P1 ⑥ 流式搜索 (Streaming Search)
-- **`searchFilesStream`** — 新增 NDJSON/JSON array 自动检测响应格式
-- **搜索 scope 修复** — Go 服务器用 `r.URL.Path` 作为搜索根目录，URL 改为 `/api/search/{curPath}?query=...`（根目录时 `/api/search/?query=...`），解决返回全部文件的问题
-- **Generation ID 防污染** — `searchGenerationRef` 防止旧 stream 数据污染新搜索
-- **边搜边显** — 搜索中结果 FlatList 可见可交互，不再是纯 spinner
-- **结果缓存** — 跳转后回来结果保留，搜索后台继续
-- **停止按钮** — 搜索中「搜索」按钮切换为「停止」，支持中断搜索保留结果
-- **系统返回键** — 搜索中只停止不关 Modal，不在搜索时才关闭清结果
-
-### UI 一致性
-- **分享管理** — 左上角返回箭头改为右上角「关闭」，与搜索/创建分享 Modal header 统一
-- **Modal 标题右对齐** — 所有使用 Modal 的页面 header 统一为左标题 + 右关闭
-
-### 技术债务
-- `filebrowser.ts`: `parseLine` 严格化（过滤 null/无 path/非对象行），`scope` 参数传递搜索根目录
-- `FileScreen.tsx`: `stopSearch`、`doSearch` finally 块、搜索按钮条件渲染、`onRequestClose` 条件逻辑
-- **新增原生模块**：`android/.../DownloadManagerModule.kt` + `DownloadManagerPackage.kt`
-  - `enqueueDownload(url, fileName, authToken)` — `DownloadManager.enqueue` + `addRequestHeader("X-Auth")` + `setDestinationInExternalPublicDir(Downloads, "One NAS/$fileName")`
-  - `queryProgress(downloadId)` — `{bytesDownloaded, totalBytes, status, uri}`
-  - `cancelDownload` / `removeDownload`
-  - `isExternalStorageManager()` — `Environment.isExternalStorageManager()` 精确检测（替代 `Directory.create()` 试探法）
-  - `openAllFilesAccessSettings()` — `Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION` 直接深链（替代 `Linking.openSettings()` 普通权限页）
-- **JS 封装**：`src/lib/downloadManager.ts` — `enqueueDownload` / `queryProgress` / `cancelDownload` / `removeDownload` / `checkStoragePermission` / `openAllFilesSettings` / `pollTaskProgress`
-- **`src/types/index.ts`**：新增 `DownloadTask`、`DownloadProgress` 类型
-- **`src/lib/api/filebrowser.ts`**：删除 `downloadResource` / `downloadFolder` / `ensureExternalDir` / `checkExternalStorageAccess` / `EXTERNAL_DOWNLOAD_DIR`（不再用 `expo-file-system` 下载）
-- **`FileScreen.tsx`**：
-  - 单文件 / 文件夹 / 多选下载全部改用 `enqueueDownload`
-  - 启动时 + 从设置切回时调用 `checkStoragePermission`
-  - 失败时弹"去设置"对话框 → 调用 `openAllFilesSettings()`
-  - Toolbar 加下箭头入口（仅活跃任务才显示）
-  - 下载管理弹窗（任务列表 + 进度条 + 取消 / 移除）
-  - 每 1.5s 自动轮询活跃任务进度
-- **`AndroidManifest.xml`**：新增 `MANAGE_EXTERNAL_STORAGE`
-- **路径**：`/storage/emulated/0/Download/One NAS/`
-
-### App 图标 / 开屏（多轮迭代，最终方案）
-- **`app.json`**：app 名 `One NAS`，新增 `expo-splash-screen` 插件配置（`backgroundColor: #FFFFFF` + `dark: #1a1a2e`，`imageWidth: 300`，`resizeMode: contain`）
-- **`strings.xml`**：`app_name = One NAS`
-- **SplashScreen**：`Theme.App.SplashScreen` 继承 `Theme.SplashScreen`（Android 12+ SplashScreen API，不拉伸）
-  - 浅色：白底 + `#2563eb` "One NAS"
-  - 深色：深底 `#1a1a2e` + `#60a5fa` "One NAS"
-- **Adaptive Icon**：
-  - 自适应图标背景用 `@color/splashscreen_background`（跟随主题）
-  - 前景：`cbi--nas-v2.svg`（深蓝 `#1b3a8c` 机架）65% 居中，透明背景
-  - monochrome：白色版（Android 13+ 主题图标）
-- **`App.tsx`**：`SplashScreen.preventAutoHideAsync()` + 等 `loaded=true` 才 `hideAsync()`，开屏持续到主屏渲染完毕，无空白间隔
-- **生成工具**：`assets/gen-splash-icons.js`（用 sharp 生成各密度 PNG）
-
-### 仍存在的已知问题 / 待处理
-- **`fix-android-env.ps1`**：编码 / 分词问题依然存在，非阻塞
+#### 文件类型分类
+- `'system'` 新分类：doc/docx/xls/xlsx/ppt/pptx
+- `filePdf` 图标注册到 `Icon.tsx`
 
 ---
 
@@ -139,8 +74,9 @@
 ### 依赖
 - 删 `expo-sharing`（没人 import）
 - 删 `react-native-vector-icons`（没人 import）
-- 保留 `react-native-webview`（将来文件预览用）
+- 保留 `react-native-webview`（文件预览用）
 - 保留 `react-native-reanimated`（`react-native-draggable-flatlist` 依赖）
+- 新增 `expo-video` + `expo-audio`（音视频预览，Media3/ExoPlayer）
 
 ---
 
@@ -148,13 +84,7 @@
 
 **目标**：以 FileBrowser 网页端功能为基准，补齐文件管理核心能力。
 
-### 实现位置
-- `src/lib/api/filebrowser.ts` — API 函数
-- `src/screens/FileScreen.tsx` — UI 改造
-- `src/lib/downloadManager.ts` — 后台下载封装
-- `android/.../DownloadManagerModule.kt` — 系统下载原生模块
-- `src/components/` — 新增预览 / 编辑 / 分享组件
-- `src/types/index.ts` — 补充类型
+**状态**：**P1 全部完成 ✅**
 
 ---
 
@@ -184,35 +114,18 @@
 - 按扩展名分类（`image/`、`video/`、`audio/`、`text/`、`archive`、`code`、`document`、`book`）
 - 8 个分类 SVG 图标注册到 `Icon.tsx`，`getFileIcon(filename)` 纯函数
 
-#### ⑤ 分享功能 ✅
-- **API**：`GET /api/shares` 列表、`POST /api/share/{path}` 创建（password / expires）、`DELETE /api/share/{hash}`
-- **UI**：操作菜单「分享」→ 弹出配置（密码 / 过期）→ 自动复制链接
-- **管理**：顶栏分享按钮 → 全屏分享管理（列表 / 删除 / 复制链接）
-
-#### ⑦ 系统 DownloadManager 后台下载 ✅（新增）
-- 原生模块 + JS 封装 + 下载管理弹窗 + 权限修复（见上文）
-
-#### ⑧ 下载管理全屏 + 详情 Modal + 多选 ZIP 修复 + 进度轮询 ✅（新增）
-- 下载按钮常驻、全屏管理页、全部清除
-- 文件大小自动 B/KB/MB/GB 格式化
-- 多选 ZIP 用 `?files=` 只打包选中文件
-- 详情 Modal（名称/路径/大小/时间/分辨率/hash）
-- 2s 进度轮询 + updateDownload
-
----
-
-### P1 — 待开发 ❌
-
-#### ③ 文件预览 ✅ 文本/代码/图片/HTML/PDF 已完成
+#### ③ 文件预览 ✅（文本/代码/图片/HTML/PDF/音视频 全部完成）
 | 类型 | 方案 | 状态 |
 |------|------|------|
 | **文本** (.txt/.md/.log) | `fetch` + `<ScrollView>` + `<Text>` | ✅ |
 | **代码** (.js/.ts/.py/.go/) | 同上 + monospace 编辑 | ✅ |
 | **JSON / XML / YAML** | 同上 | ✅ |
 | **HTML** | `react-native-webview` | ✅ |
-| **图片** | RN `<Image>` | ✅ |
-| **PDF** | `react-native-webview` + `X-Auth` header | ✅ |
-| **视频 / 音频** | 需装 `expo-av` | ❌ 待后续 |
+| **图片** | RN `<Image>` data URI（blob + FileReader） | ✅ |
+| **PDF** | `expo-intent-launcher` 系统 App | ✅ |
+| **Office** (doc/xls/ppt等) | `expo-intent-launcher` 系统 App | ✅ |
+| **视频** | `expo-video` VideoView + Media3 | ✅ |
+| **音频** | `expo-audio` useAudioPlayer + 自定义UI | ✅ |
 | **电子书** | 暂不支持 | ❌ |
 
 #### ④ 文件编辑 ✅ 文本/代码 已完成
@@ -221,12 +134,27 @@
 - ❌ 大文件提示下载编辑（待后续）
 - ❌ 语法高亮（待后续，需代码编辑器库）
 
+#### ⑤ 分享功能 ✅
+- **API**：`GET /api/shares` 列表、`POST /api/share/{path}` 创建（password / expires）、`DELETE /api/share/{hash}`
+- **UI**：操作菜单「分享」→ 弹出配置（密码 / 过期）→ 自动复制链接
+- **管理**：顶栏分享按钮 → 全屏分享管理（列表 / 删除 / 复制链接）
+
 #### ⑥ 搜索修复 ✅
 - **根因**：Go 服务器用 `r.URL.Path` 作为搜索根目录，原始 URL `/api/search?query=xxx` 无 scope，返回全部文件
 - **修复**：URL 改为 `/api/search/{currentPath}?query=xxx`，根目录时 `/api/search/?query=xxx`
 - **流式边搜边显**：`response.body.getReader()` 逐 chunk NDJSON 解析 + `onItem` 回调
 - **停止 / 关闭**：搜索中「搜索」按钮切换为「停止」；关闭按钮停止+清+关；系统返回键搜索中只停止不关
 - **结果缓存**：跳转后回来保留结果，搜索后台继续追加
+
+#### ⑦ 系统 DownloadManager 后台下载 ✅
+- 原生模块 + JS 封装 + 下载管理弹窗 + 权限修复
+
+#### ⑧ 下载管理全屏 + 详情 Modal + 多选 ZIP 修复 + 进度轮询 ✅
+- 下载按钮常驻、全屏管理页、全部清除
+- 文件大小自动 B/KB/MB/GB 格式化
+- 多选 ZIP 用 `?files=` 只打包选中文件
+- 详情 Modal（名称/路径/大小/时间/分辨率/hash）
+- 2s 进度轮询 + updateDownload
 
 ---
 
@@ -297,6 +225,34 @@
 
 ---
 
+## ④ 媒体服务器集成（规划中）
+
+**目标**：在 One NAS 内直接浏览 + 播放 Jellyfin / Navidrome / Audiobookshelf / Emby 媒体库。
+
+### 现状
+- 首页已有服务入口（jellyfin / navidrome / audiobookshelf / immich / calibre / qbittorrent）
+- 目前只支持跳转到原生 App（Immich）或内嵌 WebView（其他）
+
+### 规划
+
+#### Jellyfin / Emby（视频）
+- **API**：Jellyfin/Emby REST API (`/Users/{userId}/Items?parentId={id}`)
+- **UI**：类似 FileScreen 的目录树浏览 → 点击视频调用 `expo-video` 直接播放（带 X-Auth-Token header）
+- **优势**：无需转码，Media3 直接播放原始文件
+
+#### Navidrome / Audiobookshelf（音频）
+- **API**：Navidrome Subsonic API (`/rest/getMusicFolders` / `/rest/getAlbumList` 等)
+- **UI**：专辑列表 → 点击播放 `expo-audio`
+- **挑战**：Subsonic API 签名（salt + hash）
+
+### 实施路径
+1. 新增 `src/lib/api/mediaServer.ts` — 抽象媒体服务器接口
+2. 新增 `src/screens/MediaServerScreen.tsx` — 通用媒体浏览 UI
+3. 或直接在 ServiceScreen 中扩展卡片
+4. 利用 `expo-video` / `expo-audio` 的 `headers` 参数传认证
+
+---
+
 ## 已完成的功能（仅作背景记录）
 
 ### App 整体
@@ -327,6 +283,8 @@
 - 分享：创建 / 列表 / 删除 + 复制链接
 - 切换目录自动回顶
 - **流式搜索**：NDJSON streaming + scope 按目录搜索 + 停止/关闭/返回键逻辑 + 结果缓存 + Modal 统一关闭
+- **文件预览**：文本 / 代码 / JSON / HTML / 图片 / PDF / Office / 视频 / 音频
+- **GBK 编码修复**：中文文件名乱码解决
 
 ### App 标识 / 视觉
 - App 名：One NAS

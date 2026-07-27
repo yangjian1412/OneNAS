@@ -183,12 +183,19 @@ android/app/src/main/res/
 
 详见 [docs/NEXT-PLAN.md](./docs/NEXT-PLAN.md)。
 
-FileBrowser 剩余主线：
-1. **文件预览**（文本 / JSON / HTML / 图片 / PDF / 视频·音频 / 电子书）
-2. **文件编辑**（文本 / JSON / HTML）
-3. **搜索修复**
-4. **zip下载修复**
-5. **开屏画面修复**
+FileBrowser P1 已全部完成 ✅：
+1. **文件预览**（文本 / JSON / HTML / 图片 / PDF / Office / 视频·音频）✅
+2. **文件编辑**（文本 / JSON / HTML）✅
+3. **搜索修复** ✅
+4. **zip下载修复** ✅
+5. **下载管理**（系统 DownloadManager）✅
+6. **开屏画面** ✅
+
+下一步优先级：
+- **P2**：下载管理「打开文件」（调用系统 App）
+- **P2**：NAS CPU / 内存显示修复
+- **P3**：主题颜色自定义（主色调选择）
+- **规划中**：媒体服务器集成（Jellyfin / Navidrome / Audiobookshelf / Emby）
 
 ---
 

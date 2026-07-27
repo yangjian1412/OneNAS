@@ -84,3 +84,14 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - In-app `DownloadManage` full-page modal lists tasks with progress bars + status + cancel/remove + "全部清除" button
 - Progress polling via `useEffect` interval (every 2s) — calls `pollTaskProgress` + `updateDownload`
 - `src/stores/appStore.ts`: `clearDownloads()` action to remove all tasks
+
+## FileBrowser file preview (FilePreviewModal.tsx)
+
+- **Text/code**: `fetch` + `X-Encoding: true` → `decodeText()` (GBK fallback) → `<ScrollView><Text>`
+- **HTML**: `react-native-webview` with `source={{ uri: rawUrl }}`
+- **Images**: `fetch` + blob + `FileReader.readAsDataURL` → `<Image source={{ uri: dataURI }}` (RN `<Image>` doesn't support headers directly)
+- **PDF/Office**: `expo-intent-launcher` `startActivityAsync(ACTION_VIEW)` — downloads to cache, gets content URI, opens system app
+- **Video**: `expo-video` `VideoView` + `useVideoPlayer({ uri, headers: { 'X-Auth': token } })` — Media3/ExoPlayer backend, supports fullscreen + PiP
+- **Audio**: `expo-audio` `useAudioPlayer({ uri, headers: { 'X-Auth': token } })` — Media3/ExoPlayer backend, custom UI with play/pause/progress/time
+- **File category**: `getFileCategory()` in `src/lib/fileTypes.ts` returns `text|image|html|pdf|video|audio|system|other`
+- **GBK encoding**: `iconv-lite` + `buffer` polyfill, `decodeText()` chain: UTF-8 strict → iconv gbk → UTF-8 loose
