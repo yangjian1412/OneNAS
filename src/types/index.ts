@@ -64,12 +64,19 @@ export interface UnraidDisk {
   temp: number
   status: string
   isSpinning: boolean
+  rotational: boolean
+  fsSize?: number
+  fsUsed?: number
+  fsFree?: number
+  type?: 'data' | 'parity' | 'cache' | 'boot'
 }
 
 export interface UnraidArray {
   state: string
-  capacity: { kilobytes: { free: number; used: number; total: number } }
+  capacity: { disks: { free: string; used: string; total: string } }
   disks: UnraidDisk[]
+  parities: UnraidDisk[]
+  caches: UnraidDisk[]
 }
 
 export interface VM {
@@ -80,13 +87,26 @@ export interface VM {
   memory?: number
 }
 
+export interface ContainerDetail {
+  id: string
+  names: string[]
+  image: string
+  imageId: string
+  command: string
+  ports: Array<{ ip: string; privatePort: number; publicPort: number; type: string }>
+  networkSettings: Record<string, any>
+  labels: Record<string, string>
+  isUpdateAvailable: boolean
+  autoStart: boolean
+}
+
 export interface DashboardData {
-  online: boolean
   hostname: string
   uptime: string
   cpuModel: string
   cpuCores: number
   cpuThreads: number
+  cpuSpeed: number
   cpuPercent: number
   memoryTotal: number
   memoryUsed: number

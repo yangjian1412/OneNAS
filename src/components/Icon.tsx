@@ -39,6 +39,15 @@ import QbittorrentLogo from '@/icos/selfhst--qbittorrent.svg'
 import OpenlistLogo from '@/icos/selfhst--openlist.svg'
 import UnraidLogo from '@/icos/selfhst--unraid.svg'
 
+import CpuSvg from '@/icos/lucide--cpu.svg'
+import MemoryStickSvg from '@/icos/lucide--memory-stick.svg'
+import ServerSvg from '@/icos/lucide--server.svg'
+import DatabaseSvg from '@/icos/lucide--database.svg'
+import ServerCogSvg from '@/icos/lucide--server-cog.svg'
+import BoxesSvg from '@/icos/lucide--boxes.svg'
+import MonitorSvg from '@/icos/lucide--monitor.svg'
+import GitBranchSvg from '@/icos/lucide--git-branch.svg'
+
 type SvgComponent = React.ComponentType<{ width?: number; height?: number; fill?: string; color?: string; size?: number; style?: any }>
 
 const SVG_COMPONENTS = {
@@ -79,6 +88,15 @@ const SVG_COMPONENTS = {
   qbittorrent: QbittorrentLogo,
   openlist: OpenlistLogo,
   unraid: UnraidLogo,
+
+  cpu: CpuSvg,
+  memory: MemoryStickSvg,
+  server: ServerSvg,
+  database: DatabaseSvg,
+  serverCog: ServerCogSvg,
+  boxes: BoxesSvg,
+  monitor: MonitorSvg,
+  gitBranch: GitBranchSvg,
 } as const
 
 export type IconName = keyof typeof SVG_COMPONENTS
@@ -88,6 +106,7 @@ const MONO_ICONS: ReadonlySet<IconName> = new Set<IconName>([
   'viewList', 'viewGrid', 'multiSelect',
   'folderNew', 'upload', 'sortArrow', 'folderEmpty', 'folderContent',
   'downloadRounded', 'shareManage',
+  'cpu', 'memory', 'server', 'database', 'serverCog', 'boxes', 'monitor', 'gitBranch',
 ])
 
 interface Props {
