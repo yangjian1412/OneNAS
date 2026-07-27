@@ -48,6 +48,9 @@ build.gradle.log*
 # Reference source code (FileBrowser, etc.)
 ref-src/
 
+# Internal development notes (not for public release)
+docs/INTERNAL-DEV.md
+
 # Android build artifacts (keep source code like android/app/src/)
 android/.gradle/
 android/build/
