@@ -9,7 +9,7 @@ One NAS 是一个面向 Unraid NAS 用户的原生 Android 管理面板。
 
 ---
 
-## ? 核心功能
+## 核心功能
 
 - **文件管理（FileBrowser）**
   - 基于 FileBrowser API 的原生文件浏览器
@@ -24,11 +24,16 @@ One NAS 是一个面向 Unraid NAS 用户的原生 Android 管理面板。
   - 搜索（FileBrowser `/api/search`）
   - 多选 + 全选 + 批量操作（底部工具栏）
   - 切换目录自动回顶
+  - **文件预览**：文本 / 代码 / JSON / HTML / 图片 / PDF / Office / 视频 / 音频
+  - **文件编辑**：文本 / 代码直接编辑并保存
 
 - **NAS 系统管理**
   - 连接 Unraid GraphQL API
-  - Docker 容器列表（启动 / 停止 / 重启）
-  - 系统资源概览
+  - Docker 容器列表（启动 / 停止 / 重启）+ 详情 Modal
+  - 系统资源仪表盘：CPU / 内存 / 阵列环形进度
+  - 磁盘列表（紧凑两行布局 + 智能单位格式化）
+  - VM 列表（名称 + 状态）
+  - Auto Refresh（5 秒间隔，20 秒硬超时保护）
 
 - **首页入口**
   - 顶部固定一行（最多 4 个），超出的服务弹"更多"菜单
@@ -51,13 +56,7 @@ One NAS 是一个面向 Unraid NAS 用户的原生 Android 管理面板。
 
 ---
 
-## ?? 截图
-
-> TODO: 在 App 上线后补一张首页 / 文件管理 / 设置页的截图。
-
----
-
-## ?? 技术栈
+## 技术栈
 
 | 层 | 技术 |
 | --- | --- |
@@ -75,7 +74,7 @@ One NAS 是一个面向 Unraid NAS 用户的原生 Android 管理面板。
 
 ---
 
-## ?? 快速开始
+## 快速开始
 
 > 建议使用 PowerShell（Windows）或 Bash（macOS / Linux）。
 > 项目尚未配置完整的 CI，所有构建在本地完成。
@@ -128,7 +127,7 @@ adb install -r android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 
 ---
 
-## ?? 目录结构
+## 目录结构
 
 ```
 src/
@@ -138,12 +137,13 @@ src/
 ├── screens/
 │   ├── FileScreen.tsx       # FileBrowser 主界面（列表 / 平铺 / 多选 / 下载管理）
 │   ├── ServiceScreen.tsx    # 分配到标签的服务入口
-│   ├── DockerScreen.tsx     # NAS 系统管理
+│   ├── DockerScreen.tsx     # NAS 系统管理（仪表盘 + 磁盘 + VM + 容器）
 │   └── SettingsScreen.tsx   # 服务设置 / 标签 / 主题 / 导入导出
 ├── components/
 │   ├── ServiceBar.tsx       # 首页顶部 4 个服务入口
 │   ├── ServiceCard.tsx      # 服务内嵌卡片
 │   ├── ContainerCard.tsx    # Docker 容器卡片（容器状态匹配大写 RUNNING / EXITED / PAUSED）
+│   ├── CircularProgress.tsx # SVG 圆形进度组件（CPU / 内存 / 阵列仪表盘）
 │   └── ConfigModal.tsx      # 设置里各种配置的弹窗
 ├── stores/
 │   └── appStore.ts          # Zustand 全局状态 + 加密持久化
@@ -175,39 +175,33 @@ android/app/src/main/res/
 ├── drawable-night-*/splashscreen_logo.png   # 深色开屏（深底浅蓝字）
 ├── values/values-night/colors.xml          # splashscreen_background：白 / #1a1a2e
 └── values/styles.xml                        # Theme.App.SplashScreen 继承 Theme.SplashScreen
+
+ref-src/                    # 参考源码文件夹（不参与构建，不上传 git）
+└── filebrowser-src/        # FileBrowser 源码，仅供开发参考
 ```
 
 ---
 
-## ?? 下一步计划
+## 下一步计划
 
 详见 [docs/NEXT-PLAN.md](./docs/NEXT-PLAN.md)。
 
-FileBrowser P1 已全部完成 ✅：
-1. **文件预览**（文本 / JSON / HTML / 图片 / PDF / Office / 视频·音频）✅
-2. **文件编辑**（文本 / JSON / HTML）✅
-3. **搜索修复** ✅
-4. **zip下载修复** ✅
-5. **下载管理**（系统 DownloadManager）✅
-6. **开屏画面** ✅
+### 功能完成状态
 
-下一步优先级：
-- **P2**：下载管理「打开文件」（调用系统 App）
-- **P2**：NAS CPU / 内存显示修复
-- **P3**：主题颜色自定义（主色调选择）
-- **规划中**：媒体服务器集成（Jellyfin / Navidrome / Audiobookshelf / Emby）
+- **FileBrowser P1** 全部完成 ✅（文件预览 / 编辑 / 搜索 / 下载 / 分享）
+- **Tab4 NAS 管理** 全部完成 ✅（仪表盘 / 磁盘 / 容器 / VM / Auto Refresh）
+
+### 待开发功能（按优先级）
+
+| 优先级 | 功能 | 说明 |
+|--------|------|------|
+| P2 | 下载管理「打开文件」 | 调用系统 App 打开已完成下载的 PDF/Office/图片等 |
+| P2 | 主题颜色自定义 | 主色调选择，影响按钮/Switch/选中态 |
+| P3 | 媒体服务器集成 | Jellyfin / Navidrome / Audiobookshelf / Emby 内嵌浏览 + 播放 |
+| 规划中 | 其他服务集成 | 待探索 |
 
 ---
 
-## ?? 贡献
-
-欢迎提 Issue / PR。
-代码风格：
-
-- TypeScript 不引入未使用变量
-- 主要变更前请在本地运行 `npm install` + `fix-android-env.ps1`（Windows）
-- PR 标题建议遵循 `feat:` / `fix:` / `chore:` 等约定
-
-## ?? 许可证
+## 许可证
 
 MIT
