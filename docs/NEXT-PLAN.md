@@ -1,7 +1,7 @@
 # 下一步计划
 
 > 本文档记录接下来要做的事项，按优先级排序。
-> 最近更新：2026-07-28（Tab4 NAS 管理全面重构完成 ✅；FileBrowser P1 全部完成 ✅）
+> 最近更新：2026-07-28（Tab4 NAS 管理全面重构完成 ✅；参考源码全部下载 ✅）
 
 ---
 
@@ -11,23 +11,16 @@
 
 - **全面重构** `src/screens/DockerScreen.tsx`：仪表盘 + 磁盘两行布局 + VM 管理 + 容器详情 + auto refresh
 - **仪表盘**：CPU 环形进度（`CircularProgress` 组件）+ 内存环形进度 + 阵列环形进度（已用百分比）
-- **磁盘两行布局**：
-  - PARITY 盘：1 行（仅名称 + 温度 + 状态）
-  - DATA/CACHE 盘：2 行（第 1 行名称 + 温度 + 状态；第 2 行容量进度条）
-  - 温度圆圈 → 行内文字 "49°C"（紧凑化）
-  - 进度条高度 4dp，padding 8dp，行间距 6dp
-- **智能单位格式化** `formatSizeUnit(kb)`：每项独立选最直观单位（≥1TB→TB、≥1GB→GB、<1GB→MB）
+- **磁盘两行布局**：PARITY 1 行 / DATA/CACHE 2 行，温度圆圈→行内文字，紧凑化
+- **智能单位格式化**：`formatSizeUnit(kb)` 每项独立选 TB/GB/MB
 - **Auto Refresh**：默认关闭，5 秒间隔，20 秒硬超时保护
-- **VM 管理**：`vms.domain`（单数），显示 VM 名称 + 状态（RUNNING/STOPPED）
-- **容器详情**：`fetchContainerDetail` 变量类型改为 `PrefixedID!`，移除不可用字段（ports/networks）
-- **CPU 速度**：`info.cpu.speed` 显示在处理器行末尾
-- **新组件**：`src/components/CircularProgress.tsx`（SVG 圆形进度）
-- **参考源码文件夹** `ref-src/`：存放 FileBrowser 等参考项目源码，不参与构建
+- **新组件**：`CircularProgress.tsx`（SVG 圆形进度）
 
-### 参考源码管理 ✅
-- 创建 `ref-src/` 文件夹存放参考项目源码
-- `filebrowser-src/` 和 `filebrowser-source.zip` 移入 `ref-src/`
-- `.gitignore` 添加 `ref-src/`
+### 参考源码下载 ✅
+
+- 创建 `ref-src/` 文件夹，存放 17 个参考项目源码（共 ~370 MB）
+- `.gitignore` 添加 `ref-src/`，不参与 git 备份
+-详见下方「参考源码目录」章节
 
 ---
 

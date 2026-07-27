@@ -1,199 +1,125 @@
 ﻿# One NAS
 
-One NAS 是一个面向 Unraid NAS 用户的原生 Android 管理面板。
-它把日常 NAS 操作（文件管理、Docker 容器、常用服务入口）集中到一个 App 里，
-让你不用在浏览器和多个 App 之间来回切换。
+<div align="center">
 
-> 当前目标平台：**Android**（通过 Expo SDK 57 + React Native 0.86 构建）
-> Android 显示名：One NAS / 包名：com.unraiddash.app
+**面向 Unraid NAS 的原生 Android 管理面板** — 文件管理、Docker 容器、系统监控，统一入口。
+
+[![Platform](https://img.shields.io/badge/Platform-Android-green?style=flat-square&logo=android)](https://github.com/yourusername/one-nas)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](./LICENSE)
+[![Expo SDK](https://img.shields.io/badge/Expo%20SDK-57-black?style=flat-square&logo=expo)](https://expo.dev)
+[![React Native](https://img.shields.io/badge/React%20Native-0.86-blue?style=flat-square&logo=react)](https://reactnative.dev)
+
+**APK 已发布** · 支持 arm64-v8a · 约 52 MB
+
+</div>
 
 ---
 
-## 核心功能
+## 功能亮点
 
-- **文件管理（FileBrowser）**
-  - 基于 FileBrowser API 的原生文件浏览器
-  - 浏览目录、新建文件夹、上传、下载、重命名、复制、移动、删除
-  - 文件夹打包下载（ZIP）— 浏览器同级打包到系统下载管理器
-  - 系统 DownloadManager 后台下载 + 通知栏进度，文件落地 `/storage/emulated/0/Download/One NAS/`
-  - 下载任务管理（活跃任务才显示入口，下箭头查看进度 / 取消）
-  - "所有文件访问权限" 精确检测，弹原生设置引导
-  - 列表 / 平铺两种视图，按扩展名分类的文件类型图标（8 类：image / video / audio / text / archive / code / document / book）
-  - 长按弹出操作菜单（下载 / 打包 / 分享 / 重命名 / 复制 / 移动 / 删除）
-  - 分享：创建分享（密码 + 过期）→ 自动复制链接；顶栏分享按钮进入分享管理（列表 / 删除）
-  - 搜索（FileBrowser `/api/search`）
-  - 多选 + 全选 + 批量操作（底部工具栏）
-  - 切换目录自动回顶
-  - **文件预览**：文本 / 代码 / JSON / HTML / 图片 / PDF / Office / 视频 / 音频
-  - **文件编辑**：文本 / 代码直接编辑并保存
+### 文件管理（FileBrowser）
 
-- **NAS 系统管理**
-  - 连接 Unraid GraphQL API
-  - Docker 容器列表（启动 / 停止 / 重启）+ 详情 Modal
-  - 系统资源仪表盘：CPU / 内存 / 阵列环形进度
-  - 磁盘列表（紧凑两行布局 + 智能单位格式化）
-  - VM 列表（名称 + 状态）
-  - Auto Refresh（5 秒间隔，20 秒硬超时保护）
+- 原生文件浏览器 — 浏览、上传、下载、新建、重命名、复制、移动、删除
+- **文件夹 ZIP 打包下载** — 多选文件/文件夹打包，调用系统 DownloadManager 后台下载
+- **文件预览** — 文本、代码、JSON、HTML、图片、PDF、Office、**视频**、**音频**（直链不转码）
+- **文件编辑** — 文本/代码在线编辑，`PUT` 保存
+- **分享** — 创建带密码/过期时间的分享链接，一键复制
+- **流式搜索** — 边搜边显示，支持按目录范围搜索
+- 列表/平铺视图切换，8 类文件类型图标，多选/批量操作
 
-- **首页入口**
-  - 顶部固定一行（最多 4 个），超出的服务弹"更多"菜单
-  - 服务图标点击：
-    - 跳到原生 App（通过 Android Intent，例如 Immich）
-    - 弹内嵌页 ServiceCard
-  - 顶部入口顺序在设置中长按调整
-  - Tab 选中态上方加主题色条
+### NAS 系统管理（Tab4）
 
-- **灵活设置**
-  - 服务、标签、主题配置分组
-  - 配置导入 / 导出 JSON（明文存于本地 AsyncStorage）
+- 系统资源**仪表盘** — CPU / 内存 / 阵列环形进度
+- **磁盘列表** — 温度、容量、状态一览，支持 PARITY/DATA/CACHE 分类型显示
+- **Docker 容器** — 启动/停止/重启，容器详情弹窗
+- **虚拟机管理** — 查看 VM 名称和运行状态
+- Auto Refresh（5 秒间隔，20 秒超时保护）
 
-- **原生的细节**
-  - 深色 / 浅色 / 跟随系统主题（背景色与开屏文字色自动跟随）
-  - 系统返回键智能返回层级（子目录 → 上级 / 根目录 → 二次返回退出）
-  - 原生 SplashScreen（`expo-splash-screen` + Theme.SplashScreen）：白底深字 / 深底浅字 "One NAS"，无拉伸
-  - 原生 Adaptive Icon：mipmap 全密度 .webp + 自动形状遮罩
-  - 底部 Action Sheet、Toast 提示、List/Grid 切换、键盘避让等
+### 服务入口
+
+- 首页固定服务栏（最多 4 个），支持跳转到原生 App 或内嵌卡片
+- 支持服务：FileBrowser、Jellyfin、Navidrome、Audiobookshelf、Immich、Calibre、qBittorrent、OpenList 等
+
+### 原生体验
+
+- 浅色 / 深色 / 跟随系统主题
+- 原生 SplashScreen + Adaptive Icon（深蓝机架图标）
+- 系统返回键智能处理（子目录→上级→根目录→退出）
+- 精确权限检测（"所有文件访问权限"引导）
+
+---
+
+## 截图
+
+> 截图待补
 
 ---
 
 ## 技术栈
 
 | 层 | 技术 |
-| --- | --- |
+|---|---|
 | 框架 | React Native 0.86 + Expo SDK 57 |
-| 语言 | TypeScript ~6.0 |
-| 状态管理 | Zustand（带 `persist` + 加密中间层） |
-| 导航 | `@react-navigation/native` + `bottom-tabs` |
-| 文件 / 上传 | `expo-file-system` + `expo-document-picker` |
-| 后台下载 | Android `DownloadManager`（原生 Kotlin 模块 `DownloadManagerModule.kt`） |
-| 开屏 | `expo-splash-screen` + `androidx.core:core-splashscreen` |
-| 图标 | `react-native-svg` + 自定义 SVG 资产（`src/icos/`） |
-| ID 生成 | `expo-crypto`（仅 `randomUUID()`） |
-| 拖拽 | `react-native-draggable-flatlist` + `react-native-gesture-handler` + `react-native-reanimated` |
-| 后端 | 直接对接 FileBrowser API 与 Unraid GraphQL，无独立后端 |
+| 语言 | TypeScript |
+| 状态管理 | Zustand + 加密持久化 |
+| 导航 | @react-navigation/native + bottom-tabs |
+| 文件/上传 | expo-file-system + expo-document-picker |
+| 后台下载 | Android DownloadManager（原生 Kotlin 模块） |
+| 音视频 | expo-video + expo-audio（Media3/ExoPlayer） |
+| 图标 | react-native-svg + 自定义 SVG |
+| 后端 | 直接对接 FileBrowser API + Unraid GraphQL，无独立后端 |
 
 ---
 
 ## 快速开始
 
-> 建议使用 PowerShell（Windows）或 Bash（macOS / Linux）。
-> 项目尚未配置完整的 CI，所有构建在本地完成。
-
-### 1. 环境准备
+### 环境
 
 - Node.js 20+
-- JDK 17（推荐 Temurin）
-- Android SDK（API 35+、Build-Tools 35+）
-- Android NDK 27.x（如果安装原生依赖）
-- PowerShell（仅 Windows，需要运行 `fix-android-env.ps1`）
+- JDK 17（Temurin）
+- Android SDK API 35+ / NDK 27.x
 
-### 2. 安装依赖
+### 安装
 
 ```bash
 npm install
-# Windows 用户在中国大陆建议额外执行：
+# Windows 中国大陆用户额外执行：
 powershell -ExecutionPolicy Bypass -File ./fix-android-env.ps1
 ```
 
-这个脚本会：
-
-1. 移除 `node_modules` 下所有 `.gradle` / `.kts` 文件的 BOM
-2. 在 Expo / React Native gradle 插件中加入 Aliyun 镜像
-3. 避免 Gradle 在没有 BOM 处理时出现注释错误
-
-### 3. 调试运行
+### 构建
 
 ```bash
-npx expo start              # 启动 Metro
-npx expo run:android        # 自动安装到已连接设备
-```
+# 构建 APK
+cd android && .\gradlew.bat assembleDebug
 
-### 4. 直接构建 APK
-
-```bash
-cd android
-.\gradlew.bat assembleDebug
-# 产物在 android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
-```
-
-安装到设备：
-
-```powershell
+# 安装到设备
 adb install -r android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 ```
 
-> 当前 `splits.include` 只保留 `arm64-v8a`，APK 大小约 **52 MB**。
-> 启用更多 ABI（armeabi-v7a / x86 / x86_64）请修改 `android/app/build.gradle`。
+APK 产物：`android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`（约 52 MB，仅 arm64-v8a）
 
 ---
 
-## 目录结构
+## 项目结构
 
 ```
 src/
-├── App.tsx                  # 入口，挂载 TabNavigator + SafeAreaView；SplashScreen 续命到主屏渲染完毕
-├── navigation/
-│   └── TabNavigator.tsx     # 5 个 Tab：文件 / 标签2 / 标签3 / NAS / 设置
+├── App.tsx                    # 入口，SplashScreen 续命
+├── navigation/TabNavigator.tsx # 5 个 Tab
 ├── screens/
-│   ├── FileScreen.tsx       # FileBrowser 主界面（列表 / 平铺 / 多选 / 下载管理）
-│   ├── ServiceScreen.tsx    # 分配到标签的服务入口
-│   ├── DockerScreen.tsx     # NAS 系统管理（仪表盘 + 磁盘 + VM + 容器）
-│   └── SettingsScreen.tsx   # 服务设置 / 标签 / 主题 / 导入导出
-├── components/
-│   ├── ServiceBar.tsx       # 首页顶部 4 个服务入口
-│   ├── ServiceCard.tsx      # 服务内嵌卡片
-│   ├── ContainerCard.tsx    # Docker 容器卡片（容器状态匹配大写 RUNNING / EXITED / PAUSED）
-│   ├── CircularProgress.tsx # SVG 圆形进度组件（CPU / 内存 / 阵列仪表盘）
-│   └── ConfigModal.tsx      # 设置里各种配置的弹窗
-├── stores/
-│   └── appStore.ts          # Zustand 全局状态 + 加密持久化
-├── lib/
-│   ├── api/
-│   │   ├── client.ts        # buildUrl / apiFetch / apiGraphQL
-│   │   ├── filebrowser.ts   # FileBrowser REST API（登录 / 资源 / 分享）
-│   │   └── unraid.ts        # Unraid GraphQL（DASHBOARD_QUERY）
-│   ├── android-intent.ts    # 原生 App 跳转（Immich 等）
-│   ├── crypto.ts            # AES-GCM 加密 / 解密
-│   ├── downloadManager.ts   # JS 封装原生 DownloadManager（enqueue / queryProgress / cancel）
-│   ├── fileTypes.ts         # 文件扩展名 → 图标名映射（getFileIcon）
-│   ├── storage.ts           # AsyncStorage 封装
-│   ├── theme.ts             # 浅色 / 深色 / 系统主题
-│   └── constants.ts         # 服务类型常量
-└── types/
-    └── index.ts             # ServerConfig / ServiceConfig / FileItem / DownloadTask / ShareInfo 等
+│   ├── FileScreen.tsx         # 文件管理
+│   ├── ServiceScreen.tsx      # 服务入口
+│   ├── DockerScreen.tsx       # NAS 管理
+│   └── SettingsScreen.tsx     # 设置
+├── components/                # UI 组件
+├── stores/appStore.ts         # Zustand 全局状态
+└── lib/                      # API 封装、工具函数
 
 android/app/src/main/java/com/unraiddash/app/
-├── MainApplication.kt       # 注册 DownloadManagerPackage
-├── MainActivity.kt          # setTheme(AppTheme) → super.onCreate(null)
-├── DownloadManagerModule.kt # 原生模块：isExternalStorageManager / enqueueDownload / queryProgress / cancel / remove
-└── DownloadManagerPackage.kt
-
-android/app/src/main/res/
-├── mipmap-anydpi-v26/      # 自适应图标 XML（背景 = @color/splashscreen_background，跟随主题）
-├── mipmap-{m,h,xh,xxh,xxxh}dpi/   # 各密度 .webp（ic_launcher / foreground / monochrome）
-├── drawable-*/splashscreen_logo.png         # 浅色开屏（白底蓝字 One NAS）
-├── drawable-night-*/splashscreen_logo.png   # 深色开屏（深底浅蓝字）
-├── values/values-night/colors.xml          # splashscreen_background：白 / #1a1a2e
-└── values/styles.xml                        # Theme.App.SplashScreen 继承 Theme.SplashScreen
-
-ref-src/                    # 参考源码文件夹（不参与构建，不上传 git）
-├── alist/                  # AList 服务端
-├── aria2/                  # aria2 源码
-├── audiobookshelf-app/      # Audiobookshelf 客户端
-├── audiobookshelf-server/   # Audiobookshelf 服务端
-├── dsub/                   # DSub Subsonic 播放器
-├── filebrowser-src/        # FileBrowser 源码
-├── findroid/               # Jellyfin 原生客户端
-├── jellyfin-android/        # Jellyfin 官方 Android
-├── jellyfin-androidtv/      # Jellyfin Android TV
-├── jellyfin-docs/           # Jellyfin 官方文档
-├── jellyfin-server/         # Jellyfin Controller
-├── komga/                  # Komga 服务端
-├── mihon/                  # Mihon manga 阅读器
-├── mihon-extensions-source/ # Mihon 插件（含 Komga）
-├── openlist-app/            # OpenList Flutter 客户端
-├── qbittorrent/            # qBittorrent C++ 源码
-└── tempo-gai/             # 魔改 tempo 播放器
+├── DownloadManagerModule.kt   # 原生下载模块
+├── MainActivity.kt            # SplashScreen 主题
+└── MainApplication.kt         # 模块注册
 ```
 
 ---
@@ -202,22 +128,14 @@ ref-src/                    # 参考源码文件夹（不参与构建，不上�
 
 详见 [docs/NEXT-PLAN.md](./docs/NEXT-PLAN.md)。
 
-### 功能完成状态
+**进行中 / 规划中：**
 
-- **FileBrowser P1** 全部完成 ✅（文件预览 / 编辑 / 搜索 / 下载 / 分享）
-- **Tab4 NAS 管理** 全部完成 ✅（仪表盘 / 磁盘 / 容器 / VM / Auto Refresh）
-
-### 待开发功能（按优先级）
-
-| 优先级 | 功能 | 说明 |
-|--------|------|------|
-| P2 | 下载管理「打开文件」 | 调用系统 App 打开已完成下载的 PDF/Office/图片等 |
-| P2 | 主题颜色自定义 | 主色调选择，影响按钮/Switch/选中态 |
-| P3 | 媒体服务器集成 | Jellyfin / Navidrome / Audiobookshelf / Emby 内嵌浏览 + 播放 |
-| 规划中 | 其他服务集成 | 待探索 |
+- 媒体服务器集成（Jellyfin / Navidrome / Audiobookshelf）— 内嵌浏览 + 直链播放
+- 下载管理「打开文件」— 调用系统 App
+- 主题颜色自定义
 
 ---
 
 ## 许可证
 
-MIT
+[MIT](./LICENSE)
