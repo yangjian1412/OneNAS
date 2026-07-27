@@ -12,6 +12,14 @@ function bytesToGB(b: number): string { return (b / 1073741824).toFixed(1) }
 function kBToTB(kb: number): string { return (kb / 1073741824).toFixed(2) }
 function kBToGB(kb: number): string { return (kb / 1048576).toFixed(1) }
 
+function formatSizeUnit(kb: number): string {
+  const tb = kb / 1073741824
+  if (tb >= 1) return `${tb.toFixed(1)} TB`
+  const gb = kb / 1048576
+  if (gb >= 1) return `${gb.toFixed(0)} GB`
+  return `${Math.max(1, Math.round(gb * 1024))} MB`
+}
+
 function formatUptime(s: string): string {
   if (!s) return ''
   try {
@@ -379,22 +387,19 @@ function DiskSection({ title, icon, disks, theme }: { title: string; icon: any; 
 function DiskRow({ disk, theme, last }: { disk: any; theme: any; last: boolean }) {
   const t = theme
   const statusOk = disk.status === 'DISK_OK'
-  const hasFs = disk.fsSize && disk.fsSize > 0
+  const isParity = disk.type === 'PARITY'
+  const hasFs = !isParity && disk.fsSize && disk.fsSize > 0
   const usedPct = hasFs ? (disk.fsUsed / disk.fsSize) * 100 : 0
   const usedColor = usedPct > 90 ? t.danger : usedPct > 75 ? t.warning : t.primary
 
   return (
     <View style={[styles.diskRow, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }]}>
       <View style={styles.diskHeaderRow}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[styles.diskName, { color: t.text }]} numberOfLines={1}>
-            {disk.name || disk.device}{' '}
-            <Text style={[styles.diskDeviceInline, { color: t.textMuted }]}>· {disk.device}</Text>
-          </Text>
-        </View>
-        <View style={[styles.diskTempCircle, { backgroundColor: tempColor(disk.temp, t) + '22' }]}>
-          <Text style={[styles.diskTempText, { color: tempColor(disk.temp, t) }]}>{disk.temp > 0 ? `${disk.temp}°` : '–'}</Text>
-        </View>
+        <Text style={[styles.diskName, { color: t.text }]} numberOfLines={1}>
+          {disk.name || disk.device}{' '}
+          <Text style={[styles.diskDeviceInline, { color: t.textMuted }]}>· {disk.device}</Text>
+        </Text>
+        <Text style={[styles.diskTempInline, { color: tempColor(disk.temp, t) }]}>{disk.temp > 0 ? `${disk.temp}°C` : '–'}</Text>
         <View style={[styles.diskStatus, { backgroundColor: (statusOk ? t.success : t.warning) + '22' }]}>
           <Text style={[styles.diskStatusText, { color: statusOk ? t.success : t.warning }]}>
             {statusOk ? '正常' : disk.status === 'DISK_NP' ? '离线' : '异常'}
@@ -407,14 +412,10 @@ function DiskRow({ disk, theme, last }: { disk: any; theme: any; last: boolean }
             <View style={[styles.diskUsageBarFill, { backgroundColor: usedColor, width: `${Math.min(usedPct, 100)}%` }]} />
           </View>
           <Text style={[styles.diskUsageText, { color: t.textSecondary }]}>
-            {usedPct.toFixed(1)}% · {kBToGB(disk.fsUsed)} / {kBToGB(disk.fsSize)} GB
+            {usedPct.toFixed(1)}% · {formatSizeUnit(disk.fsUsed)} / {formatSizeUnit(disk.fsSize)}
           </Text>
         </View>
-      ) : (
-        <Text style={[styles.diskSizeOnly, { color: t.textMuted }]}>
-          {disk.size > 0 ? `${kBToTB(disk.size)} TB` : '–'}
-        </Text>
-      )}
+      ) : null}
     </View>
   )
 }
@@ -542,17 +543,16 @@ const styles = StyleSheet.create({
   stateText: { fontSize: 12, fontWeight: '600' },
   serverBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 14, marginHorizontal: 20, marginVertical: 4, minWidth: 200 },
   serverBtnText: { fontSize: 14, fontWeight: '600' },
-  diskRow: { paddingVertical: 12 },
+  diskRow: { paddingVertical: 8 },
   diskHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  diskName: { fontSize: 14, fontWeight: '600' },
+  diskName: { fontSize: 14, fontWeight: '600', flex: 1 },
   diskDeviceInline: { fontSize: 12, fontWeight: '400' },
-  diskTempCircle: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-  diskTempText: { fontSize: 11, fontWeight: '700' },
+  diskTempInline: { fontSize: 12, fontWeight: '700' },
   diskStatus: { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
   diskStatusText: { fontSize: 11, fontWeight: '600' },
-  diskUsageRow: { marginTop: 10, gap: 4 },
-  diskUsageBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  diskUsageBarFill: { height: '100%', borderRadius: 3 },
+  diskUsageRow: { marginTop: 6, gap: 3 },
+  diskUsageBarBg: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  diskUsageBarFill: { height: '100%', borderRadius: 2 },
   diskUsageText: { fontSize: 11 },
   diskSizeOnly: { fontSize: 12, marginTop: 8 },
 })
