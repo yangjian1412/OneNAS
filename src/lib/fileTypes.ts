@@ -27,7 +27,7 @@ const EXTENSION_MAP: Record<string, IconName> = {
   rb: 'fileCode', pl: 'fileCode', lua: 'fileCode', dart: 'fileCode',
   sql: 'fileCode', r: 'fileCode', scala: 'fileCode',
 
-  pdf: 'fileDocument', doc: 'fileDocument', docx: 'fileDocument',
+  pdf: 'filePdf', doc: 'fileDocument', docx: 'fileDocument',
   xls: 'fileDocument', xlsx: 'fileDocument', ppt: 'fileDocument',
   pptx: 'fileDocument',
 
@@ -40,7 +40,7 @@ const TEXT_EXTS = new Set(['txt','md','log','yml','yaml','json','xml','csv','ini
   'js','ts','jsx','tsx','py','java','go','rs','c','cpp','h','hpp','css','html','htm','php','swift','kt','sh','bash',
   'rb','pl','lua','dart','sql','r','scala','zig','tex','ps1','bat','cmd','makefile','dockerfile','gradle','vue','svelte'])
 
-export type FileCategory = 'text' | 'image' | 'html' | 'other'
+export type FileCategory = 'text' | 'image' | 'html' | 'pdf' | 'system' | 'other'
 
 export function getFileCategory(fileName: string): FileCategory {
   const parts = fileName.split('.')
@@ -48,6 +48,8 @@ export function getFileCategory(fileName: string): FileCategory {
   const ext = parts[parts.length - 1].toLowerCase()
   if (IMAGE_EXTS.has(ext)) return 'image'
   if (ext === 'html' || ext === 'htm') return 'html'
+  if (ext === 'pdf') return 'pdf'
+  if (['doc','docx','xls','xlsx','ppt','pptx'].includes(ext)) return 'system'
   if (TEXT_EXTS.has(ext)) return 'text'
   return 'other'
 }

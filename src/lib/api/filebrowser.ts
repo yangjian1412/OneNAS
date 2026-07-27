@@ -1,4 +1,6 @@
+import { Buffer } from 'buffer'
 import { buildUrl } from './client'
+import iconv from 'iconv-lite'
 import { FileItem, ServerConfig, ShareInfo } from '@/types'
 import { File, UploadType } from 'expo-file-system'
 
@@ -172,12 +174,20 @@ export async function getFileContent(
       const json = await res.json()
       content = json.content ?? ''
     } else {
-      content = await res.text()
+      const buf = await res.arrayBuffer()
+      content = decodeText(buf)
     }
     return { ok: true, data: content }
   } catch (err: any) {
     return { ok: false, error: err.message ?? 'Failed to load file content' }
   }
+}
+
+function decodeText(buf: ArrayBuffer): string {
+  const u8 = new Uint8Array(buf)
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf) } catch {}
+  try { return iconv.decode(Buffer.from(u8), 'gbk') } catch {}
+  return new TextDecoder('utf-8', { fatal: false }).decode(buf)
 }
 
 export async function saveFileContent(

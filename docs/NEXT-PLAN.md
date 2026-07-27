@@ -1,7 +1,7 @@
 # 下一步计划
 
 > 本文档记录接下来要做的事项，按优先级排序。
-> 最近更新：2026-07-27（FileBrowser P1 ⑨ 文件预览+编辑（文本/代码/图片/HTML）；待开发：P1 ③ 音视频、NAS CPU/内存）
+> 最近更新：2026-07-27（FileBrowser P1 ⑨ 文件预览+编辑（文本/代码/图片/HTML/PDF）；待开发：P1 ③ 音视频、P2 下载管理打开文件、NAS CPU/内存）
 
 ---
 
@@ -203,7 +203,7 @@
 
 ### P1 — 待开发 ❌
 
-#### ③ 文件预览 ✅ 文本/代码/图片/HTML 已完成
+#### ③ 文件预览 ✅ 文本/代码/图片/HTML/PDF 已完成
 | 类型 | 方案 | 状态 |
 |------|------|------|
 | **文本** (.txt/.md/.log) | `fetch` + `<ScrollView>` + `<Text>` | ✅ |
@@ -211,7 +211,7 @@
 | **JSON / XML / YAML** | 同上 | ✅ |
 | **HTML** | `react-native-webview` | ✅ |
 | **图片** | RN `<Image>` | ✅ |
-| **PDF** | WebView 或分享 | ❌ 待后续 |
+| **PDF** | `react-native-webview` + `X-Auth` header | ✅ |
 | **视频 / 音频** | 需装 `expo-av` | ❌ 待后续 |
 | **电子书** | 暂不支持 | ❌ |
 
@@ -238,7 +238,31 @@
 
 ---
 
-## ② 主题颜色设置
+## ② 下载管理中打开文件（用其他 App）
+
+**目标**：在下载管理页面，下载完成的任务点击后调用系统 Intent，用对应的 App 打开文件（Office / PDF / 图片等）。
+
+**现状**：
+- `DownloadTask.progress.uri` 已返回 `file:///storage/emulated/0/Download/One%20NAS/<filename>`
+- 目前只有「取消」和「移除」，无「打开」按钮
+
+**方案**：
+1. **expo-file-system**（已装）+ `Linking.openURL()` — 最简，无需新依赖
+   - 先 `FileSystem.getContentUriAsync(fileUri)` 转成 `content://` URI
+   - 再 `Linking.openURL(contentUri)` 调起系统选择器
+2. 或装 `expo-sharing` / `react-native-share`（需额外依赖）
+
+**实现位置**：
+- `FileScreen.tsx` — DownloadManage modal，下载完成的 item 加「打开」按钮
+- `src/lib/downloadManager.ts` — 可新增 `openDownloadedFile(uri)` JS 封装
+
+**验收标准**：
+- 点击已完成任务的「打开」按钮，系统弹出可用 App 列表
+- PDF / Office / 图片 均能正确调起对应应用
+
+---
+
+## ③ 主题颜色设置
 
 **目标**：现在只有浅色 / 深色 / 跟随系统三档，希望扩展：
 1. **主色调（Primary Color）**：影响按钮、激活态、Switch 颜色

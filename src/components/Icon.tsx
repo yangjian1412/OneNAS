@@ -23,6 +23,7 @@ import FileTextSvg from '@/icos/catppuccin--text.svg'
 import FileArchiveSvg from '@/icos/catppuccin--zip.svg'
 import FileCodeSvg from '@/icos/streamline-color--file-code-1.svg'
 import FileDocumentSvg from '@/icos/material-icon-theme--document.svg'
+import FilePdfSvg from '@/icos/material-icon-theme--pdf.svg'
 import FileBookSvg from '@/icos/twemoji--blue-book.svg'
 
 import DownloadRoundedSvg from '@/icos/material-symbols--download-rounded.svg'
@@ -64,6 +65,7 @@ const SVG_COMPONENTS = {
   fileArchive: FileArchiveSvg,
   fileCode: FileCodeSvg,
   fileDocument: FileDocumentSvg,
+  filePdf: FilePdfSvg,
   fileBook: FileBookSvg,
   downloadRounded: DownloadRoundedSvg,
   shareManage: ShareManageSvg,
