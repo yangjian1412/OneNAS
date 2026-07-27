@@ -88,6 +88,31 @@ export default function FileScreen() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const searchAbortRef = useRef<AbortController | null>(null)
+  const searchGenerationRef = useRef(0)
+  const searchResultsBufferRef = useRef<FileItem[]>([])
+  const searchFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const flushSearchResultsBuffer = useCallback(() => {
+    const gen = searchGenerationRef.current
+    if (gen === 0) return
+    if (searchFlushTimerRef.current) { clearTimeout(searchFlushTimerRef.current); searchFlushTimerRef.current = null }
+    if (searchResultsBufferRef.current.length === 0) return
+    if (gen !== searchGenerationRef.current) return
+    setSearchResults((prev) => {
+      if (searchGenerationRef.current !== gen) return prev
+      const combined = [...prev, ...searchResultsBufferRef.current]
+      searchResultsBufferRef.current = []
+      return combined
+    })
+  }, [])
+
+  const scheduleSearchFlush = useCallback(() => {
+    if (searchFlushTimerRef.current) return
+    searchFlushTimerRef.current = setTimeout(() => {
+      searchFlushTimerRef.current = null
+      flushSearchResultsBuffer()
+    }, 100)
+  }, [flushSearchResultsBuffer])
   
 
   const checkStorage = useCallback(async () => {
@@ -137,24 +162,58 @@ export default function FileScreen() {
 
   const doSearch = useCallback(async (query: string, category: SearchCategory) => {
     if (!selectedServer || !token || !query.trim()) return
+    const gen = ++searchGenerationRef.current
     searchAbortRef.current?.abort()
+    if (searchFlushTimerRef.current) { clearTimeout(searchFlushTimerRef.current); searchFlushTimerRef.current = null }
+    searchResultsBufferRef.current = []
     const controller = new AbortController()
     searchAbortRef.current = controller
+    setSearchResults([])
     setSearchLoading(true); setSearchError(null)
     try {
       const typeSuffix = category === 'all' ? '' : ` type:${category}`
-      const result = await searchFilesStream(selectedServer, token, query.trim() + typeSuffix, controller.signal)
-      if (result.ok) setSearchResults(result.data)
-      else {
-        if (result.error === 'Cancelled') return
-        setSearchError(result.error ?? '搜索失败')
+      const result = await searchFilesStream(
+        selectedServer, token, query.trim() + typeSuffix, currentPath, controller.signal,
+        (item) => {
+          if (searchGenerationRef.current !== gen) return
+          searchResultsBufferRef.current.push(item)
+          if (searchResultsBufferRef.current.length >= 20) {
+            flushSearchResultsBuffer()
+          } else {
+            scheduleSearchFlush()
+          }
+        }
+      )
+      if (searchGenerationRef.current !== gen) return
+      flushSearchResultsBuffer()
+      if (!result.ok) {
+        if (result.error !== 'Cancelled') setSearchError(result.error ?? '搜索失败')
       }
     } catch (e: any) {
-      setSearchError(e.message ?? '搜索失败')
+      if (searchGenerationRef.current !== gen) return
+      if (e.name !== 'AbortError') setSearchError(e.message ?? '搜索失败')
+    } finally {
+      if (searchGenerationRef.current !== gen) return
+      setSearchLoading(false)
+      searchAbortRef.current = null
     }
+  }, [selectedServer, token, currentPath, flushSearchResultsBuffer, scheduleSearchFlush])
+
+  const stopSearch = useCallback(() => {
+    ++searchGenerationRef.current
+    searchAbortRef.current?.abort()
+    if (searchFlushTimerRef.current) { clearTimeout(searchFlushTimerRef.current); searchFlushTimerRef.current = null }
+    searchResultsBufferRef.current = []
     setSearchLoading(false)
-    searchAbortRef.current = null
-  }, [selectedServer, token])
+  }, [])
+
+  useEffect(() => {
+    if (!searchModalOpen) {
+      if (searchFlushTimerRef.current) { clearTimeout(searchFlushTimerRef.current); searchFlushTimerRef.current = null }
+      searchResultsBufferRef.current = []
+      setSearchLoading(false)
+    }
+  }, [searchModalOpen])
 
   const autoLoaded = useRef(false)
   useEffect(() => {
@@ -460,7 +519,7 @@ export default function FileScreen() {
         <TouchableOpacity style={styles.headerButton} onPress={() => { loadShares(); setShareManageOpen(true) }}>
           <Icon name="shareManage" size={22} color={t.primary} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.headerButton} onPress={() => { setSearchQuery(''); setSearchResults([]); setSearchError(null); setSearchCategory('all'); setSearchModalOpen(true) }}>
+        <TouchableOpacity style={styles.headerButton} onPress={() => { setSearchQuery(''); setSearchError(null); setSearchCategory('all'); setSearchModalOpen(true) }}>
           <Icon name="search" size={22} color={t.primary} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.headerButton} onPress={() => selectedServer && loadDir(currentPath)}>
@@ -660,10 +719,8 @@ export default function FileScreen() {
       <Modal visible={shareManageOpen} animationType="slide" onRequestClose={() => setShareManageOpen(false)}>
         <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
-            <TouchableOpacity onPress={() => setShareManageOpen(false)} style={styles.headerButton}>
-              <Icon name="back" size={22} color={t.primary} />
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: t.text, flex: 1, marginLeft: 8 }]}>分享管理</Text>
+            <Text style={[styles.modalTitle, { color: t.text }]}>分享管理</Text>
+            <TouchableOpacity onPress={() => setShareManageOpen(false)}><Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text></TouchableOpacity>
           </View>
           {shareLoading ? (
             <ActivityIndicator style={{ margin: 12 }} />
@@ -784,11 +841,11 @@ export default function FileScreen() {
         </View>
       </Modal>
 
-      <Modal visible={searchModalOpen} animationType="slide" onRequestClose={() => { searchAbortRef.current?.abort(); setSearchModalOpen(false) }}>
+      <Modal visible={searchModalOpen} animationType="slide" onRequestClose={() => { if (searchLoading) { stopSearch() } else { searchAbortRef.current?.abort(); setSearchResults([]); setSearchModalOpen(false) } }}>
         <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>搜索</Text>
-            <TouchableOpacity onPress={() => { searchAbortRef.current?.abort(); setSearchModalOpen(false) }}>
+            <TouchableOpacity onPress={() => { searchAbortRef.current?.abort(); setSearchResults([]); setSearchModalOpen(false) }}>
               <Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text>
             </TouchableOpacity>
           </View>
@@ -807,11 +864,11 @@ export default function FileScreen() {
               <Text style={[styles.searchCategoryText, { color: t.text }]}>{SEARCH_CATEGORIES.find((c) => c.value === searchCategory)?.label ?? '所有类型'}</Text>
               <Icon name="sortArrow" size={12} color={t.textMuted} style={{ marginLeft: 2 }} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.searchActionBtn} onPress={() => doSearch(searchQuery, searchCategory)}>
-              <Text style={[styles.searchActionText2, { color: t.primary }]}>搜索</Text>
+            <TouchableOpacity style={styles.searchActionBtn} onPress={() => searchLoading ? stopSearch() : doSearch(searchQuery, searchCategory)}>
+              <Text style={[styles.searchActionText2, { color: t.primary }]}>{searchLoading ? '停止' : '搜索'}</Text>
             </TouchableOpacity>
           </View>
-          {searchLoading ? (
+          {searchLoading && searchResults.length === 0 ? (
             <View style={styles.center}>
               <ActivityIndicator size="large" color={t.primary} />
               <Text style={[styles.emptySub, { color: t.textMuted, marginTop: 8 }]}>搜索中...</Text>
@@ -820,28 +877,36 @@ export default function FileScreen() {
             <View style={styles.center}>
               <Text style={[styles.errorText, { color: t.danger }]}>{searchError}</Text>
             </View>
-          ) : searchResults.length === 0 && !searchLoading && !searchError ? (
+          ) : searchResults.length === 0 && !searchLoading ? (
             <View style={styles.center}>
               <Text style={[styles.emptySub, { color: t.textMuted }]}>输入关键词开始搜索</Text>
             </View>
           ) : (
-            <FlatList
-              data={searchResults}
-              keyExtractor={(item, index) => `${item.path}-${index}`}
-              renderItem={({ item }) => {
-                const parentDir = item.path.split('/').filter(Boolean).slice(0, -1).join('/')
-                return (
-                  <TouchableOpacity style={[styles.searchResultItem, { borderBottomColor: t.border }]} onPress={() => { setSearchModalOpen(false); if (item.isDirectory) loadDir(item.path); else loadDir(parentDir ? `/${parentDir}` : '/') }}>
-                    <Icon name={item.isDirectory ? 'folderContent' : getFileIcon(item.name)} size={24} color={t.primary} />
-                    <View style={styles.searchResultInfo}>
-                      <Text style={[styles.searchResultName, { color: t.text }]} numberOfLines={1}>{item.name}</Text>
-                      <Text style={[styles.searchResultPath, { color: t.textMuted }]} numberOfLines={1}>{item.path}</Text>
-                    </View>
-                    {!item.isDirectory && <Text style={[styles.searchResultSize, { color: t.textMuted }]}>{(item.size / 1024).toFixed(1)} KB</Text>}
-                  </TouchableOpacity>
-                )
-              }}
-            />
+            <>
+              {searchLoading && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8 }}>
+                  <ActivityIndicator size="small" color={t.primary} />
+                  <Text style={[styles.emptySub, { color: t.textMuted, marginLeft: 8 }]}>搜索中...</Text>
+                </View>
+              )}
+              <FlatList
+                data={searchResults}
+                keyExtractor={(item, index) => `${item.path}-${index}`}
+                renderItem={({ item }) => {
+                  const parentDir = item.path.split('/').filter(Boolean).slice(0, -1).join('/')
+                  return (
+                    <TouchableOpacity style={[styles.searchResultItem, { borderBottomColor: t.border }]} onPress={() => { setSearchModalOpen(false); if (item.isDirectory) loadDir(item.path); else loadDir(parentDir ? `/${parentDir}` : '/') }}>
+                      <Icon name={item.isDirectory ? 'folderContent' : getFileIcon(item.name)} size={24} color={t.primary} />
+                      <View style={styles.searchResultInfo}>
+                        <Text style={[styles.searchResultName, { color: t.text }]} numberOfLines={1}>{item.name}</Text>
+                        <Text style={[styles.searchResultPath, { color: t.textMuted }]} numberOfLines={1}>{item.path}</Text>
+                      </View>
+                      {!item.isDirectory && <Text style={[styles.searchResultSize, { color: t.textMuted }]}>{(item.size / 1024).toFixed(1)} KB</Text>}
+                    </TouchableOpacity>
+                  )
+                }}
+              />
+            </>
           )}
         </View>
       </Modal>

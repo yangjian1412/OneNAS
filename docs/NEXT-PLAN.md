@@ -1,19 +1,30 @@
 # 下一步计划
 
 > 本文档记录接下来要做的事项，按优先级排序。
-> 最近更新：2026-07-26（FileBrowser P1 ①②⑤ + 后台下载 + 权限修复 + FlatList 回顶 + 自适应图标 / 开屏 / SplashScreen + 代码清理完成；待开发：P1 ③④⑥、NAS ContainerCard 大小写、CPU/内存）
+> 最近更新：2026-07-27（FileBrowser P1 ⑥ 流式搜索 + 搜索 UI 完善 + Modal 统一关闭按钮；待开发：P1 ③④、NAS CPU/内存）
 
 ---
 
 ---
 
-## 今日完成 (2026-07-26)
+## 今日完成 (2026-07-27)
 
-### 修复 / 体验
-- **FlatList 回顶**：`FileScreen.tsx` 的 FlatList 加 `key={`${viewMode}-${currentPath}`}`，切换目录强制重建回到顶部
-- **NAS ContainerCard 状态大小写**：`container.state === 'running'` 改为大写 `'RUNNING'`/`'EXITED'`/`'PAUSED'`（Unraid API 返回大写），正确显示 Stop / Restart 按钮
+### FileBrowser P1 ⑥ 流式搜索 (Streaming Search)
+- **`searchFilesStream`** — 新增 NDJSON/JSON array 自动检测响应格式
+- **搜索 scope 修复** — Go 服务器用 `r.URL.Path` 作为搜索根目录，URL 改为 `/api/search/{curPath}?query=...`（根目录时 `/api/search/?query=...`），解决返回全部文件的问题
+- **Generation ID 防污染** — `searchGenerationRef` 防止旧 stream 数据污染新搜索
+- **边搜边显** — 搜索中结果 FlatList 可见可交互，不再是纯 spinner
+- **结果缓存** — 跳转后回来结果保留，搜索后台继续
+- **停止按钮** — 搜索中「搜索」按钮切换为「停止」，支持中断搜索保留结果
+- **系统返回键** — 搜索中只停止不关 Modal，不在搜索时才关闭清结果
 
-### FileBrowser 下载：切换到 Android 系统 DownloadManager（核心改动）
+### UI 一致性
+- **分享管理** — 左上角返回箭头改为右上角「关闭」，与搜索/创建分享 Modal header 统一
+- **Modal 标题右对齐** — 所有使用 Modal 的页面 header 统一为左标题 + 右关闭
+
+### 技术债务
+- `filebrowser.ts`: `parseLine` 严格化（过滤 null/无 path/非对象行），`scope` 参数传递搜索根目录
+- `FileScreen.tsx`: `stopSearch`、`doSearch` finally 块、搜索按钮条件渲染、`onRequestClose` 条件逻辑
 - **新增原生模块**：`android/.../DownloadManagerModule.kt` + `DownloadManagerPackage.kt`
   - `enqueueDownload(url, fileName, authToken)` — `DownloadManager.enqueue` + `addRequestHeader("X-Auth")` + `setDestinationInExternalPublicDir(Downloads, "One NAS/$fileName")`
   - `queryProgress(downloadId)` — `{bytesDownloaded, totalBytes, status, uri}`
@@ -152,8 +163,12 @@
 - **UI**：全屏 `<TextInput multiline>` + 保存 / 取消按钮
 - 仅限文本类 MIME，大文件提示下载编辑
 
-#### ⑥ 搜索修复
-- 定位具体问题后修复（等待用户描述）
+#### ⑥ 搜索修复 ✅
+- **根因**：Go 服务器用 `r.URL.Path` 作为搜索根目录，原始 URL `/api/search?query=xxx` 无 scope，返回全部文件
+- **修复**：URL 改为 `/api/search/{currentPath}?query=xxx`，根目录时 `/api/search/?query=xxx`
+- **流式边搜边显**：`response.body.getReader()` 逐 chunk NDJSON 解析 + `onItem` 回调
+- **停止 / 关闭**：搜索中「搜索」按钮切换为「停止」；关闭按钮停止+清+关；系统返回键搜索中只停止不关
+- **结果缓存**：跳转后回来保留结果，搜索后台继续追加
 
 ---
 
@@ -229,6 +244,7 @@
 - 文件夹 zip 下载
 - 分享：创建 / 列表 / 删除 + 复制链接
 - 切换目录自动回顶
+- **流式搜索**：NDJSON streaming + scope 按目录搜索 + 停止/关闭/返回键逻辑 + 结果缓存 + Modal 统一关闭
 
 ### App 标识 / 视觉
 - App 名：One NAS

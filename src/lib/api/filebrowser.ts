@@ -206,90 +206,166 @@ export async function searchFiles(server: ServerConfig, token: string, query: st
 }
 
 export async function searchFilesStream(
-  server: ServerConfig, token: string, query: string, signal?: AbortSignal
+  server: ServerConfig, token: string, query: string, scope?: string, signal?: AbortSignal, onItem?: (item: FileItem) => void
 ): Promise<{ ok: true; data: FileItem[] } | { ok: false; error: string }> {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 120_000)
-  const onExtAbort = () => { clearTimeout(timeout); controller.abort() }
+  const onExtAbort = () => { controller.abort() }
   signal?.addEventListener('abort', onExtAbort)
+
+  const itemsRef: FileItem[] = []
+  const pendingRef: FileItem[] = []
+
+  const flushPending = () => {
+    if (pendingRef.length === 0) return
+    const batch = pendingRef.splice(0)
+    for (const item of batch) {
+      try { onItem?.(item) } catch (e) { console.log('[search] onItem error:', e) }
+    }
+  }
+
+  const pushItem = (item: FileItem) => {
+    itemsRef.push(item)
+    pendingRef.push(item)
+    flushPending()
+  }
+
+  const parseLine = (line: string): FileItem | null => {
+    const trimmed = line.trim()
+    if (!trimmed) return null
+    try {
+      const raw = JSON.parse(trimmed)
+      if (!raw || typeof raw !== 'object') return null
+      const pathParts = (raw.path ?? '').split('/').filter(Boolean)
+      if (!raw.path) return null
+      return {
+        name: pathParts.pop() ?? '',
+        path: raw.path,
+        isDirectory: raw.dir ?? false,
+        size: raw.size ?? 0,
+        modified: raw.modified ?? raw.modTime ?? '',
+      }
+    } catch { return null }
+  }
 
   try {
     const base = buildUrl(server.protocol, server.host, server.port)
-    const url = `${base}/api/search?query=${encodeURIComponent(query)}`
+    const cleanScope = scope && scope !== '/' ? scope.replace(/^\//, '').replace(/\/$/, '') : ''
+    const searchPath = cleanScope ? `/${encodeURIComponent(cleanScope)}` : '/'
+    const url = `${base}/api/search${searchPath}?query=${encodeURIComponent(query)}`
+    console.log('[search] START fetch:', url)
     const response = await fetch(url, {
       headers: { 'X-Auth': token },
       signal: controller.signal,
     })
+    console.log('[search] response ok:', response.ok, 'status:', response.status)
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
-
-    const items: FileItem[] = []
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
     const tryBody = (response as any).body
+    console.log('[search] body type:', typeof tryBody, 'getReader:', typeof tryBody?.getReader)
+
     if (tryBody?.getReader) {
+      console.log('[search] using streaming getReader path')
       const reader = tryBody.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let readCount = 0
+      let detectedFormat: 'array' | 'ndjson' | null = null
+      let firstRaw = ''
       while (true) {
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
         const { done, value } = await reader.read()
         if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed) continue
-          try {
-            const raw = JSON.parse(trimmed)
-            const pathParts = (raw.path ?? '').split('/').filter(Boolean)
-            items.push({
-              name: pathParts.pop() ?? '',
-              path: raw.path ?? '',
-              isDirectory: raw.dir ?? false,
-              size: raw.size ?? 0,
-              modified: raw.modified ?? raw.modTime ?? '',
-            })
-          } catch {}
+        readCount++
+        const chunk = decoder.decode(value, { stream: true })
+        if (firstRaw.length < 300) firstRaw += chunk
+        if (detectedFormat === null) {
+          const trimmed = chunk.trim()
+          if (trimmed.startsWith('[')) {
+            detectedFormat = 'array'
+            console.log('[search] detected JSON array format')
+          } else if (trimmed.startsWith('{')) {
+            detectedFormat = 'ndjson'
+            console.log('[search] detected NDJSON format')
+          }
         }
+        if (detectedFormat === 'array') {
+          buffer += chunk
+        } else {
+          buffer += chunk
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) { const item = parseLine(line); if (item) pushItem(item) }
+          flushPending()
+        }
+        if (readCount % 10 === 0) console.log('[search] read', readCount, 'chunks, items:', itemsRef.length)
       }
-      if (buffer.trim()) {
+      if (detectedFormat === 'array') {
+        console.log('[search] final buffer length:', buffer.length)
         try {
-          const raw = JSON.parse(buffer.trim())
-          const pathParts = (raw.path ?? '').split('/').filter(Boolean)
-          items.push({
-            name: pathParts.pop() ?? '',
-            path: raw.path ?? '',
-            isDirectory: raw.dir ?? false,
-            size: raw.size ?? 0,
-            modified: raw.modified ?? raw.modTime ?? '',
-          })
-        } catch {}
+          const arr = JSON.parse(buffer)
+          if (Array.isArray(arr)) {
+            for (const raw of arr) {
+              const pathParts = (raw.path ?? '').split('/').filter(Boolean)
+              if (raw.path) {
+                pushItem({
+                  name: pathParts.pop() ?? '',
+                  path: raw.path,
+                  isDirectory: raw.dir ?? raw.isDir ?? false,
+                  size: raw.size ?? 0,
+                  modified: raw.modified ?? raw.modTime ?? '',
+                })
+              }
+            }
+          }
+        } catch (e) { console.log('[search] JSON array parse error:', e) }
+      } else {
+        if (buffer.trim()) { const item = parseLine(buffer); if (item) pushItem(item) }
       }
+      console.log('[search] stream done, total reads:', readCount, 'items:', itemsRef.length)
+      console.log('[search] first raw:', JSON.stringify(firstRaw))
     } else {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      console.log('[search] using fallback text path')
       const text = await response.text()
-      const lines = text.split('\n').filter(Boolean)
-      for (const line of lines) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      console.log('[search] text length:', text.length, 'first 300:', text.slice(0, 300))
+      const trimmed = text.trim()
+      if (trimmed.startsWith('[')) {
         try {
-          const raw = JSON.parse(line)
-          const pathParts = (raw.path ?? '').split('/').filter(Boolean)
-          items.push({
-            name: pathParts.pop() ?? '',
-            path: raw.path ?? '',
-            isDirectory: raw.dir ?? false,
-            size: raw.size ?? 0,
-            modified: raw.modified ?? raw.modTime ?? '',
-          })
-        } catch {}
+          const arr = JSON.parse(trimmed)
+          if (Array.isArray(arr)) {
+            for (const raw of arr) {
+              const pathParts = (raw.path ?? '').split('/').filter(Boolean)
+              if (raw.path) {
+                pushItem({
+                  name: pathParts.pop() ?? '',
+                  path: raw.path,
+                  isDirectory: raw.dir ?? raw.isDir ?? false,
+                  size: raw.size ?? 0,
+                  modified: raw.modified ?? raw.modTime ?? '',
+                })
+              }
+            }
+          }
+        } catch (e) { console.log('[search] fallback JSON parse error:', e) }
+      } else {
+        const lines = text.split('\n').filter(Boolean)
+        for (const line of lines) { const item = parseLine(line); if (item) pushItem(item) }
       }
+      flushPending()
     }
-    return { ok: true, data: items }
+    console.log('[search] returning', itemsRef.length, 'items')
+    return { ok: true, data: itemsRef }
   } catch (err: any) {
+    console.log('[search] error:', err.message, err.name)
     if (err.name === 'AbortError') {
-      if (signal?.aborted) return { ok: false, error: 'Cancelled' }
-      return { ok: false, error: '搜索超时' }
+      return { ok: false, error: 'Cancelled' }
     }
     return { ok: false, error: err.message ?? '搜索失败' }
   } finally {
-    clearTimeout(timeout)
+    console.log('[search] finally, flushing pending')
+    try { flushPending() } catch (e) { console.log('[search] flushPending error:', e) }
     signal?.removeEventListener('abort', onExtAbort)
   }
 }
