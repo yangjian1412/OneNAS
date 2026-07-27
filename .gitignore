@@ -45,6 +45,9 @@ build.gradle.log*
 # generated native folders
 /ios
 
+# Reference source code (FileBrowser, etc.)
+ref-src/
+
 # Android build artifacts (keep source code like android/app/src/)
 android/.gradle/
 android/build/
