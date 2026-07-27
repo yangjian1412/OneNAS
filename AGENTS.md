@@ -56,6 +56,16 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   - `<monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>` — white version for Android 13+ themed icons
 - `mipmap-{m,h,xh,xxh,xxxh}dpi/` — `.webp` files generated via `sharp` from `assets/cbi--nas-v2.svg`
 
+## FileBrowser file details
+
+- Long-press / three-dot menu → "详细信息" (between 移动到... and 删除)
+- Fetches `GET /api/resources/{path}` for full resource data
+- Modal shows: name, path, size (formatFileSize auto B/KB/MB/GB), modified time, resolution (images)
+- Directories: file count, folder count
+- Files: inline checksum links — MD5/SHA1/SHA256/SHA512, tap to compute via `GET /api/resources/{path}?checksum={algo}`
+- `formatFileSize()` and `formatDateTime()` helpers at module level
+- `commonParent()` utility for multi-file ZIP URL construction
+
 ## JS splash flow (talebook-style)
 
 - `App.tsx` calls `SplashScreen.preventAutoHideAsync()` at module scope
@@ -67,6 +77,10 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 
 - All downloads go through Android `DownloadManager` via `src/lib/downloadManager.ts`
 - File: `/storage/emulated/0/Download/One NAS/<filename>`
-- Folder ZIP: `GET /api/raw/{path}?format=zip`, saved as `<foldername>.zip`
-- UI: toolbar shows a down-arrow download-management button only when there are active tasks
-- In-app `DownloadManage` modal lists tasks with progress bars + status + cancel/remove
+- Folder ZIP: `GET /api/raw/{path}?algo=zip`, saved as `<foldername>.zip`
+- Multi-file ZIP: `GET /api/raw/{parent}?algo=zip&files=rel1,rel2` — uses `commonParent()` to compute parent dir + relative paths
+- `totalBytes = contentLengthLong` (no `coerceAtLeast(0)`) — streaming ZIP returns -1, JS shows "下载中 xx MB" instead of percentage
+- UI: toolbar always shows download icon
+- In-app `DownloadManage` full-page modal lists tasks with progress bars + status + cancel/remove + "全部清除" button
+- Progress polling via `useEffect` interval (every 2s) — calls `pollTaskProgress` + `updateDownload`
+- `src/stores/appStore.ts`: `clearDownloads()` action to remove all tasks

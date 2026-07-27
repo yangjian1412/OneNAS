@@ -1,13 +1,62 @@
 # 下一步计划
 
 > 本文档记录接下来要做的事项，按优先级排序。
-> 最近更新：2026-07-27（FileBrowser P1 ⑥ 流式搜索 + 搜索 UI 完善 + Modal 统一关闭按钮；待开发：P1 ③④、NAS CPU/内存）
+> 最近更新：2026-07-27（FileBrowser P1 ⑨ 文件预览+编辑（文本/代码/图片/HTML）；待开发：P1 ③ 音视频、NAS CPU/内存）
 
 ---
 
 ---
 
 ## 今日完成 (2026-07-27)
+
+### FileBrowser P1 ⑨ 文件预览+编辑（文本/代码/图片/HTML）
+
+- **新组件** `src/components/FilePreviewModal.tsx`
+- **文本/代码文件** (.txt/.md/.json/.js/.py/.go/...) — `fetch` + `X-Encoding: true` 获取内容，`<ScrollView>` 只读预览，点「编辑」切换 `<TextInput multiline>`，`PUT` 保存
+- **HTML 文件** — `react-native-webview` 加载 `/api/raw?inline=true`
+- **图片** — `<Image>` 加载 `/api/raw?inline=true`
+- **不可预览文件** — 仍走 action sheet（保持不变）
+- 编辑态：header 显示「保存」按钮，有未保存更改时返回弹确认框
+- 保存后自动刷新文件列表
+
+#### 新增 API（`filebrowser.ts`）
+- `getFileContent()` — `GET /api/resources/{path}` + `X-Encoding: true`
+- `saveFileContent()` — `PUT /api/resources/{path}` + body
+
+#### 新工具函数
+- `getFileCategory()` — 按扩展名返回 `text` / `image` / `html` / `other`
+
+### FileBrowser P1 ⑧ 下载管理全屏 + 详情 Modal + 多选 ZIP 修复 + 进度轮询
+
+#### 下载管理全屏页面
+- **下载按钮常驻** — 工具栏始终显示，不再仅限活跃任务
+- **全屏 Modal** — 从透明底部 Sheet 改为 `animationType="slide"` 全屏页，与搜索/分享管理统一
+- **全部清除** — ModalHeader 新增红色「全部清除」按钮，一键取消+移除所有下载任务
+- **下载进度轮询** — `useEffect` 每 2s 调用 `pollTaskProgress` + `updateDownload` 实时更新 UI
+
+#### 文件大小格式化
+- **`formatFileSize()`** — 自动 B/KB/MB/GB/TB 显示，替换硬编码的 `(size/1024).toFixed(1) + " KB"`
+- 文件列表 + 搜索结果统一使用
+
+#### 多选 ZIP 只打包选中文件
+- **`commonParent()`** — 计算选中文件的公共父目录
+- **`?files=relPath1,relPath2`** — 传给服务端 `parseQueryFiles`，不再下载整个文件夹
+- 服务端无需修改
+
+#### 详细信息 Modal（P1 新功能）
+- Action sheet 新增"详细信息"（在移动到...和删除之间）
+- 展示：名称、路径、大小、修改时间
+- 文件夹：文件数量、文件夹数量
+- 图片：分辨率
+- 文件：MD5 / SHA1 / SHA256 / SHA512 点击计算显示 hash
+- **`getResourceInfo()`** — `GET /api/resources/{path}` 获取完整资源数据
+- **`getFileChecksum()`** — `GET /api/resources/{path}?checksum={algo}` 获取 hash
+
+#### 技术债务
+- **`coerceAtLeast(0)` 移除** — `DownloadManagerModule.kt` 中 `contentLengthLong` 保留原始值
+- **`appStore.ts`** — 新增 `clearDownloads()` action
+- **`filebrowser.ts`** — 新增 `getResourceInfo()`、`getFileChecksum()`、`ResourceInfo` 接口
+- **`FileScreen.tsx`** — 新增 `commonParent()`、`formatFileSize()`、`formatDateTime()`、`DetailsChecksums` 组件
 
 ### FileBrowser P1 ⑥ 流式搜索 (Streaming Search)
 - **`searchFilesStream`** — 新增 NDJSON/JSON array 自动检测响应格式
@@ -143,25 +192,34 @@
 #### ⑦ 系统 DownloadManager 后台下载 ✅（新增）
 - 原生模块 + JS 封装 + 下载管理弹窗 + 权限修复（见上文）
 
+#### ⑧ 下载管理全屏 + 详情 Modal + 多选 ZIP 修复 + 进度轮询 ✅（新增）
+- 下载按钮常驻、全屏管理页、全部清除
+- 文件大小自动 B/KB/MB/GB 格式化
+- 多选 ZIP 用 `?files=` 只打包选中文件
+- 详情 Modal（名称/路径/大小/时间/分辨率/hash）
+- 2s 进度轮询 + updateDownload
+
 ---
 
 ### P1 — 待开发 ❌
 
-#### ③ 文件预览
-| 类型 | 方案 |
-|---|---|
-| **文本** (.txt/.md/.log) | `fetchText` + `<ScrollView>` + `<Text>` |
-| **JSON** | 格式化 + ScrollView |
-| **HTML** | `react-native-webview`（已装） |
-| **图片** | 下载缓存 + RN `<Image>` |
-| **PDF** | WebView + Google Docs viewer 或分享 |
-| **视频 / 音频** | 需装 `expo-av` |
-| **电子书** | 暂不支持，分享到专用 app |
+#### ③ 文件预览 ✅ 文本/代码/图片/HTML 已完成
+| 类型 | 方案 | 状态 |
+|------|------|------|
+| **文本** (.txt/.md/.log) | `fetch` + `<ScrollView>` + `<Text>` | ✅ |
+| **代码** (.js/.ts/.py/.go/) | 同上 + monospace 编辑 | ✅ |
+| **JSON / XML / YAML** | 同上 | ✅ |
+| **HTML** | `react-native-webview` | ✅ |
+| **图片** | RN `<Image>` | ✅ |
+| **PDF** | WebView 或分享 | ❌ 待后续 |
+| **视频 / 音频** | 需装 `expo-av` | ❌ 待后续 |
+| **电子书** | 暂不支持 | ❌ |
 
-#### ④ 文件编辑（文本 / JSON / HTML）
-- **API**：`GET /api/resources/{path}` → 取 `content` → 编辑 → `PUT /api/resources/{path}` 保存
-- **UI**：全屏 `<TextInput multiline>` + 保存 / 取消按钮
-- 仅限文本类 MIME，大文件提示下载编辑
+#### ④ 文件编辑 ✅ 文本/代码 已完成
+- ✅ **API**：`GET /api/resources/{path}` → `content` → 编辑 → `PUT` 保存
+- ✅ **UI**：全屏 `<TextInput multiline>` + 保存 / 取消按钮 + 未保存确认
+- ❌ 大文件提示下载编辑（待后续）
+- ❌ 语法高亮（待后续，需代码编辑器库）
 
 #### ⑥ 搜索修复 ✅
 - **根因**：Go 服务器用 `r.URL.Path` 作为搜索根目录，原始 URL `/api/search?query=xxx` 无 scope，返回全部文件

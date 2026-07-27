@@ -14,6 +14,8 @@ import Icon from '@/components/Icon'
 import { launchNativeApp } from '@/lib/android-intent'
 import { buildUrl } from '@/lib/api/client'
 import { checkStoragePermission, openAllFilesSettings, enqueueDownload, cancelDownload, removeDownload, pollTaskProgress } from '@/lib/downloadManager'
+import { getFileCategory } from '@/lib/fileTypes'
+import FilePreviewModal from '@/components/FilePreviewModal'
 
 type EditMode = 'folder' | 'rename' | 'copy' | 'move' | null
 type ViewMode = 'list' | 'grid'
@@ -72,6 +74,7 @@ export default function FileScreen() {
 
   const [storageAccess, setStorageAccess] = useState<boolean | null>(null)
   const [downloadManageOpen, setDownloadManageOpen] = useState(false)
+  const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
 
   const SEARCH_CATEGORIES = [
     { label: '所有类型', value: 'all' },
@@ -260,6 +263,7 @@ export default function FileScreen() {
 
   useEffect(() => {
     const onBack = () => {
+      if (previewFile) { setPreviewFile(null); return true }
       if (shareManageOpen) { setShareManageOpen(false); return true }
       if (shareCreateItem) { setShareCreateItem(null); return true }
       if (activeService) { setActiveService(null); return true }
@@ -280,7 +284,7 @@ export default function FileScreen() {
     }
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBack)
     return () => subscription.remove()
-  }, [activeService, actionItem, editMode, multiSelect, isAtRoot, currentPath, shareManageOpen, shareCreateItem, detailsItem])
+  }, [activeService, actionItem, editMode, multiSelect, isAtRoot, currentPath, shareManageOpen, shareCreateItem, detailsItem, previewFile])
 
   const remotePath = (name: string) => currentPath === '/' ? `/${name}` : `${currentPath.replace(/\/$/, '')}/${name}`
 
@@ -309,6 +313,7 @@ export default function FileScreen() {
   const onListItemTap = (item: FileItem) => {
     if (multiSelect) { toggleSelection(item); return }
     if (item.isDirectory) loadDir(item.path)
+    else if (getFileCategory(item.name) !== 'other') setPreviewFile(item)
     else setActionItem(item)
   }
 
@@ -320,6 +325,7 @@ export default function FileScreen() {
   const onGridItemTap = (item: FileItem) => {
     if (multiSelect) { toggleSelection(item); return }
     if (item.isDirectory) loadDir(item.path)
+    else if (getFileCategory(item.name) !== 'other') setPreviewFile(item)
     else setActionItem(item)
   }
 
@@ -1012,6 +1018,15 @@ export default function FileScreen() {
           )}
         </View>
       </Modal>
+
+      <FilePreviewModal
+        visible={!!previewFile}
+        file={previewFile}
+        server={selectedServer!}
+        token={token!}
+        onClose={() => setPreviewFile(null)}
+        onRefresh={() => loadDir(currentPath)}
+      />
 
       <Modal visible={searchCategoryOpen} transparent animationType="slide" onRequestClose={() => setSearchCategoryOpen(false)}>
         <View style={styles.modalOverlay}>

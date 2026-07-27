@@ -35,6 +35,23 @@ const EXTENSION_MAP: Record<string, IconName> = {
   ibook: 'fileBook', cbz: 'fileBook', cbr: 'fileBook',
 }
 
+const IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp','svg','ico','heic','heif','tiff','tif'])
+const TEXT_EXTS = new Set(['txt','md','log','yml','yaml','json','xml','csv','ini','cfg','conf','toml','env','gitignore',
+  'js','ts','jsx','tsx','py','java','go','rs','c','cpp','h','hpp','css','html','htm','php','swift','kt','sh','bash',
+  'rb','pl','lua','dart','sql','r','scala','zig','tex','ps1','bat','cmd','makefile','dockerfile','gradle','vue','svelte'])
+
+export type FileCategory = 'text' | 'image' | 'html' | 'other'
+
+export function getFileCategory(fileName: string): FileCategory {
+  const parts = fileName.split('.')
+  if (parts.length < 2) return 'other'
+  const ext = parts[parts.length - 1].toLowerCase()
+  if (IMAGE_EXTS.has(ext)) return 'image'
+  if (ext === 'html' || ext === 'htm') return 'html'
+  if (TEXT_EXTS.has(ext)) return 'text'
+  return 'other'
+}
+
 export function getFileIcon(fileName: string): IconName {
   const parts = fileName.split('.')
   if (parts.length < 2) return 'file'

@@ -158,6 +158,44 @@ export interface ResourceInfo {
   checksums?: Record<string, string>
 }
 
+export async function getFileContent(
+  server: ServerConfig, token: string, path: string
+): Promise<{ ok: true; data: string } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(resourceUrl(server, path), {
+      headers: { 'X-Auth': token, 'X-Encoding': 'true' },
+    })
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+    const ct = res.headers.get('content-type') ?? ''
+    let content: string
+    if (ct.includes('application/json')) {
+      const json = await res.json()
+      content = json.content ?? ''
+    } else {
+      content = await res.text()
+    }
+    return { ok: true, data: content }
+  } catch (err: any) {
+    return { ok: false, error: err.message ?? 'Failed to load file content' }
+  }
+}
+
+export async function saveFileContent(
+  server: ServerConfig, token: string, path: string, content: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(resourceUrl(server, path), {
+      method: 'PUT',
+      headers: { 'X-Auth': token, 'Content-Type': 'text/plain' },
+      body: content,
+    })
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, error: err.message ?? 'Failed to save file content' }
+  }
+}
+
 export async function getResourceInfo(
   server: ServerConfig, token: string, path: string
 ): Promise<{ ok: true; data: ResourceInfo } | { ok: false; error: string }> {
