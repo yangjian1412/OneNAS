@@ -72,15 +72,15 @@ class DownloadManagerModule(private val context: ReactApplicationContext) : Reac
     try {
       if (!directory.exists() && !directory.mkdirs()) throw IllegalStateException("Cannot create download directory")
       connection = URL(url).openConnection() as HttpURLConnection
-      connection.connectTimeout = 30000
-      connection.readTimeout = 30000
+      connection.connectTimeout = 120000
+      connection.readTimeout = 120000
       connection.setRequestProperty("X-Auth", authToken)
       connection.connect()
       val responseCode = connection.responseCode
       if (responseCode !in 200..299) throw IllegalStateException("HTTP $responseCode")
 
       task.status = "running"
-      task.totalBytes = connection.contentLengthLong.coerceAtLeast(0)
+      task.totalBytes = connection.contentLengthLong
       BufferedInputStream(connection.inputStream).use { input ->
         FileOutputStream(partial, false).use { output ->
           val buffer = ByteArray(64 * 1024)

@@ -145,6 +145,58 @@ function authHeaders(token: string): Record<string, string> {
   return { 'X-Auth': token, 'Content-Type': 'application/json' }
 }
 
+export interface ResourceInfo {
+  name: string
+  path: string
+  isDir: boolean
+  size: number
+  modified: string
+  numFiles?: number
+  numDirs?: number
+  type?: string
+  resolution?: { width: number; height: number }
+  checksums?: Record<string, string>
+}
+
+export async function getResourceInfo(
+  server: ServerConfig, token: string, path: string
+): Promise<{ ok: true; data: ResourceInfo } | { ok: false; error: string }> {
+  try {
+    const raw = await fetchJson<any>(resourceUrl(server, path), {
+      headers: { 'X-Auth': token },
+    })
+    const info: ResourceInfo = {
+      name: raw.name ?? '',
+      path: raw.path ?? path,
+      isDir: raw.isDir ?? false,
+      size: raw.size ?? 0,
+      modified: raw.modified ?? raw.modTime ?? '',
+      numFiles: raw.numFiles,
+      numDirs: raw.numDirs,
+      type: raw.type,
+      resolution: raw.resolution,
+    }
+    return { ok: true, data: info }
+  } catch (err: any) {
+    return { ok: false, error: err.message ?? 'Failed to get resource info' }
+  }
+}
+
+export async function getFileChecksum(
+  server: ServerConfig, token: string, path: string, algo: string
+): Promise<{ ok: true; data: string } | { ok: false; error: string }> {
+  try {
+    const raw = await fetchJson<any>(`${resourceUrl(server, path)}?checksum=${algo}`, {
+      headers: { 'X-Auth': token },
+    })
+    const hash: string | undefined = raw?.checksums?.[algo]
+    if (!hash) return { ok: false, error: 'Checksum not available' }
+    return { ok: true, data: hash }
+  } catch (err: any) {
+    return { ok: false, error: err.message ?? 'Checksum failed' }
+  }
+}
+
 export async function getShares(server: ServerConfig, token: string): Promise<{ ok: true; data: ShareInfo[] } | { ok: false; error: string }> {
   try {
     const base = buildUrl(server.protocol, server.host, server.port)

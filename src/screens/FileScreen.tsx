@@ -3,7 +3,7 @@ import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, A
 import * as DocumentPicker from 'expo-document-picker'
 import { useAppStore, FileSortBy, FileSortDir } from '@/stores/appStore'
 import { ServerConfig, FileItem, ServiceConfig, ShareInfo } from '@/types'
-import { login, listFiles, searchFilesStream, createFolder, deleteResource, renameResource, copyResource, uploadResource, getShares, createShare, deleteShare } from '@/lib/api/filebrowser'
+import { login, listFiles, searchFilesStream, createFolder, deleteResource, renameResource, copyResource, uploadResource, getShares, createShare, deleteShare, getResourceInfo, getFileChecksum, ResourceInfo } from '@/lib/api/filebrowser'
 import { getFileIcon } from '@/lib/fileTypes'
 import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '@/lib/theme'
@@ -13,7 +13,7 @@ import ServiceCard from '@/components/ServiceCard'
 import Icon from '@/components/Icon'
 import { launchNativeApp } from '@/lib/android-intent'
 import { buildUrl } from '@/lib/api/client'
-import { checkStoragePermission, openAllFilesSettings, enqueueDownload, cancelDownload, removeDownload } from '@/lib/downloadManager'
+import { checkStoragePermission, openAllFilesSettings, enqueueDownload, cancelDownload, removeDownload, pollTaskProgress } from '@/lib/downloadManager'
 
 type EditMode = 'folder' | 'rename' | 'copy' | 'move' | null
 type ViewMode = 'list' | 'grid'
@@ -55,11 +55,16 @@ export default function FileScreen() {
   const [shareCreatePassword, setShareCreatePassword] = useState('')
   const [shareCreateExpiry, setShareCreateExpiry] = useState<number>(0)
   const [shareCreating, setShareCreating] = useState(false)
+  const [detailsItem, setDetailsItem] = useState<FileItem | null>(null)
+  const [detailsInfo, setDetailsInfo] = useState<ResourceInfo | null>(null)
+  const [detailsLoading, setDetailsLoading] = useState(false)
   const fileSort = useAppStore((s) => s.fileSort)
   const setFileSort = useAppStore((s) => s.setFileSort)
   const downloadTasks = useAppStore((s) => s.downloads)
   const addDownload = useAppStore((s) => s.addDownload)
   const removeDownloadTask = useAppStore((s) => s.removeDownload)
+  const clearDownloads = useAppStore((s) => s.clearDownloads)
+  const updateDownload = useAppStore((s) => s.updateDownload)
   const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -230,6 +235,20 @@ export default function FileScreen() {
     setFiles((prev) => sortFiles(prev, fileSort))
   }, [fileSort])
 
+  useEffect(() => {
+    const active = downloadTasks.filter((t) => t.progress.status === 'pending' || t.progress.status === 'running')
+    if (active.length === 0) return
+    const timer = setInterval(async () => {
+      for (const task of active) {
+        try {
+          const updated = await pollTaskProgress(task)
+          updateDownload(updated)
+        } catch {}
+      }
+    }, 2000)
+    return () => clearInterval(timer)
+  }, [downloadTasks, updateDownload])
+
   const isAtRoot = currentPath === '/' || isSearchResults
 
   const parentPath = () => {
@@ -244,6 +263,7 @@ export default function FileScreen() {
       if (shareManageOpen) { setShareManageOpen(false); return true }
       if (shareCreateItem) { setShareCreateItem(null); return true }
       if (activeService) { setActiveService(null); return true }
+      if (detailsItem) { setDetailsItem(null); return true }
       if (actionItem) { setActionItem(null); return true }
       if (editMode) { setEditMode(null); return true }
       if (multiSelect) { cancelSelection(); return true }
@@ -260,7 +280,7 @@ export default function FileScreen() {
     }
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBack)
     return () => subscription.remove()
-  }, [activeService, actionItem, editMode, multiSelect, isAtRoot, currentPath, shareManageOpen, shareCreateItem])
+  }, [activeService, actionItem, editMode, multiSelect, isAtRoot, currentPath, shareManageOpen, shareCreateItem, detailsItem])
 
   const remotePath = (name: string) => currentPath === '/' ? `/${name}` : `${currentPath.replace(/\/$/, '')}/${name}`
 
@@ -402,14 +422,23 @@ export default function FileScreen() {
   const bulkDownload = async () => {
     if (!selectedServer || !token) return
     if (!storageAccess) { showPermissionDialog(); return }
-    const selFiles = selectedItems().filter((item) => !item.isDirectory)
-    const selDirs = selectedItems().filter((item) => item.isDirectory)
+    const selItems = selectedItems()
+    const selFiles = selItems.filter((item) => !item.isDirectory)
+    const selDirs = selItems.filter((item) => item.isDirectory)
     const base = buildUrl(selectedServer.protocol, selectedServer.host, selectedServer.port)
     Alert.alert('下载方式', selFiles.length > 0 ? `文件 ${selFiles.length} 个${selDirs.length > 0 ? `, 文件夹 ${selDirs.length} 个` : ''}` : `文件夹 ${selDirs.length} 个`, [
       { text: '取消', style: 'cancel' },
       { text: '打包下载 (ZIP)', onPress: async () => {
-        const name = currentPath.split('/').filter(Boolean).pop() || 'download'
-        const url = `${base}/api/raw/${encodeRemotePath(currentPath)}?format=zip`
+        const paths = selItems.map((item) => item.path)
+        const parent = commonParent(paths)
+        const relPaths = paths.map((p) => {
+          if (p === parent) return '.'
+          const rel = parent === '/' ? p.replace(/^\//, '') : p.slice(parent.length + 1)
+          return rel.split('/').map(encodeURIComponent).join('/')
+        })
+        const encodedParent = parent === '/' ? '' : encodeRemotePath(parent)
+        const name = parent.split('/').filter(Boolean).pop() || 'download'
+        const url = `${base}/api/raw/${encodedParent}?algo=zip&files=${relPaths.join(',')}`
         await doDownload(url, `${name}.zip`)
         cancelSelection()
       } },
@@ -446,6 +475,16 @@ export default function FileScreen() {
     setShareLoading(false)
   }
 
+  const openDetails = async (item: FileItem) => {
+    setActionItem(null)
+    setDetailsItem(item)
+    setDetailsLoading(true)
+    setDetailsInfo(null)
+    const result = await getResourceInfo(selectedServer!, token!, item.path)
+    if (result.ok) setDetailsInfo(result.data)
+    setDetailsLoading(false)
+  }
+
   const handleCreateShare = async () => {
     if (!selectedServer || !token || !shareCreateItem) return
     setShareCreating(true)
@@ -470,7 +509,7 @@ export default function FileScreen() {
         <Icon name={item.isDirectory ? 'folderContent' : getFileIcon(item.name)} size={26} color={t.primary} />
         <View style={styles.fileInfo}>
           <Text style={[styles.fileName, { color: t.text }]} numberOfLines={1}>{item.name}</Text>
-          {!item.isDirectory && <Text style={[styles.fileSize, { color: t.textMuted }]}>{(item.size / 1024).toFixed(1)} KB</Text>}
+          {!item.isDirectory && <Text style={[styles.fileSize, { color: t.textMuted }]}>{formatFileSize(item.size)}</Text>}
         </View>
         {!multiSelect && (
           <TouchableOpacity hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.moreButton} onPress={() => setActionItem(item)}>
@@ -561,11 +600,9 @@ export default function FileScreen() {
               <TouchableOpacity style={styles.iconButton} onPress={() => openEdit('folder')}>
                 <Icon name="folderNew" size={22} color={t.primary} />
               </TouchableOpacity>
-              {downloadTasks.filter((t) => t.progress.status !== 'successful' && t.progress.status !== 'failed').length > 0 && (
-                <TouchableOpacity style={styles.iconButton} onPress={() => setDownloadManageOpen(true)}>
-                  <Icon name="downloadRounded" size={22} color={t.primary} />
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity style={styles.iconButton} onPress={() => setDownloadManageOpen(true)}>
+                <Icon name="downloadRounded" size={22} color={t.primary} />
+              </TouchableOpacity>
               <TouchableOpacity style={styles.iconButton} onPress={upload}>
                 <Icon name="upload" size={22} color={t.primary} />
               </TouchableOpacity>
@@ -625,7 +662,7 @@ export default function FileScreen() {
               </TouchableOpacity>
             )}
             {actionItem && actionItem.isDirectory && (
-              <TouchableOpacity style={styles.actionButton} onPress={() => { if (!storageAccess) { showPermissionDialog(); return }; const item = actionItem; closeActionSheet(); const url = `${buildUrl(selectedServer!.protocol, selectedServer!.host, selectedServer!.port)}/api/raw/${encodeRemotePath(item.path)}?format=zip`; doDownload(url, `${item.name}.zip`) }}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => { if (!storageAccess) { showPermissionDialog(); return }; const item = actionItem; closeActionSheet(); const url = `${buildUrl(selectedServer!.protocol, selectedServer!.host, selectedServer!.port)}/api/raw/${encodeRemotePath(item.path)}?algo=zip`; doDownload(url, `${item.name}.zip`) }}>
                 <Text style={[styles.actionText, { color: t.text }]}>打包下载</Text>
               </TouchableOpacity>
             )}
@@ -647,6 +684,11 @@ export default function FileScreen() {
             {actionItem && (
               <TouchableOpacity style={styles.actionButton} onPress={() => openEdit('move', actionItem)}>
                 <Text style={[styles.actionText, { color: t.text }]}>移动到...</Text>
+              </TouchableOpacity>
+            )}
+            {actionItem && (
+              <TouchableOpacity style={styles.actionButton} onPress={() => openDetails(actionItem)}>
+                <Text style={[styles.actionText, { color: t.text }]}>详细信息</Text>
               </TouchableOpacity>
             )}
             {actionItem && (
@@ -762,6 +804,63 @@ export default function FileScreen() {
         </View>
       </Modal>
 
+      <Modal visible={!!detailsItem} transparent animationType="slide" onRequestClose={() => setDetailsItem(null)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} onPress={() => setDetailsItem(null)} activeOpacity={1} />
+          <View style={[styles.detailsSheet, { backgroundColor: t.card }]}>
+            <View style={styles.detailsSheetHeader}>
+              <Text style={[styles.detailsSheetTitle, { color: t.text }]}>详细信息</Text>
+              <TouchableOpacity onPress={() => setDetailsItem(null)}>
+                <Text style={[styles.detailsSheetClose, { color: t.primary }]}>关闭</Text>
+              </TouchableOpacity>
+            </View>
+            {detailsLoading ? (
+              <ActivityIndicator style={{ margin: 20 }} color={t.primary} />
+            ) : detailsInfo ? (
+              <View style={styles.detailsBody}>
+                <View style={[styles.detailsRow, { borderBottomColor: t.border }]}>
+                  <Text style={[styles.detailsLabel, { color: t.textMuted }]}>名称</Text>
+                  <Text style={[styles.detailsValue, { color: t.text }]} selectable>{detailsInfo.name}</Text>
+                </View>
+                <View style={[styles.detailsRow, { borderBottomColor: t.border }]}>
+                  <Text style={[styles.detailsLabel, { color: t.textMuted }]}>路径</Text>
+                  <Text style={[styles.detailsValue, { color: t.text }]} selectable numberOfLines={3}>{detailsInfo.path}</Text>
+                </View>
+                <View style={[styles.detailsRow, { borderBottomColor: t.border }]}>
+                  <Text style={[styles.detailsLabel, { color: t.textMuted }]}>大小</Text>
+                  <Text style={[styles.detailsValue, { color: t.text }]}>{detailsInfo.size === 0 ? '-' : formatFileSize(detailsInfo.size)}</Text>
+                </View>
+                <View style={[styles.detailsRow, { borderBottomColor: t.border }]}>
+                  <Text style={[styles.detailsLabel, { color: t.textMuted }]}>修改时间</Text>
+                  <Text style={[styles.detailsValue, { color: t.text }]}>{detailsInfo.modified ? formatDateTime(detailsInfo.modified) : '-'}</Text>
+                </View>
+                {detailsInfo.isDir && detailsInfo.numFiles !== undefined && (
+                  <View style={[styles.detailsRow, { borderBottomColor: t.border }]}>
+                    <Text style={[styles.detailsLabel, { color: t.textMuted }]}>文件数量</Text>
+                    <Text style={[styles.detailsValue, { color: t.text }]}>{detailsInfo.numFiles}</Text>
+                  </View>
+                )}
+                {detailsInfo.isDir && detailsInfo.numDirs !== undefined && (
+                  <View style={[styles.detailsRow, { borderBottomColor: t.border }]}>
+                    <Text style={[styles.detailsLabel, { color: t.textMuted }]}>文件夹数量</Text>
+                    <Text style={[styles.detailsValue, { color: t.text }]}>{detailsInfo.numDirs}</Text>
+                  </View>
+                )}
+                {detailsInfo.resolution && (
+                  <View style={[styles.detailsRow, { borderBottomColor: t.border }]}>
+                    <Text style={[styles.detailsLabel, { color: t.textMuted }]}>分辨率</Text>
+                    <Text style={[styles.detailsValue, { color: t.text }]}>{detailsInfo.resolution.width} × {detailsInfo.resolution.height}</Text>
+                  </View>
+                )}
+                {!detailsInfo.isDir && (
+                  <DetailsChecksums server={selectedServer!} token={token!} path={detailsInfo.path} />
+                )}
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={sortOpen} transparent animationType="slide" onRequestClose={() => setSortOpen(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setSortOpen(false)} activeOpacity={1} />
@@ -787,57 +886,60 @@ export default function FileScreen() {
         </View>
       </Modal>
 
-      <Modal visible={downloadManageOpen} transparent animationType="slide" onRequestClose={() => setDownloadManageOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={styles.modalBackdrop} onPress={() => setDownloadManageOpen(false)} activeOpacity={1} />
-          <View style={[styles.downloadSheet, { backgroundColor: t.card }]}>
-            <View style={styles.downloadSheetHeader}>
-              <Text style={[styles.downloadSheetTitle, { color: t.text }]}>下载管理</Text>
-              <TouchableOpacity onPress={() => setDownloadManageOpen(false)}>
-                <Text style={[styles.downloadSheetClose, { color: t.primary }]}>关闭</Text>
+      <Modal visible={downloadManageOpen} animationType="slide" onRequestClose={() => setDownloadManageOpen(false)}>
+        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
+          <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
+            <Text style={[styles.modalTitle, { color: t.text }]}>下载管理</Text>
+            {downloadTasks.length > 0 && (
+              <TouchableOpacity onPress={() => { downloadTasks.forEach((t) => { try { cancelDownload(t.id) } catch {} }); clearDownloads() }}>
+                <Text style={[styles.toolbarAction, { color: t.danger }]}>全部清除</Text>
               </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setDownloadManageOpen(false)}>
+              <Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text>
+            </TouchableOpacity>
+          </View>
+          {downloadTasks.length === 0 ? (
+            <View style={styles.center}>
+              <Text style={[styles.emptySub, { color: t.textMuted }]}>暂无下载任务</Text>
             </View>
-            {downloadTasks.length === 0 ? (
-              <Text style={[styles.downloadEmpty, { color: t.textMuted }]}>暂无下载任务</Text>
-            ) : (
-              <FlatList
-                data={[...downloadTasks].reverse()}
-                keyExtractor={(item) => String(item.id)}
-                renderItem={({ item }) => {
-                  const p = item.progress
-                  const pct = p.totalBytes > 0 ? Math.round(p.bytesDownloaded / p.totalBytes * 100) : 0
-                  const statusText = p.status === 'pending' ? '等待中' : p.status === 'running' ? `下载中 ${pct}%` : p.status === 'paused' ? '已暂停' : p.status === 'successful' ? '已完成' : p.status === 'failed' ? `失败${p.reason ? `: ${p.reason}` : ''}` : ''
-                  const isActive = p.status === 'pending' || p.status === 'running' || p.status === 'paused'
-                  return (
-                    <View style={[styles.downloadItem, { borderBottomColor: t.border }]}>
+          ) : (
+            <FlatList
+              data={[...downloadTasks].reverse()}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={({ item }) => {
+                const p = item.progress
+                const hasTotal = p.totalBytes > 0
+                const pct = hasTotal ? Math.round(p.bytesDownloaded / p.totalBytes * 100) : 0
+                const showBytes = p.bytesDownloaded > 0 ? formatFileSize(p.bytesDownloaded) : ''
+                const statusText = p.status === 'pending' ? '等待中' : p.status === 'running' ? (hasTotal ? `下载中 ${pct}%` : showBytes ? `下载中 ${showBytes}` : '下载中') : p.status === 'paused' ? '已暂停' : p.status === 'successful' ? '已完成' : p.status === 'failed' ? `失败${p.reason ? `: ${p.reason}` : ''}` : ''
+                const isActive = p.status === 'pending' || p.status === 'running' || p.status === 'paused'
+                return (
+                  <View style={[styles.downloadItem, { borderBottomColor: t.border }]}>
+                    <View style={styles.downloadItemInfo}>
                       <Text style={[styles.downloadItemName, { color: t.text }]} numberOfLines={1}>{item.fileName}</Text>
-                      {p.totalBytes > 0 && (
+                      {hasTotal && (
                         <View style={[styles.progressBar, { backgroundColor: t.border }]}>
                           <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: p.status === 'failed' ? t.danger : t.primary }]} />
                         </View>
                       )}
                       <Text style={[styles.downloadItemStatus, { color: p.status === 'failed' ? t.danger : p.status === 'successful' ? t.success : t.textMuted }]}>{statusText}</Text>
-                      {isActive && (
-                        <TouchableOpacity style={styles.downloadItemCancel} onPress={() => { cancelDownload(item.id); removeDownloadTask(item.id) }}>
-                          <Text style={[styles.downloadItemCancelText, { color: t.danger }]}>取消</Text>
-                        </TouchableOpacity>
-                      )}
-                      {p.status === 'successful' && (
-                        <TouchableOpacity style={styles.downloadItemCancel} onPress={() => { removeDownload(item.id); removeDownloadTask(item.id) }}>
-                          <Text style={[styles.downloadItemCancelText, { color: t.textMuted }]}>移除</Text>
-                        </TouchableOpacity>
-                      )}
-                      {p.status === 'failed' && (
-                        <TouchableOpacity style={styles.downloadItemCancel} onPress={() => { removeDownload(item.id); removeDownloadTask(item.id) }}>
-                          <Text style={[styles.downloadItemCancelText, { color: t.textMuted }]}>移除</Text>
-                        </TouchableOpacity>
-                      )}
                     </View>
-                  )
-                }}
-              />
-            )}
-          </View>
+                    {isActive && (
+                      <TouchableOpacity style={styles.downloadItemAction} onPress={() => { cancelDownload(item.id); removeDownloadTask(item.id) }}>
+                        <Text style={[styles.downloadItemActionText, { color: t.danger }]}>取消</Text>
+                      </TouchableOpacity>
+                    )}
+                    {!isActive && (
+                      <TouchableOpacity style={styles.downloadItemAction} onPress={() => { removeDownload(item.id); removeDownloadTask(item.id) }}>
+                        <Text style={[styles.downloadItemActionText, { color: t.textMuted }]}>移除</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )
+              }}
+            />
+          )}
         </View>
       </Modal>
 
@@ -901,7 +1003,7 @@ export default function FileScreen() {
                         <Text style={[styles.searchResultName, { color: t.text }]} numberOfLines={1}>{item.name}</Text>
                         <Text style={[styles.searchResultPath, { color: t.textMuted }]} numberOfLines={1}>{item.path}</Text>
                       </View>
-                      {!item.isDirectory && <Text style={[styles.searchResultSize, { color: t.textMuted }]}>{(item.size / 1024).toFixed(1)} KB</Text>}
+                      {!item.isDirectory && <Text style={[styles.searchResultSize, { color: t.textMuted }]}>{formatFileSize(item.size)}</Text>}
                     </TouchableOpacity>
                   )
                 }}
@@ -934,6 +1036,77 @@ export default function FileScreen() {
           <Text style={styles.toastText}>{toastMsg}</Text>
         </View>
       </Animated.View>
+    </View>
+  )
+}
+
+function commonParent(paths: string[]): string {
+  if (paths.length === 0) return '/'
+  let common = paths[0].split('/').filter(Boolean)
+  for (const p of paths.slice(1)) {
+    const parts = p.split('/').filter(Boolean)
+    const end = Math.min(common.length, parts.length)
+    let i = 0
+    while (i < end && common[i] === parts[i]) i++
+    common = common.slice(0, i)
+    if (common.length === 0) break
+  }
+  return '/' + common.join('/')
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const val = bytes / Math.pow(1024, i)
+  return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+function formatDateTime(dateStr: string): string {
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return dateStr
+    return d.toLocaleString()
+  } catch { return dateStr }
+}
+
+function DetailsChecksums({ server, token, path }: { server: ServerConfig; token: string; path: string }) {
+  const t = useTheme()
+  const [hashes, setHashes] = useState<Record<string, string>>({})
+  const [loadingAlgo, setLoadingAlgo] = useState<string | null>(null)
+
+  const ALGOS = ['MD5', 'SHA1', 'SHA256', 'SHA512']
+
+  const loadChecksum = async (algo: string) => {
+    const key = algo.toLowerCase()
+    if (hashes[key]) return
+    setLoadingAlgo(key)
+    const result = await getFileChecksum(server, token, path, key)
+    if (result.ok) {
+      setHashes((prev) => ({ ...prev, [key]: result.data }))
+    }
+    setLoadingAlgo(null)
+  }
+
+  return (
+    <View style={{ marginTop: 4 }}>
+      {ALGOS.map((algo) => {
+        const key = algo.toLowerCase()
+        const hash = hashes[key]
+        const loading = loadingAlgo === key
+        return (
+          <TouchableOpacity key={algo} style={[styles.detailsRow, { borderBottomColor: t.border }]} onPress={() => loadChecksum(algo)} disabled={loading || !!hash}>
+            <Text style={[styles.detailsLabel, { color: t.textMuted }]}>{algo}</Text>
+            {loading ? (
+              <Text style={[styles.detailsValue, { color: t.textMuted, fontStyle: 'italic' }]}>计算中...</Text>
+            ) : hash ? (
+              <Text style={[styles.detailsValue, { color: t.primary, fontSize: 11 }]} selectable>{hash}</Text>
+            ) : (
+              <Text style={[styles.detailsValue, { color: t.primary }]}>显示</Text>
+            )}
+          </TouchableOpacity>
+        )
+      })}
     </View>
   )
 }
@@ -977,6 +1150,14 @@ const styles = StyleSheet.create({
   shareCreateBtn: { paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 8 },
   shareCreateBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
+  detailsSheet: { maxHeight: '80%', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 16, paddingBottom: 32 },
+  detailsSheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8 },
+  detailsSheetTitle: { fontSize: 17, fontWeight: '700' },
+  detailsSheetClose: { fontSize: 15, fontWeight: '600' },
+  detailsBody: { paddingHorizontal: 16, gap: 12 },
+  detailsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  detailsLabel: { fontSize: 13, fontWeight: '600', minWidth: 70, paddingTop: 2 },
+  detailsValue: { flex: 1, fontSize: 14, textAlign: 'right' },
   shareItem: { paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, gap: 4 },
   shareItemPath: { fontSize: 15, fontWeight: '600' },
   shareItemLink: { fontSize: 12 },
@@ -990,18 +1171,14 @@ const styles = StyleSheet.create({
   storageBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth },
   storageBannerText: { fontSize: 13, fontWeight: '600' },
 
-  downloadSheet: { maxHeight: '70%', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 16, paddingBottom: 32 },
-  downloadSheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 8 },
-  downloadSheetTitle: { fontSize: 17, fontWeight: '700' },
-  downloadSheetClose: { fontSize: 15, fontWeight: '600' },
-  downloadEmpty: { textAlign: 'center', padding: 24, fontSize: 14 },
-  downloadItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, gap: 8 },
-  downloadItemName: { flex: 1, fontSize: 14, fontWeight: '600' },
-  progressBar: { height: 4, borderRadius: 2, flex: 1, overflow: 'hidden' },
+  downloadItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, gap: 8 },
+  downloadItemInfo: { flex: 1, gap: 4 },
+  downloadItemName: { fontSize: 14, fontWeight: '600' },
+  progressBar: { height: 4, borderRadius: 2, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 2 },
-  downloadItemStatus: { fontSize: 12, minWidth: 60, textAlign: 'right' },
-  downloadItemCancel: { paddingHorizontal: 8, paddingVertical: 4 },
-  downloadItemCancelText: { fontSize: 13, fontWeight: '600' },
+  downloadItemStatus: { fontSize: 12 },
+  downloadItemAction: { paddingHorizontal: 10, paddingVertical: 6 },
+  downloadItemActionText: { fontSize: 14, fontWeight: '600' },
 
   searchModalBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, gap: 4 },
   searchModalInput: { flex: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, borderWidth: 1 },

@@ -64,6 +64,7 @@ export interface AppState {
   addDownload: (task: DownloadTask) => void
   updateDownload: (task: DownloadTask) => void
   removeDownload: (id: number) => void
+  clearDownloads: () => void
 
   importConfig: (json: string) => Promise<void>
   exportConfig: () => Promise<string>
@@ -126,6 +127,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   addDownload: (task) => set((state) => ({ downloads: [...state.downloads, task] })),
   updateDownload: (task) => set((state) => ({ downloads: state.downloads.map((item) => item.id === task.id ? task : item) })),
   removeDownload: (id) => set((state) => ({ downloads: state.downloads.filter((item) => item.id !== id) })),
+  clearDownloads: () => set({ downloads: [] }),
 
   importConfig: async (json: string) => {
     const cfg = JSON.parse(json)
