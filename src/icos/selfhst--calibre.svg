@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+	<path fill="#5b757b" fill-rule="evenodd" d="M134.7 60.2h94.7c4.2 0 7.6 3.4 7.6 7.6V501c0 4.2-3.4 7.6-7.6 7.6h-94.7c-4.2 0-7.6-3.4-7.6-7.6V67.9c0-4.2 3.4-7.7 7.6-7.7" />
+	<path fill="#4d1e00" fill-rule="evenodd" d="M11 13.6h103c5.7 0 10.4 4.7 10.4 10.4v474.2c0 5.7-4.7 10.4-10.4 10.4H11c-5.7 0-10.4-4.7-10.4-10.4V24c0-5.7 4.7-10.4 10.4-10.4" />
+	<linearGradient id="SVGVLagedLh" x1="62.479" x2="62.479" y1="422.102" y2="441.164" gradientTransform="matrix(1.0109 0 0 -.9972 -.634 484.235)" gradientUnits="userSpaceOnUse">
+		<stop offset="0" stop-color="#000001" stop-opacity="0" />
+		<stop offset=".5" />
+		<stop offset="1" stop-opacity="0" />
+	</linearGradient>
+	<path fill="url(#SVGVLagedLh)" fill-rule="evenodd" d="M.1 43.9h124.8v19.8H.1z" />
+	<linearGradient id="SVGucKWEbov" x1="62.465" x2="62.465" y1="749.94" y2="769.001" gradientTransform="matrix(1 0 0 -1 -.714 1223.495)" gradientUnits="userSpaceOnUse">
+		<stop offset="0" stop-color="#000001" stop-opacity="0" />
+		<stop offset=".5" />
+		<stop offset="1" stop-opacity="0" />
+	</linearGradient>
+	<path fill="url(#SVGucKWEbov)" fill-rule="evenodd" d="M0 454.1h123.5V474H0z" />
+	<radialGradient id="SVGhg0t5b0j" cx="256.492" cy="123.054" r="62.147" gradientTransform="matrix(1.7457 -.00436 -.00038 -.08946 -265.643 121.93)" gradientUnits="userSpaceOnUse">
+		<stop offset="0" stop-color="#fff" />
+		<stop offset="1" stop-color="#5b757b" stop-opacity="0" />
+	</radialGradient>
+	<path fill="url(#SVGhg0t5b0j)" fill-rule="evenodd" d="M126.7 104.2h110.8v11.1H126.7z" />
+	<radialGradient id="SVGaVS1Dbsl" cx="256.539" cy="3260.898" r="62.148" gradientTransform="matrix(1.7332 -.00436 -.00038 -.08946 -261.327 754.072)" gradientUnits="userSpaceOnUse">
+		<stop offset="0" stop-color="#fff" />
+		<stop offset="1" stop-color="#5b757b" stop-opacity="0" />
+	</radialGradient>
+	<path fill="url(#SVGaVS1Dbsl)" fill-rule="evenodd" d="M127.1 455.7h110v11.1h-110z" />
+	<path fill="#79abff" fill-rule="evenodd" d="m335.5 184.6l106.2-19.1c4.1-.7 8 2 8.8 6l61.3 309.2c.8 4.1-1.8 7.9-5.9 8.7l-106.2 19.1c-4.1.7-8-2-8.8-6l-61.3-309.2c-.8-4.1 1.9-8 5.9-8.7" />
+	<path fill="#0c13ba" fill-rule="evenodd" stroke="#000" stroke-width="1.126" d="m404.5 337.7l10.3-22.3l17.1 17.7l-27.5-160.4l-27.3 4.7z" />
+	<path fill="#d6b865" fill-rule="evenodd" d="M298.3 3.4h-1.4l-59 7.6c-3.8.5-6.5 4-6.1 7.8l62 483.6c.5 3.8 4 6.5 7.8 6.1l59-7.6c3.8-.5 6.5-4 6.1-7.8l-62-483.6c-.5-3.3-3.2-5.8-6.4-6.1" />
+	<radialGradient id="SVGOLybja0z" cx="552.68" cy="-34.383" r="22.839" gradientTransform="rotate(-8.32 6684.248 43680.14)scale(12.0253 -.749)" gradientUnits="userSpaceOnUse">
+		<stop offset="0" stop-color="#601a22" />
+		<stop offset=".867" stop-color="#45181d" />
+		<stop offset="1" stop-color="#a13642" stop-opacity="0" />
+	</radialGradient>
+	<path fill="url(#SVGOLybja0z)" fill-rule="evenodd" d="M298.3 3.4h-1.4l-59 7.6c-3.8.5-6.5 4-6.1 7.8l62 483.6c.5 3.8 4 6.5 7.8 6.1l59-7.6c3.8-.5 6.5-4 6.1-7.8l-62-483.6c-.5-3.3-3.2-5.8-6.4-6.1" />
+	<radialGradient id="SVGnExh8WYV" cx="549.852" cy="596.815" r="22.839" gradientTransform="rotate(-8.186 6434.196 40210.491)scale(11.0125 -.7491)" gradientUnits="userSpaceOnUse">
+		<stop offset="0" stop-color="#601a22" />
+		<stop offset=".867" stop-color="#45181d" />
+		<stop offset="1" stop-color="#a13642" stop-opacity="0" />
+	</radialGradient>
+	<path fill="url(#SVGnExh8WYV)" fill-rule="evenodd" d="M298.3 3.4h-1.4l-59 7.6c-3.8.5-6.5 4-6.1 7.8l62 483.6c.5 3.8 4 6.5 7.8 6.1l59-7.6c3.8-.5 6.5-4 6.1-7.8l-62-483.6c-.5-3.3-3.2-5.8-6.4-6.1" />
+</svg>

@@ -1,0 +1,29 @@
+﻿diff --git a/node_modules/expo-modules-autolinking/android/expo-gradle-plugin/settings.gradle.kts b/node_modules/expo-modules-autolinking/android/expo-gradle-plugin/settings.gradle.kts
+index patched
+--- a/node_modules/expo-modules-autolinking/android/expo-gradle-plugin/settings.gradle.kts
++++ b/node_modules/expo-modules-autolinking/android/expo-gradle-plugin/settings.gradle.kts
+@@ -1,7 +1,21 @@
+ pluginManagement {
+   repositories {
++    maven { url = uri(""https://maven.aliyun.com/repository/gradle-plugin"") }
++    maven { url = uri(""https://maven.aliyun.com/repository/public"") }
++    maven { url = uri(""https://maven.aliyun.com/repository/google"") }
+     mavenCentral()
+     google()
+     gradlePluginPortal()
+   }
+ }
+ 
++dependencyResolutionManagement {
++  repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
++  repositories {
++    maven { url = uri(""https://maven.aliyun.com/repository/gradle-plugin"") }
++    maven { url = uri(""https://maven.aliyun.com/repository/public"") }
++    maven { url = uri(""https://maven.aliyun.com/repository/google"") }
++    mavenCentral()
++    google()
++    gradlePluginPortal()
++  }
++}
++
+ include(

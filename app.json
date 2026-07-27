@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "One NAS",
+    "slug": "one-nas",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.unraiddash.app"
+    }
+  }
+}

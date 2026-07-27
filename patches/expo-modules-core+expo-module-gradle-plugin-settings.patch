@@ -1,0 +1,30 @@
+﻿diff --git a/node_modules/expo-modules-core/expo-module-gradle-plugin/settings.gradle.kts b/node_modules/expo-modules-core/expo-module-gradle-plugin/settings.gradle.kts
+new file mode 100644
+index 00000000..00000001
+--- /dev/null
++++ b/node_modules/expo-modules-core/expo-module-gradle-plugin/settings.gradle.kts
+@@ -0,0 +1,25 @@
++pluginManagement {
++  repositories {
++    maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
++    maven { url = uri("https://maven.aliyun.com/repository/public") }
++    maven { url = uri("https://maven.aliyun.com/repository/google") }
++    mavenCentral()
++    google()
++    gradlePluginPortal()
++  }
++}
++
++dependencyResolutionManagement {
++  repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
++  repositories {
++    maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
++    maven { url = uri("https://maven.aliyun.com/repository/public") }
++    maven { url = uri("https://maven.aliyun.com/repository/google") }
++    mavenCentral()
++    google()
++    gradlePluginPortal()
++  }
++}
++
++rootProject.name = "expo-module-gradle-plugin"
