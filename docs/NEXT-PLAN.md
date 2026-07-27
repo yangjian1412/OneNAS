@@ -214,3 +214,45 @@
    - 尺寸约定：列表 24dp / 平铺 28dp / header 24dp / 工具栏 22dp
 2. 颜色：所有图标跟随主题色，禁用用 `t.textMuted`
 3. 圆角：图标按钮全部使用 8dp 圆角（与现有保持一致）
+
+---
+
+## 参考源码目录（ref-src/）
+
+本文档同目录下的 `ref-src/` 文件夹存放各服务的参考源码，不参与构建，不上传 git。
+
+### 目录结构
+
+```
+ref-src/
+├── alist/                    3.6 MB  — AList 服务端（Go + Gin，多存储支持）
+├── aria2/                   11.3 MB  — aria2 源码（JSON-RPC 接口定义）
+├── audiobookshelf-app/       11.6 MB  — Audiobookshelf 客户端（Vue）
+├── audiobookshelf-server/     13.7 MB  — Audiobookshelf 服务端（Node.js）
+├── dsub/                     4.3 MB  — DSub Subsonic 播放器（daneren2005/Subsonic）
+├── filebrowser-src/          12.5 MB  — FileBrowser 源码
+├── findroid/                32.2 MB  — Jellyfin 原生 Android 客户端（Media3）
+├── jellyfin-android/         3.8 MB  — Jellyfin 官方 Android（WebView 包装）
+├── jellyfin-androidtv/       1.6 MB  — Jellyfin Android TV（含原生播放）
+├── jellyfin-docs/            8.5 MB  — Jellyfin 官方文档
+├── jellyfin-server/          1.0 MB  — Jellyfin 服务端 Controller 层
+├── komga/                  87.5 MB  — Komga 服务端（Kotlin/Spring，含 komga-webui）
+├── mihon/                  18.2 MB  — Mihon manga 阅读器（Android）
+├── mihon-extensions-source/ 73.1 MB  — Mihon 插件源码（含 Komga 插件）
+├── openlist-app/            5.8 MB  — OpenList 跨平台客户端（Dart/Flutter）
+├── qbittorrent/            60.7 MB  — qBittorrent C++ 源码
+└── tempo-gai/             26.8 MB  — 魔改 tempo 播放器（你的个人项目）
+```
+
+### 参考重点
+
+| 服务 | 参考内容 |
+|------|----------|
+| **Jellyfin** | `findroid/` — Media3 原生播放；`jellyfin-server/Controllers/` — API 路由 |
+| **Navidrome/Subsonic** | `dsub/` — Subsonic API 调用（salt/token 认证）；`tempo-gai/` — 你的实现 |
+| **Audiobookshelf** | `audiobookshelf-app/` — Vue 客户端；`audiobookshelf-server/server/api/` — REST API |
+| **aria2** | `aria2/src/` — JSON-RPC 协议定义 |
+| **AList/OpenList** | `alist/` — 服务端 API；`openlist-app/` — Flutter 客户端 |
+| **qBittorrent** | `qbittorrent/src/webui/` — WebUI API 路由（认证、torrent 管理） |
+| **Komga** | `komga/komga/` — REST API；`komga-webui/` — Web 阅读器；`mihon-extensions-source/src/` — Komga 插件 |
+| **Mihon** | `mihon/` — Android manga 阅读器架构；插件在 `mihon-extensions-source/src/` |

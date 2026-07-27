@@ -177,7 +177,23 @@ android/app/src/main/res/
 └── values/styles.xml                        # Theme.App.SplashScreen 继承 Theme.SplashScreen
 
 ref-src/                    # 参考源码文件夹（不参与构建，不上传 git）
-└── filebrowser-src/        # FileBrowser 源码，仅供开发参考
+├── alist/                  # AList 服务端
+├── aria2/                  # aria2 源码
+├── audiobookshelf-app/      # Audiobookshelf 客户端
+├── audiobookshelf-server/   # Audiobookshelf 服务端
+├── dsub/                   # DSub Subsonic 播放器
+├── filebrowser-src/        # FileBrowser 源码
+├── findroid/               # Jellyfin 原生客户端
+├── jellyfin-android/        # Jellyfin 官方 Android
+├── jellyfin-androidtv/      # Jellyfin Android TV
+├── jellyfin-docs/           # Jellyfin 官方文档
+├── jellyfin-server/         # Jellyfin Controller
+├── komga/                  # Komga 服务端
+├── mihon/                  # Mihon manga 阅读器
+├── mihon-extensions-source/ # Mihon 插件（含 Komga）
+├── openlist-app/            # OpenList Flutter 客户端
+├── qbittorrent/            # qBittorrent C++ 源码
+└── tempo-gai/             # 魔改 tempo 播放器
 ```
 
 ---
