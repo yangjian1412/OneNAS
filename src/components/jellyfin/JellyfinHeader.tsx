@@ -1,4 +1,4 @@
-import { View, TextInput, TouchableOpacity, StyleSheet, Platform, StatusBar } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, StatusBar } from 'react-native'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
 
@@ -9,17 +9,22 @@ interface Props {
   onSubmitSearch: () => void
   onClearSearch: () => void
   showBack: boolean
+  onBackPress: () => void
 }
 
-export default function JellyfinHeader({ onMenuPress, searchQuery, onSearchChange, onSubmitSearch, onClearSearch, showBack }: Props) {
+export default function JellyfinHeader({ onMenuPress, searchQuery, onSearchChange, onSubmitSearch, onClearSearch, showBack, onBackPress }: Props) {
   const t = useTheme()
-  const pt = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0
-
   return (
-    <View style={[styles.header, { backgroundColor: t.card, borderBottomColor: t.border, paddingTop: pt + 8 }]}>
-      <TouchableOpacity onPress={onMenuPress} style={styles.menuBtn}>
-        <Icon name="menu" size={24} color={t.text} />
-      </TouchableOpacity>
+    <View style={[styles.header, { backgroundColor: t.card, borderBottomColor: t.border }]}>
+      {showBack ? (
+        <TouchableOpacity onPress={onBackPress} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Icon name="back" size={24} color={t.text} />
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity onPress={onMenuPress} style={styles.menuBtn}>
+          <Icon name="menu" size={24} color={t.text} />
+        </TouchableOpacity>
+      )}
       <View style={[styles.searchWrap, { backgroundColor: t.inputBg, borderColor: t.border }]}>
         <Icon name="search" size={16} color={t.textMuted} />
         <TextInput
@@ -44,9 +49,10 @@ export default function JellyfinHeader({ onMenuPress, searchQuery, onSearchChang
 const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 8, paddingBottom: 10,
+    paddingHorizontal: 8, paddingVertical: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  backBtn: { padding: 6, marginRight: 4 },
   menuBtn: { padding: 6, marginRight: 4 },
   searchWrap: {
     flex: 1, flexDirection: 'row', alignItems: 'center',

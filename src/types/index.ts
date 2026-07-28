@@ -165,14 +165,17 @@ export interface JellyfinLibrary {
   ItemId: string
   PrimaryImageItemId?: string
   CollectionType?: string
+  ImageTags?: Record<string, string>
 }
 
 export interface JellyfinItem {
   Id: string
   Name: string
-  Type: 'Movie' | 'Series' | 'Season' | 'Episode' | 'Audio' | 'MusicAlbum' | 'MusicArtist'
+  Type: 'Movie' | 'Series' | 'Season' | 'Episode' | 'Audio' | 'MusicAlbum' | 'MusicArtist' | 'Folder'
   ParentId?: string
+  SeriesId?: string
   SeriesName?: string
+  SeasonId?: string
   SeasonNumber?: number
   IndexNumber?: number
   ImageTags?: Record<string, string>
@@ -184,6 +187,8 @@ export interface JellyfinItem {
   OfficialRating?: string
   RunTimeTicks?: number
   CollectionType?: string
+  People?: Array<{ Name: string; Role?: string; Type?: string; PrimaryImageTag?: string }>
+  Studios?: Array<{ Name: string }>
   UserData?: {
     Played: boolean
     PlaybackPositionTicks?: number

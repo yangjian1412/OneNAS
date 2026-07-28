@@ -11,7 +11,7 @@ interface Props {
 
 export default function JellyfinResumeRow({ server, items, onItemPress }: Props) {
   const t = useTheme()
-  if (items.length === 0) return null
+  if (!server || items.length === 0) return null
 
   return (
     <View style={styles.section}>

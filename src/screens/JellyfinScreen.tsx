@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { View, Text, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, BackHandler, StyleSheet } from 'react-native'
+import { useCallback, useEffect, useState, useRef } from 'react'
+import { View, Text, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, BackHandler, StyleSheet, Dimensions } from 'react-native'
+import { useIsFocused, useNavigation } from '@react-navigation/native'
 import { useJellyfinStore } from '@/stores/jellyfinStore'
 import {
   jellyfinLogin,
@@ -18,12 +19,15 @@ import Icon from '@/components/Icon'
 import JellyfinHeader from '@/components/jellyfin/JellyfinHeader'
 import JellyfinResumeRow from '@/components/jellyfin/JellyfinResumeRow'
 import JellyfinLibraryGrid from '@/components/jellyfin/JellyfinLibraryGrid'
-import JellyfinItemCard from '@/components/jellyfin/JellyfinItemCard'
-import JellyfinPoster from '@/components/jellyfin/JellyfinPoster'
+import JellyfinItemGrid from '@/components/jellyfin/JellyfinItemGrid'
+import JellyfinEpisodeList from '@/components/jellyfin/JellyfinEpisodeList'
+import JellyfinItemDetail from '@/components/jellyfin/JellyfinItemDetail'
 import JellyfinDrawer from '@/components/jellyfin/JellyfinDrawer'
 import JellyfinPlayer from '@/components/jellyfin/JellyfinPlayer'
+import JellyfinWebView from '@/components/jellyfin/JellyfinWebView'
+import JellyfinPlaybackSettings from '@/components/jellyfin/JellyfinPlaybackSettings'
 
-type ViewType = 'home' | 'items' | 'seasons' | 'episodes' | 'searchResults'
+type ViewType = 'home' | 'items' | 'seasons' | 'episodes' | 'searchResults' | 'detail'
 
 interface Props {
   service: ServiceConfig
@@ -31,15 +35,21 @@ interface Props {
 
 export default function JellyfinScreen({ service }: Props) {
   const t = useTheme()
+  const navigation = useNavigation<any>()
+  const isFocused = useIsFocused()
   const { server, user, libraries, resumeItems, setServer, setUser, setLibraries, setResumeItems } = useJellyfinStore()
 
   const [view, setView] = useState<ViewType>('home')
   const [currentLibraryName, setCurrentLibraryName] = useState('')
   const [currentItems, setCurrentItems] = useState<JellyfinItem[]>([])
   const [currentSeasons, setCurrentSeasons] = useState<JellyfinSeason[]>([])
+  const [detailItem, setDetailItem] = useState<JellyfinItem | null>(null)
+  const [detailSeriesId, setDetailSeriesId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [playing, setPlaying] = useState<{ url: string; item: JellyfinItem } | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [showServerSettings, setShowServerSettings] = useState(false)
+  const [showPlaybackSettings, setShowPlaybackSettings] = useState(false)
   const [serverVersion, setServerVersion] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,25 +88,54 @@ export default function JellyfinScreen({ service }: Props) {
 
   useEffect(() => { loadServer() }, [])
 
-  useEffect(() => {
-    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (drawerOpen) { setDrawerOpen(false); return true }
-      if (view !== 'home') { goBack(); return true }
-      return true
-    })
-    return () => handler.remove()
-  }, [view, drawerOpen])
+  const viewRef = useRef(view)
+  const drawerOpenRef = useRef(drawerOpen)
+  const showServerSettingsRef = useRef(showServerSettings)
+  const showPlaybackSettingsRef = useRef(showPlaybackSettings)
+  viewRef.current = view
+  drawerOpenRef.current = drawerOpen
+  showServerSettingsRef.current = showServerSettings
+  showPlaybackSettingsRef.current = showPlaybackSettings
 
-  const goBack = () => {
-    if (view === 'episodes') { setView('seasons'); setCurrentItems([]) }
-    else if (view === 'seasons') { setView('items'); setCurrentSeasons([]) }
-    else if (view === 'items' || view === 'searchResults') { setView('home'); setCurrentItems([]); setSearchQuery('') }
-  }
+  const prevViewRef = useRef<ViewType>('home')
+  useEffect(() => {
+    if (view !== 'detail') prevViewRef.current = view
+  }, [view])
+
+  const goBack = useCallback(() => {
+    const v = viewRef.current
+    if (v === 'detail') { setView(prevViewRef.current); setDetailItem(null); setDetailSeriesId(null) }
+    else if (v === 'episodes') { setView('items'); setCurrentItems([]); setCurrentSeasons([]) }
+    else if (v === 'seasons') { setView('items'); setCurrentSeasons([]) }
+    else if (v === 'items' || v === 'searchResults') { setView('home'); setCurrentItems([]); setSearchQuery('') }
+  }, [])
+
+  // Expose a back handler that ServiceScreen can use via useFocusEffect.
+  // Returns true if the event was consumed (handled internally),
+  // returns false to let the navigator handle it (i.e. switch tabs).
+  const handleHardwareBack = useCallback((): boolean => {
+    if (!isFocused) return false
+    if (drawerOpenRef.current) { setDrawerOpen(false); return true }
+    if (showServerSettingsRef.current) { setShowServerSettings(false); return true }
+    if (showPlaybackSettingsRef.current) { setShowPlaybackSettings(false); return true }
+    const v = viewRef.current
+    if (v !== 'home') {
+      goBack()
+      return true
+    }
+    navigation.navigate('Files')
+    return true
+  }, [goBack, isFocused, navigation])
+
+  useEffect(() => {
+    const handler = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack)
+    return () => handler.remove()
+  }, [handleHardwareBack])
 
   const handleLibraryPress = async (lib: JellyfinLibrary) => {
     if (!server) return
     setLoading(true)
-    const result = await jellyfinGetLibraryItems(server, lib.ItemId)
+    const result = await jellyfinGetLibraryItems(server, lib.ItemId, lib.CollectionType)
     if (result.ok) setCurrentItems(result.items ?? [])
     setLoading(false)
     setCurrentLibraryName(lib.Name)
@@ -105,7 +144,11 @@ export default function JellyfinScreen({ service }: Props) {
 
   const handleItemPress = async (item: JellyfinItem) => {
     if (!server) return
-    if (item.Type === 'Movie' || item.Type === 'Episode') {
+    if (item.Type === 'Movie' || item.Type === 'Series') {
+      setDetailItem(item)
+      setDetailSeriesId(item.SeriesId ?? item.Id)
+      setView('detail')
+    } else if (item.Type === 'Episode') {
       setLoading(true)
       setError(null)
       const stream = await jellyfinGetStreamUrl(server, item.Id)
@@ -115,28 +158,45 @@ export default function JellyfinScreen({ service }: Props) {
       } else {
         setError(stream.error || '无法获取播放地址')
       }
-    } else if (item.Type === 'Series') {
+    } else if (item.Type === 'Folder') {
       setLoading(true)
-      setError(null)
-      const seasons = await jellyfinGetSeasons(server, item.Id)
+      const result = await jellyfinGetLibraryItems(server, item.Id, undefined)
       setLoading(false)
-      if (seasons.ok) {
-        setCurrentSeasons(seasons.seasons ?? [])
-        setView('seasons')
+      if (result.ok) {
+        setCurrentItems(result.items ?? [])
+        setCurrentLibraryName(item.Name)
+        setView('items')
       } else {
-        setError(seasons.error || '无法获取剧集信息')
+        setError(result.error || '无法加载文件夹')
       }
     }
   }
 
-  const handleSeasonPress = async (season: JellyfinSeason) => {
+  const handlePlay = async (item: JellyfinItem) => {
     if (!server) return
+    if (item.Type !== 'Movie' && item.Type !== 'Episode') return
     setLoading(true)
-    const episodes = await jellyfinGetEpisodes(server, season.SeriesId, season.Id)
+    setError(null)
+    const stream = await jellyfinGetStreamUrl(server, item.Id)
     setLoading(false)
-    if (episodes.ok) {
-      setCurrentItems(episodes.episodes ?? [])
+    if (stream.ok && stream.url) {
+      setPlaying({ url: stream.url, item })
+    } else {
+      setError(stream.error || '无法获取播放地址')
+    }
+  }
+
+  const handleSeasonPress = async (seasonId: string, seasonNumber: number) => {
+    if (!server || !detailSeriesId) return
+    setLoading(true)
+    const result = await jellyfinGetEpisodes(server, detailSeriesId, seasonId)
+    setLoading(false)
+    if (result.ok) {
+      setCurrentItems(result.episodes ?? [])
+      setCurrentSeasons([{ Id: seasonId, Name: `第 ${seasonNumber} 季`, SeasonNumber: seasonNumber, SeriesId: detailSeriesId } as JellyfinSeason])
       setView('episodes')
+    } else {
+      setError(result.error || '无法获取剧集')
     }
   }
 
@@ -180,29 +240,6 @@ export default function JellyfinScreen({ service }: Props) {
     )
   }
 
-  const renderItem = ({ item }: { item: JellyfinItem }) => (
-    <View style={styles.gridItem}>
-      <JellyfinItemCard server={server!} item={item} direction="vertical" onPress={() => handleItemPress(item)} />
-    </View>
-  )
-
-  const renderSeasonItem = (season: JellyfinSeason) => (
-    <TouchableOpacity
-      key={season.Id}
-      style={[styles.seasonRow, { borderBottomColor: t.border }]}
-      onPress={() => handleSeasonPress(season)}
-    >
-      <View style={[styles.seasonPoster, { backgroundColor: t.border }]}>
-        <Icon name="film" size={20} color={t.textMuted} />
-      </View>
-      <View style={styles.seasonInfo}>
-        <Text style={[styles.seasonName, { color: t.text }]}>{season.Name}</Text>
-        <Text style={[styles.seasonMeta, { color: t.textMuted }]}>第 {season.SeasonNumber} 季</Text>
-      </View>
-      <Icon name="chevronRight" size={18} color={t.textMuted} />
-    </TouchableOpacity>
-  )
-
   return (
     <View style={[styles.screen, { backgroundColor: t.bg }]}>
       <JellyfinHeader
@@ -212,6 +249,7 @@ export default function JellyfinScreen({ service }: Props) {
         onSubmitSearch={handleSearch}
         onClearSearch={handleClearSearch}
         showBack={view !== 'home'}
+        onBackPress={goBack}
       />
 
       {error && server && (
@@ -229,75 +267,38 @@ export default function JellyfinScreen({ service }: Props) {
 
       {(view === 'items' || view === 'searchResults') && (
         <View style={styles.listSection}>
-          <Text style={[styles.listTitle, { color: t.text, paddingHorizontal: 12 }]}>
+          <Text style={[styles.listTitle, { color: t.text, paddingHorizontal: 16 }]}>
             {view === 'searchResults' ? '搜索结果' : currentLibraryName}
           </Text>
           {loading ? (
             <ActivityIndicator size="small" color={t.primary} style={{ marginTop: 20 }} />
           ) : (
-            <FlatList
-              key={`grid-${view}`}
-              data={currentItems}
-              numColumns={2}
-              renderItem={renderItem}
-              keyExtractor={(item) => item.Id}
-              columnWrapperStyle={styles.gridRow}
-              contentContainerStyle={styles.gridContent}
-              ListEmptyComponent={
-                <Text style={[styles.emptyText, { color: t.textMuted }]}>暂无内容</Text>
-              }
-            />
+            <JellyfinItemGrid server={server!} items={currentItems} onItemPress={handleItemPress} />
           )}
         </View>
-      )}
-
-      {view === 'seasons' && (
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-          {loading ? (
-            <ActivityIndicator size="small" color={t.primary} style={{ marginTop: 20 }} />
-          ) : (
-            currentSeasons.length > 0 ? (
-              currentSeasons
-                .filter((s) => s.SeasonNumber !== null)
-                .sort((a, b) => (a.SeasonNumber ?? 0) - (b.SeasonNumber ?? 0))
-                .map(renderSeasonItem)
-            ) : (
-              <Text style={[styles.emptyText, { color: t.textMuted }]}>暂无季</Text>
-            )
-          )}
-        </ScrollView>
       )}
 
       {view === 'episodes' && (
         <View style={styles.listSection}>
+          <Text style={[styles.listTitle, { color: t.text, paddingHorizontal: 16 }]}>
+            {currentSeasons[0]?.Name || '剧集'}
+          </Text>
           {loading ? (
             <ActivityIndicator size="small" color={t.primary} style={{ marginTop: 20 }} />
           ) : (
-            <FlatList
-              data={currentItems}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.episodeRow, { borderBottomColor: t.border }]}
-                  onPress={() => handleItemPress(item)}
-                >
-                  <View style={[styles.episodePoster, { backgroundColor: t.border }]}>
-                    <JellyfinPoster server={server!} itemId={item.Id} imageTags={item.ImageTags} backdropTag={item.BackdropImageTags?.[0]} size="small" />
-                  </View>
-                  <View style={styles.episodeInfo}>
-                    <Text style={[styles.episodeName, { color: t.text }]} numberOfLines={1}>{item.Name}</Text>
-                    <Text style={[styles.episodeMeta, { color: t.textMuted }]}>
-                      {item.IndexNumber != null ? `第 ${item.IndexNumber} 集` : ''}
-                      {item.Overview ? ` · ${item.Overview.slice(0, 60)}${item.Overview.length > 60 ? '...' : ''}` : ''}
-                    </Text>
-                  </View>
-                  <Icon name="playCircle" size={28} color={t.primary} />
-                </TouchableOpacity>
-              )}
-              keyExtractor={(item) => item.Id}
-              contentContainerStyle={styles.episodeListContent}
-            />
+            <JellyfinEpisodeList server={server!} episodes={currentItems} onEpisodePress={handleItemPress} />
           )}
         </View>
+      )}
+
+      {view === 'detail' && detailItem && server && (
+        <JellyfinItemDetail
+          server={server}
+          item={detailItem}
+          onPlay={handlePlay}
+          onSeasonPress={handleSeasonPress}
+          onBack={goBack}
+        />
       )}
 
       <JellyfinDrawer
@@ -305,7 +306,15 @@ export default function JellyfinScreen({ service }: Props) {
         server={server}
         serverVersion={serverVersion}
         onClose={() => setDrawerOpen(false)}
+        onServerSettings={() => setShowServerSettings(true)}
+        onPlaybackSettings={() => setShowPlaybackSettings(true)}
       />
+
+      {server?.url && (
+        <JellyfinWebView url={server.url} visible={showServerSettings} onClose={() => setShowServerSettings(false)} />
+      )}
+
+      <JellyfinPlaybackSettings visible={showPlaybackSettings} onClose={() => setShowPlaybackSettings(false)} />
 
       {playing && (
         <JellyfinPlayer
@@ -337,13 +346,11 @@ const styles = StyleSheet.create({
   gridRow: { paddingHorizontal: 8 },
   gridItem: { flex: 1, paddingHorizontal: 4 },
   emptyText: { textAlign: 'center', marginTop: 32, fontSize: 14 },
-  seasonRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12 },
-  seasonPoster: { width: 40, height: 40, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-  seasonInfo: { flex: 1, marginLeft: 12 },
-  seasonName: { fontSize: 15, fontWeight: '500' },
-  seasonMeta: { fontSize: 12, marginTop: 2 },
+  seasonsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, gap: 12 },
+  seasonCard: { },
+  seasonTitle: { fontSize: 13, fontWeight: '500', marginTop: 6, textAlign: 'center' },
   episodeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12 },
-  episodePoster: { width: 100, height: 56, borderRadius: 6, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  episodePoster: { width: 140, height: 79, borderRadius: 6, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   episodeInfo: { flex: 1, marginLeft: 10 },
   episodeName: { fontSize: 14, fontWeight: '500' },
   episodeMeta: { fontSize: 11, marginTop: 2 },

@@ -12,6 +12,7 @@ interface Props {
 
 export default function JellyfinItemCard({ server, item, direction, onPress }: Props) {
   const t = useTheme()
+  if (!server) return null
   const isHorizontal = direction === 'horizontal'
   const pct = item.UserData?.PlaybackPositionTicks && item.UserData?.TotalRuntimeTicks
     ? Math.round((item.UserData.PlaybackPositionTicks / item.UserData.TotalRuntimeTicks) * 100)
@@ -32,7 +33,7 @@ export default function JellyfinItemCard({ server, item, direction, onPress }: P
               imageTags={item.ImageTags}
               backdropTag={item.BackdropImageTags?.[0]}
               imageType="Backdrop"
-              size="small"
+              width={240}
             />
             {pct > 0 && (
               <View style={[styles.progressBar, { backgroundColor: t.border }]}>
@@ -51,8 +52,8 @@ export default function JellyfinItemCard({ server, item, direction, onPress }: P
             server={server}
             itemId={item.Id}
             imageTags={item.ImageTags}
+            backdropTag={item.BackdropImageTags?.[0]}
             imageType="Primary"
-            size="medium"
           />
           <Text style={[styles.vTitle, { color: t.text }]} numberOfLines={2}>{item.Name}</Text>
           {item.ProductionYear && (
@@ -65,7 +66,7 @@ export default function JellyfinItemCard({ server, item, direction, onPress }: P
 }
 
 const styles = StyleSheet.create({
-  hCard: { width: 160, marginRight: 10 },
+  hCard: { width: 240, marginRight: 10 },
   hPosterWrap: { overflow: 'hidden' },
   progressBar: { height: 3, borderRadius: 1.5, marginTop: -3 },
   progressFill: { height: 3, borderRadius: 1.5 },

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, Platform, StatusBar, Linking } from 'react-native'
+import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
 import type { JellyfinServerConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
@@ -9,11 +9,13 @@ interface Props {
   server: JellyfinServerConfig | null
   serverVersion?: string
   onClose: () => void
+  onServerSettings: () => void
+  onPlaybackSettings: () => void
 }
 
 const DRAWER_W = Dimensions.get('window').width * 0.75
 
-export default function JellyfinDrawer({ visible, server, serverVersion, onClose }: Props) {
+export default function JellyfinDrawer({ visible, server, serverVersion, onClose, onServerSettings, onPlaybackSettings }: Props) {
   const t = useTheme()
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
 
@@ -29,27 +31,19 @@ export default function JellyfinDrawer({ visible, server, serverVersion, onClose
     })
   }, [translateX, onClose])
 
-  const handleServerSettings = () => {
-    if (server?.url) {
-      Linking.openURL(server.url)
-    }
-  }
-
-  const handlePlaybackSettings = () => {
-    handleClose()
-    // TODO: open in-app playback settings modal
-  }
-
   const pt = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
       <View style={styles.modalContainer}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleClose} />
-        <Animated.View style={[styles.drawer, { backgroundColor: t.card, transform: [{ translateX }], paddingTop: pt + 20 }]}>
-          <TouchableOpacity style={styles.closeBtn} onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Icon name="x" size={24} color={t.text} />
-          </TouchableOpacity>
+        <Animated.View style={[styles.drawer, { backgroundColor: t.card, transform: [{ translateX }], paddingTop: pt + 40 }]}>
+          <View style={styles.topRow}>
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.closeBtn}>
+              <Icon name="x" size={24} color={t.text} />
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.userSection}>
             <View style={[styles.avatar, { backgroundColor: t.primary }]}>
@@ -62,12 +56,12 @@ export default function JellyfinDrawer({ visible, server, serverVersion, onClose
           </View>
 
           <View style={styles.menuSection}>
-            <TouchableOpacity style={[styles.menuItem, { backgroundColor: t.inputBg }]} onPress={() => { handleClose(); handlePlaybackSettings() }}>
+            <TouchableOpacity style={[styles.menuItem, { backgroundColor: t.inputBg }]} onPress={() => { handleClose(); onPlaybackSettings() }}>
               <Icon name="settings" size={20} color={t.text} />
               <Text style={[styles.menuItemText, { color: t.text }]}>播放设置</Text>
               <Icon name="chevronRight" size={16} color={t.textMuted} />
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.menuItem, { backgroundColor: t.inputBg }]} onPress={() => { handleClose(); handleServerSettings() }}>
+            <TouchableOpacity style={[styles.menuItem, { backgroundColor: t.inputBg }]} onPress={() => { handleClose(); onServerSettings() }}>
               <Icon name="server" size={20} color={t.text} />
               <Text style={[styles.menuItemText, { color: t.text }]}>服务器设置</Text>
               <Icon name="chevronRight" size={16} color={t.textMuted} />
@@ -94,8 +88,9 @@ const styles = StyleSheet.create({
     width: DRAWER_W, paddingHorizontal: 20,
     elevation: 16, shadowColor: '#000', shadowOffset: { width: 4, height: 0 }, shadowOpacity: 0.3, shadowRadius: 8,
   },
-  closeBtn: { position: 'absolute', top: 8, right: 8, zIndex: 10, padding: 8 },
-  userSection: { alignItems: 'center', marginBottom: 24, marginTop: 20 },
+  topRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  closeBtn: { padding: 8 },
+  userSection: { alignItems: 'center', marginBottom: 24 },
   avatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   avatarText: { color: '#fff', fontSize: 24, fontWeight: '700' },
   userName: { fontSize: 17, fontWeight: '700' },

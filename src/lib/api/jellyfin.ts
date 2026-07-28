@@ -29,12 +29,23 @@ function jellyfinFetch<T>(
   return apiFetch<T>(url, { ...options, headers })
 }
 
+async function jellyfinFetchWithFallback<T>(
+  server: JellyfinServerConfig,
+  primary: string,
+  fallback: string,
+): Promise<{ ok: boolean; data?: T; error?: string }> {
+  const r = await jellyfinFetch<T>(server, primary)
+  if (r.ok) return r
+  return jellyfinFetch<T>(server, fallback)
+}
+
 export async function jellyfinLogin(
   serverUrl: string,
   username: string,
   password: string,
 ): Promise<{ ok: boolean; server?: JellyfinServerConfig; error?: string }> {
-  const url = `${serverUrl}/Users/AuthenticateByName`
+  const normalUrl = serverUrl.replace(/\/+$/, '')
+  const url = `${normalUrl}/Users/AuthenticateByName`
   const result = await apiFetch<{
     User?: { Id: string; Name: string }
     AccessToken?: string
@@ -54,7 +65,7 @@ export async function jellyfinLogin(
   const server: JellyfinServerConfig = {
     id: `jellyfin-${Date.now()}`,
     name: 'Jellyfin',
-    url: serverUrl,
+    url: normalUrl,
     username,
     password,
     userId: result.data.User.Id,
@@ -67,12 +78,20 @@ export async function jellyfinLogin(
 export async function jellyfinGetLibraries(
   server: JellyfinServerConfig,
 ): Promise<{ ok: boolean; libraries?: JellyfinLibrary[]; error?: string }> {
-  const result = await jellyfinFetch<JellyfinLibrary[]>(
+  const result = await jellyfinFetch<{ Items?: JellyfinLibrary[] }>(
     server,
-    '/Library/VirtualFolders',
+    `/Users/${server.userId}/Views`,
   )
   if (!result.ok) return { ok: false, error: result.error }
-  return { ok: true, libraries: result.data ?? [] }
+  const items = result.data?.Items ?? []
+  const libs: JellyfinLibrary[] = items.map((v: any) => ({
+    Name: v.Name,
+    ItemId: v.Id,
+    PrimaryImageItemId: v.ImageTags?.Primary ? v.Id : undefined,
+    CollectionType: v.CollectionType,
+    ImageTags: v.ImageTags,
+  }))
+  return { ok: true, libraries: libs }
 }
 
 export async function jellyfinGetRecentlyAdded(
@@ -92,9 +111,10 @@ export async function jellyfinGetItem(
   server: JellyfinServerConfig,
   itemId: string,
 ): Promise<{ ok: boolean; item?: JellyfinItem; error?: string }> {
+  if (!itemId) return { ok: false, error: 'Invalid item ID' }
   const result = await jellyfinFetch<JellyfinItem>(
     server,
-    `/Items/${itemId}?fields=ItemCounts,PrimaryImageAspectRatio,BasicSyncInfo,CanDelete,MediaSourceCount`,
+    `/Users/${server.userId}/Items/${itemId}?fields=ItemCounts,PrimaryImageAspectRatio,BasicSyncInfo,CanDelete,MediaSourceCount,Overview,Genres,People,RunTimeTicks,OfficialRating,CommunityRating,ProductionYear,Studios,ImageTags,BackdropImageTags`,
   )
   if (!result.ok) return { ok: false, error: result.error }
   return { ok: true, item: result.data }
@@ -130,7 +150,7 @@ export async function jellyfinGetResumeItems(
 ): Promise<{ ok: boolean; items?: JellyfinItem[]; error?: string }> {
   const result = await jellyfinFetch<{ Items?: JellyfinItem[] }>(
     server,
-    `/Users/${server.userId}/Items/Resume?limit=${limit}&fields=PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,Overview,BackdropImageTags`,
+    `/Users/${server.userId}/Items/Resume?limit=${limit}&fields=PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,Overview,BackdropImageTags,ImageTags`,
   )
   if (!result.ok) return { ok: false, error: result.error }
   return { ok: true, items: result.data?.Items ?? [] }
@@ -139,27 +159,62 @@ export async function jellyfinGetResumeItems(
 export async function jellyfinGetLibraryItems(
   server: JellyfinServerConfig,
   parentId: string,
+  collectionType?: string,
   limit = 50,
   sortBy = 'SortName',
 ): Promise<{ ok: boolean; items?: JellyfinItem[]; error?: string }> {
+  if (!parentId) return { ok: false, error: 'Invalid parent ID' }
+
+  const ct = (collectionType ?? '').toLowerCase()
+  let includeTypes = ''
+  let recursive = true
+  switch (ct) {
+    case 'movies': includeTypes = '&IncludeItemTypes=Movie'; recursive = true; break
+    case 'tvshows': includeTypes = '&IncludeItemTypes=Series'; recursive = true; break
+    case 'boxsets': includeTypes = '&IncludeItemTypes=BoxSet'; recursive = false; break
+    case 'mixed':
+    case 'folders':
+    case 'homevideos':
+    case 'music':
+      includeTypes = '&IncludeItemTypes=Movie,Series&ExcludeItemTypes=CollectionFolder'; recursive = false; break
+    default:
+      includeTypes = '&IncludeItemTypes=Movie,Series&ExcludeItemTypes=CollectionFolder'; recursive = false
+  }
+
   const result = await jellyfinFetch<{ Items?: JellyfinItem[] }>(
     server,
-    `/Items?ParentId=${parentId}&Recursive=true&SortBy=${sortBy}&SortOrder=Ascending&limit=${limit}&fields=PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,Overview,Genres,ProductionYear,CommunityRating,BackdropImageTags`,
+    `/Items?ParentId=${parentId}${includeTypes}&Recursive=${recursive}&SortBy=${sortBy}&SortOrder=Ascending&limit=${limit}&fields=PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,Overview,Genres,ProductionYear,CommunityRating,BackdropImageTags,ImageTags,SeriesId,SeasonId,IndexNumber,SeasonNumber`,
   )
   if (!result.ok) return { ok: false, error: result.error }
-  return { ok: true, items: result.data?.Items ?? [] }
+  const items = (result.data?.Items ?? []).filter((i) => i.Id !== parentId)
+  return { ok: true, items }
 }
 
 export async function jellyfinGetSeasons(
   server: JellyfinServerConfig,
   seriesId: string,
 ): Promise<{ ok: boolean; seasons?: JellyfinSeason[]; error?: string }> {
-  const result = await jellyfinFetch<{ Items?: JellyfinSeason[] }>(
-    server,
-    `/Shows/${seriesId}/Seasons?fields=ItemCounts,PrimaryImageAspectRatio,BasicSyncInfo`,
-  )
-  if (!result.ok) return { ok: false, error: result.error }
-  return { ok: true, seasons: result.data?.Items ?? [] }
+  if (!seriesId) return { ok: false, error: 'Invalid series ID' }
+  const fields = 'ItemCounts,PrimaryImageAspectRatio,BasicSyncInfo,ImageTags,BackdropImageTags,Overview'
+  const primary = `/Shows/${seriesId}/Seasons?userId=${server.userId}&fields=${fields}&isSpecialSeason=true`
+  const alt = `/Items?ParentId=${seriesId}&IncludeItemTypes=Season&fields=${fields}&Recursive=true`
+  const alt2 = `/Users/${server.userId}/Items?ParentId=${seriesId}&IncludeItemTypes=Season&fields=${fields}&Recursive=true`
+  const r1 = await jellyfinFetch<{ Items?: JellyfinSeason[] }>(server, primary)
+  if (r1.ok) {
+    const items = (r1.data?.Items ?? []).filter((s: any) => !s.Type || s.Type === 'Season')
+    return { ok: true, seasons: items }
+  }
+  const r2 = await jellyfinFetch<{ Items?: JellyfinSeason[] }>(server, alt)
+  if (r2.ok) {
+    const items = (r2.data?.Items ?? []).filter((s: any) => !s.Type || s.Type === 'Season')
+    return { ok: true, seasons: items }
+  }
+  const r3 = await jellyfinFetch<{ Items?: JellyfinSeason[] }>(server, alt2)
+  if (r3.ok) {
+    const items = (r3.data?.Items ?? []).filter((s: any) => !s.Type || s.Type === 'Season')
+    return { ok: true, seasons: items }
+  }
+  return { ok: false, error: r1.error || r2.error || r3.error || '获取季信息失败' }
 }
 
 export async function jellyfinGetEpisodes(
@@ -167,33 +222,48 @@ export async function jellyfinGetEpisodes(
   seriesId: string,
   seasonId: string,
 ): Promise<{ ok: boolean; episodes?: JellyfinItem[]; error?: string }> {
-  const result = await jellyfinFetch<{ Items?: JellyfinItem[] }>(
-    server,
-    `/Shows/${seriesId}/Episodes?seasonId=${seasonId}&fields=ItemCounts,PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,BackdropImageTags`,
-  )
-  if (!result.ok) return { ok: false, error: result.error }
-  return { ok: true, episodes: result.data?.Items ?? [] }
+  if (!seriesId || !seasonId) return { ok: false, error: 'Invalid series or season ID' }
+  const fields = 'ItemCounts,PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,BackdropImageTags,ImageTags,Overview,IndexNumber'
+  const primary = `/Shows/${seriesId}/Episodes?seasonId=${seasonId}&userId=${server.userId}&fields=${fields}`
+  const alt = `/Items?ParentId=${seasonId}&IncludeItemTypes=Episode&fields=${fields}&Recursive=true`
+  const alt2 = `/Users/${server.userId}/Items?ParentId=${seasonId}&IncludeItemTypes=Episode&fields=${fields}&Recursive=true`
+  const r1 = await jellyfinFetch<{ Items?: JellyfinItem[] }>(server, primary)
+  if (r1.ok) {
+    const items = (r1.data?.Items ?? []).filter((s: any) => s.Type === 'Episode')
+    return { ok: true, episodes: items }
+  }
+  const r2 = await jellyfinFetch<{ Items?: JellyfinItem[] }>(server, alt)
+  if (r2.ok) {
+    const items = (r2.data?.Items ?? []).filter((s: any) => s.Type === 'Episode')
+    return { ok: true, episodes: items }
+  }
+  const r3 = await jellyfinFetch<{ Items?: JellyfinItem[] }>(server, alt2)
+  if (r3.ok) {
+    const items = (r3.data?.Items ?? []).filter((s: any) => s.Type === 'Episode')
+    return { ok: true, episodes: items }
+  }
+  return { ok: false, error: r1.error || r2.error || r3.error || '获取剧集失败' }
 }
 
 export async function jellyfinGetStreamUrl(
   server: JellyfinServerConfig,
   itemId: string,
 ): Promise<{ ok: boolean; url?: string; error?: string }> {
+  if (!itemId) return { ok: false, error: 'Invalid item ID' }
   const info = await jellyfinFetch<JellyfinPlaybackInfo>(
     server,
     `/Videos/${itemId}/PlaybackInfo?UserId=${server.userId}&StartTimeMs=0&IsPlayback=false&AutoOpenLiveStream=false`,
   )
-  if (!info.ok || !info.data?.MediaSources?.length) {
-    return { ok: false, error: info.error || 'No playback info' }
+  if (info.ok && info.data?.MediaSources?.length) {
+    const source = info.data.MediaSources[0]
+    if (source.DirectStreamUrl) {
+      const url = source.DirectStreamUrl.includes('?')
+        ? `${source.DirectStreamUrl}&api_key=${server.accessToken}`
+        : `${source.DirectStreamUrl}?api_key=${server.accessToken}`
+      return { ok: true, url }
+    }
   }
-  const source = info.data.MediaSources[0]
-  if (source.DirectStreamUrl) {
-    const url = source.DirectStreamUrl.includes('?')
-      ? `${source.DirectStreamUrl}&api_key=${server.accessToken}`
-      : `${source.DirectStreamUrl}?api_key=${server.accessToken}`
-    return { ok: true, url }
-  }
-  const streamUrl = `${server.url}/Videos/${itemId}/stream.mp4?api_key=${server.accessToken}`
+  const streamUrl = `${server.url}/Videos/${itemId}/stream.mp4?api_key=${server.accessToken}&Static=true`
   return { ok: true, url: streamUrl }
 }
 

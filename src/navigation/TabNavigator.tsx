@@ -41,6 +41,7 @@ export default function TabNavigator() {
   return (
     <NavigationContainer>
       <Tab.Navigator
+        backBehavior="none"
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarShowLabel: !hideTabLabels,

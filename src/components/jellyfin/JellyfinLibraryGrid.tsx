@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Dimensions } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native'
 import type { JellyfinLibrary, JellyfinServerConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
 import JellyfinPoster from './JellyfinPoster'
@@ -13,6 +13,7 @@ interface Props {
 
 export default function JellyfinLibraryGrid({ server, libraries, onLibraryPress }: Props) {
   const t = useTheme()
+  if (!server) return null
   const data = libraries.filter((l) => l.ItemId)
   if (data.length === 0) return null
 
@@ -30,8 +31,10 @@ export default function JellyfinLibraryGrid({ server, libraries, onLibraryPress 
             <JellyfinPoster
               server={server}
               itemId={lib.ItemId}
+              imageTags={lib.ImageTags}
               imageType="Primary"
-              size="medium"
+              width={CARD_W}
+              aspectRatio={16 / 9}
               style={styles.poster}
             />
             <View style={styles.labelWrap}>
@@ -57,8 +60,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   poster: {
-    width: CARD_W,
-    height: CARD_W * 0.56,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
   },

@@ -21,14 +21,14 @@ export function apiFetch<T>(
         try { xhr.setRequestHeader(k, reqHeaders[k]) } catch {}
       })
 
-      xhr.ontimeout = () => resolve({ ok: false, error: '请求超时 (15秒)' })
-      xhr.onerror = () => resolve({ ok: false, error: xhr.statusText || '网络错误' })
+      xhr.ontimeout = () => resolve({ ok: false, error: `请求超时: ${url}` })
+      xhr.onerror = () => resolve({ ok: false, error: `网络错误 ${xhr.status}: ${url}` })
       xhr.onabort = () => resolve({ ok: false, error: '请求已取消' })
       xhr.onload = () => {
         const text = xhr.responseText
         if (xhr.status < 200 || xhr.status >= 300) {
-          const body = text ? text.slice(0, 300) : ''
-          resolve({ ok: false, error: `${xhr.status} ${xhr.statusText}${body ? `: ${body}` : ''}` })
+          const st = xhr.statusText || ''
+          resolve({ ok: false, error: `${xhr.status}${st ? ` ${st}` : ''} ${url}` })
           return
         }
         try {
