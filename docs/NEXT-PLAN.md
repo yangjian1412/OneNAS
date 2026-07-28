@@ -53,6 +53,37 @@
 
 ---
 
+## 当前问题（2026-07-28）— 优先修复
+
+### 1. 季列表只显示特别篇
+
+**表现**：季列表只展示了 `IndexNumber=0` 的 Season（特别篇），第 1 季、第 2 季等正常季不显示。
+
+**疑因**：
+- `/Seasons` 端点传了 `isSpecialSeason=true` 参数，可能限制了仅返回特别篇
+- 或 `filter(s => s.Type === 'Season')` 过滤掉了无 Type 字段的正常季
+
+**待检查**：
+- `jellyfinGetSeasons` 中的 API 参数与过滤条件
+- 是否需要去掉 `isSpecialSeason` 参数改用 `IncludeItemTypes=Season`
+- 确认服务端返回数据结构
+
+### 2. 返回键始终回到 Tab1
+
+**表现**：无论当前在哪个层级（详情页、季列表、剧集列表），按返回键都直接跳到 Tab1（文件），没有逐层返回。
+
+**疑因**：
+- `handleHardwareBack` 中 `viewRef.current` 取值可能是 stale closure
+- `goBack` 函数未被正确调用
+- TabNavigator `backBehavior="none"` 生效了但 JellyfinScreen 自己的 BackHandler 没拦截住
+
+**待检查**：
+- 确认 `BackHandler.addEventListener` 的返回事件是否被 JellyfinScreen 消费
+- 检查 `view` 状态机中的 `goBack` 实现
+- 可能需要在 ServiceScreen 层也注册 BackHandler，优先给 JellyfinScreen 消费
+
+---
+
 ## 待开发功能（按优先级）
 
 ### ② 下载管理中打开文件

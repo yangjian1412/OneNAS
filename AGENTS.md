@@ -2,12 +2,6 @@
 
 Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code.
 
-## Remaining Issues (2026-07-28)
-
-1. **季列表只显示特别篇** — 季下拉 API 返回的数据中，只有 IndexNumber=0 的 Season（特别篇）能正确显示，第 1 季、第 2 季等正常季不展示。怀疑是 `/Seasons` 端点的 `isSpecialSeason=true` 限制了非特别篇，或 filter 逻辑过滤了正常季。请检查 `jellyfinGetSeasons` 中的参数与过滤条件，确保能获取并展示全部季。
-
-2. **返回键行为** — 无论当前在哪个层级（季列表、剧集列表、媒体详情），按返回键（Back）都直接回到 Tab1（文件），没有逐层返回。TabNavigator 已设置 `backBehavior="none"`，JellyfinScreen 的 `BackHandler.addEventListener` 已注册，但层级返回逻辑仍未正确触发。需检查 `handleHardwareBack` 中的 `viewRef.current` 取值是否正确，以及 `goBack` 函数是否被实际执行。
-
 ## Project context
 
 - Android-only React Native app (Expo SDK 57 + RN 0.86)
