@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet } from 'react-native'
 import { useAppStore } from '@/stores/appStore'
 import ServiceCard from '@/components/ServiceCard'
+import JellyfinScreen from './JellyfinScreen'
 import Icon from '@/components/Icon'
 import { SERVICE_TYPE_ICONS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
@@ -22,6 +23,10 @@ export default function ServiceScreen({ serviceId }: Props) {
         <Text style={[styles.emptySub, { color: t.textMuted }]}>请到设置 → 标签设置 为当前标签分配一个服务</Text>
       </View>
     )
+  }
+
+  if (service.type === 'jellyfin') {
+    return <JellyfinScreen service={service} />
   }
 
   return <ServiceCard service={service} />

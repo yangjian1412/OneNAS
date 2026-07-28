@@ -65,6 +65,36 @@ export default function ConfigModal({
     }
   }, [visible, type, server, service])
 
+  const handleClear = () => {
+    setUsername('')
+    setPassword('')
+    setApiKey('')
+    setUrl('')
+    setAuthType('none')
+    setName('')
+    setHost('')
+    setPort('443')
+    setProtocol('https')
+    if (!isServerType) {
+      onSaveService({
+        id: service?.id ?? '',
+        name: service?.name ?? '',
+        type,
+        url: '',
+        category: service?.category ?? 'tools',
+        showInTopBar: service?.showInTopBar ?? false,
+        tabAssignment: service?.tabAssignment ?? 'none',
+        sortOrder: service?.sortOrder ?? 0,
+        enabled: true,
+        authType: 'none',
+        username: undefined,
+        password: undefined,
+        apiKey: undefined,
+      })
+    }
+    onClose()
+  }
+
   const handleTestLocal = async () => {
     setTesting(true)
     try {
@@ -130,7 +160,7 @@ export default function ConfigModal({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        <View style={styles.overlay}>
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
           <View style={[styles.sheet, { backgroundColor: t.bg }]}>
             <View style={[styles.handleRow, { borderBottomColor: t.border }]}>
               <TouchableOpacity onPress={onClose}>
@@ -197,11 +227,31 @@ export default function ConfigModal({
               </>
             ) : isAppType ? (
               <>
-                <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>URL (optional, for browser fallback)</Text>
-                <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-                  placeholder="https://..." placeholderTextColor={t.textMuted}
-                  value={url} onChangeText={setUrl} />
+                {type === 'jellyfin' ? (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="http://..." placeholderTextColor={t.textMuted}
+                      value={url} onChangeText={setUrl} />
 
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Username</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="Username" placeholderTextColor={t.textMuted}
+                      value={username} onChangeText={setUsername} />
+
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Password</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="Password" secureTextEntry placeholderTextColor={t.textMuted}
+                      value={password} onChangeText={setPassword} />
+                  </>
+                ) : (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>URL (optional, for browser fallback)</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="https://..." placeholderTextColor={t.textMuted}
+                      value={url} onChangeText={setUrl} />
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -253,15 +303,15 @@ export default function ConfigModal({
               </TouchableOpacity>}
 
               {(server || service) && (
-                <TouchableOpacity onPress={onDelete}>
+                <TouchableOpacity onPress={isServerType ? onDelete : handleClear}>
                   <Text style={[styles.deleteBtn, { color: t.danger }]}>Remove Config</Text>
                 </TouchableOpacity>
               )}
             </View>
           </ScrollView>
         </View>
-      </View>
-      </KeyboardAvoidingView>
+      </TouchableOpacity>
+    </KeyboardAvoidingView>
     </Modal>
   )
 }

@@ -16,6 +16,7 @@ import { buildUrl } from '@/lib/api/client'
 import { checkStoragePermission, openAllFilesSettings, enqueueDownload, cancelDownload, removeDownload, pollTaskProgress } from '@/lib/downloadManager'
 import { getFileCategory } from '@/lib/fileTypes'
 import FilePreviewModal from '@/components/FilePreviewModal'
+import JellyfinScreen from '@/screens/JellyfinScreen'
 
 type EditMode = 'folder' | 'rename' | 'copy' | 'move' | null
 type ViewMode = 'list' | 'grid'
@@ -721,7 +722,11 @@ export default function FileScreen() {
       <Modal visible={!!activeService} animationType="slide" onRequestClose={() => setActiveService(null)}>
         <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}><Text style={[styles.modalTitle, { color: t.text }]}>{activeService?.name ?? ''}</Text><TouchableOpacity onPress={() => setActiveService(null)}><Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text></TouchableOpacity></View>
-          {activeService && <ServiceCard service={activeService} />}
+          {activeService?.type === 'jellyfin' ? (
+            <JellyfinScreen service={activeService} />
+          ) : (
+            activeService && <ServiceCard service={activeService} />
+          )}
         </View>
       </Modal>
 

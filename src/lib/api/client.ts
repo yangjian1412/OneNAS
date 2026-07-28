@@ -6,29 +6,44 @@ export interface ApiResult<T> {
 
 const TIMEOUT_MS = 15000
 
-async function timeoutSignal(): Promise<AbortSignal> {
-  const controller = new AbortController()
-  setTimeout(() => controller.abort(), TIMEOUT_MS)
-  return controller.signal
-}
-
-async function apiFetch<T>(
+export function apiFetch<T>(
   url: string,
   options: RequestInit = {},
 ): Promise<ApiResult<T>> {
-  try {
-    const signal = await timeoutSignal()
-    const response = await fetch(url, { ...options, signal })
-    const text = await response.text()
-    if (!response.ok) {
-      const body = text ? text.slice(0, 300) : ''
-      return { ok: false, error: `${response.status} ${response.statusText}${body ? `: ${body}` : ''}` }
+  return new Promise((resolve) => {
+    try {
+      const xhr = new XMLHttpRequest()
+      xhr.timeout = TIMEOUT_MS
+      xhr.open(options.method || 'GET', url, true)
+
+      const reqHeaders = (options.headers || {}) as Record<string, string>
+      Object.keys(reqHeaders).forEach((k) => {
+        try { xhr.setRequestHeader(k, reqHeaders[k]) } catch {}
+      })
+
+      xhr.ontimeout = () => resolve({ ok: false, error: '请求超时 (15秒)' })
+      xhr.onerror = () => resolve({ ok: false, error: xhr.statusText || '网络错误' })
+      xhr.onabort = () => resolve({ ok: false, error: '请求已取消' })
+      xhr.onload = () => {
+        const text = xhr.responseText
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const body = text ? text.slice(0, 300) : ''
+          resolve({ ok: false, error: `${xhr.status} ${xhr.statusText}${body ? `: ${body}` : ''}` })
+          return
+        }
+        try {
+          const data = text ? JSON.parse(text) : null
+          resolve({ ok: true, data })
+        } catch (err: any) {
+          resolve({ ok: false, error: err.message || 'JSON 解析失败' })
+        }
+      }
+
+      xhr.send(options.body as any)
+    } catch (err: any) {
+      resolve({ ok: false, error: err.message || 'Network error' })
     }
-    const data = text ? JSON.parse(text) : null
-    return { ok: true, data }
-  } catch (err: any) {
-    return { ok: false, error: err.message || 'Network error' }
-  }
+  })
 }
 
 export async function apiGraphQL<T>(

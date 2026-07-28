@@ -7,5 +7,6 @@
       "@/*": ["./src/*"]
     },
     "ignoreDeprecations": "6.0"
-  }
+  },
+  "exclude": ["ref-src", "node_modules"]
 }

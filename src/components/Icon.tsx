@@ -48,6 +48,15 @@ import BoxesSvg from '@/icos/lucide--boxes.svg'
 import MonitorSvg from '@/icos/lucide--monitor.svg'
 import GitBranchSvg from '@/icos/lucide--git-branch.svg'
 
+import ChevronLeftSvg from '@/icos/chevron-left.svg'
+import ChevronRightSvg from '@/icos/chevron-right.svg'
+import AlertCircleSvg from '@/icos/alert-circle.svg'
+import FilmSvg from '@/icos/film.svg'
+import PlayCircleSvg from '@/icos/play-circle.svg'
+import XSvg from '@/icos/x.svg'
+import PauseSvg from '@/icos/pause.svg'
+import MenuSvg from '@/icos/flowbite--bars-from-left-outline.svg'
+
 type SvgComponent = React.ComponentType<{ width?: number; height?: number; fill?: string; color?: string; size?: number; style?: any }>
 
 const SVG_COMPONENTS = {
@@ -97,6 +106,15 @@ const SVG_COMPONENTS = {
   boxes: BoxesSvg,
   monitor: MonitorSvg,
   gitBranch: GitBranchSvg,
+
+  chevronLeft: ChevronLeftSvg,
+  chevronRight: ChevronRightSvg,
+  alertCircle: AlertCircleSvg,
+  film: FilmSvg,
+  playCircle: PlayCircleSvg,
+  x: XSvg,
+  pause: PauseSvg,
+  menu: MenuSvg,
 } as const
 
 export type IconName = keyof typeof SVG_COMPONENTS
@@ -107,6 +125,8 @@ const MONO_ICONS: ReadonlySet<IconName> = new Set<IconName>([
   'folderNew', 'upload', 'sortArrow', 'folderEmpty', 'folderContent',
   'downloadRounded', 'shareManage',
   'cpu', 'memory', 'server', 'database', 'serverCog', 'boxes', 'monitor', 'gitBranch',
+  'chevronLeft', 'chevronRight', 'alertCircle', 'film', 'playCircle',
+  'x', 'pause', 'menu',
 ])
 
 interface Props {

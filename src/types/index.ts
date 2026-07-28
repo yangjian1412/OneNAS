@@ -141,3 +141,70 @@ export interface DownloadTask {
   url: string
   progress: DownloadProgress
 }
+
+// ─── Jellyfin ───────────────────────────────────────────────────────────────
+
+export interface JellyfinUser {
+  Id: string
+  Name: string
+}
+
+export interface JellyfinServerConfig {
+  id: string
+  name: string
+  url: string
+  username: string
+  password: string
+  userId?: string
+  accessToken?: string
+  userName?: string
+}
+
+export interface JellyfinLibrary {
+  Name: string
+  ItemId: string
+  PrimaryImageItemId?: string
+  CollectionType?: string
+}
+
+export interface JellyfinItem {
+  Id: string
+  Name: string
+  Type: 'Movie' | 'Series' | 'Season' | 'Episode' | 'Audio' | 'MusicAlbum' | 'MusicArtist'
+  ParentId?: string
+  SeriesName?: string
+  SeasonNumber?: number
+  IndexNumber?: number
+  ImageTags?: Record<string, string>
+  BackdropImageTags?: string[]
+  Overview?: string
+  ProductionYear?: number
+  Genres?: string[]
+  CommunityRating?: number
+  OfficialRating?: string
+  RunTimeTicks?: number
+  CollectionType?: string
+  UserData?: {
+    Played: boolean
+    PlaybackPositionTicks?: number
+    TotalRuntimeTicks?: number
+  }
+}
+
+export interface JellyfinSeason {
+  Id: string
+  Name: string
+  SeasonNumber: number
+  SeriesId: string
+  ImageTags?: Record<string, string>
+}
+
+export interface JellyfinPlaybackInfo {
+  MediaSources: Array<{
+    Id: string
+    Path: string
+    DirectStreamUrl: string
+    SupportsDirectStream: boolean
+    SupportsDirectPlay: boolean
+  }>
+}
