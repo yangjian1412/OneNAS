@@ -61,6 +61,11 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const controlsVisibleRef = useRef(true)
   const isLandscapeRef = useRef(false)
   const durationMsRef = useRef(0)
+  const fastScrubSideRef = useRef<'left' | 'right' | null>(null)
+  const fastScrubStoppedRef = useRef(false)
+  const startBrightnessRef = useRef(1)
+  const startVolumeRatioRef = useRef(1)
+  const brightnessVolumeRangePx = SCREEN_H * 0.4
 
   const [isReady, setIsReady] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -104,6 +109,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   controlsVisibleRef.current = controlsVisible
   isLandscapeRef.current = isLandscape
   durationMsRef.current = durationMs
+  fastScrubSideRef.current = fastScrubSide
 
   const hideControls = useCallback(() => {
     Animated.timing(controlsOpacity, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => {
@@ -115,10 +121,10 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     setControlsVisible(true)
     Animated.timing(controlsOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start()
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
-    if (isPlaying && !seeking && !fastScrubSide) {
+    if (isPlaying && !seeking && !fastScrubSideRef.current) {
       hideTimerRef.current = setTimeout(hideControls, HIDE_CONTROLS_MS)
     }
-  }, [controlsOpacity, isPlaying, seeking, fastScrubSide, hideControls])
+  }, [controlsOpacity, isPlaying, seeking, hideControls])
 
   // Auto-hide when playing and no special state
   useEffect(() => {
@@ -468,6 +474,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const startFastScrub = useCallback((side: 'left' | 'right') => {
     const player = playerRef.current
     if (!player) return
+    fastScrubStoppedRef.current = false
     savedPlaybackRateRef.current = player.playbackRate || playbackRate
     if (side === 'right') {
       player.playbackRate = FAST_SCRUB_PLAYBACK_RATE
@@ -490,6 +497,8 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   }, [playbackRate, fastScrubOpacity, showControls])
 
   const stopFastScrub = useCallback(() => {
+    if (fastScrubStoppedRef.current) return
+    fastScrubStoppedRef.current = true
     const player = playerRef.current
     if (fastScrubIntervalRef.current) {
       clearTimeout(fastScrubIntervalRef.current)
@@ -503,7 +512,8 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
         setFastScrubSide(null)
       })
     }
-  }, [fastScrubOpacity, fastScrubSide])
+    hideControls()
+  }, [fastScrubOpacity, fastScrubSide, hideControls])
 
   // --- Composed gesture (RNGH) ---
   const videoWidth = isLandscape ? SCREEN_H : SCREEN_W
@@ -516,7 +526,15 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       .minDistance(8)
       .runOnJS(true)
       .onBegin((e) => {
-        // Determine gesture type by initial direction (1st 30px of movement)
+        void (async () => {
+          try {
+            startBrightnessRef.current = await Brightness.getBrightnessAsync()
+          } catch {}
+          try {
+            const [cur, max] = await Promise.all([getSystemCurrentVolume(), getSystemMaxVolume()])
+            startVolumeRatioRef.current = max > 0 ? cur / max : 0
+          } catch {}
+        })()
       })
       .onUpdate((e) => {
         const absDx = Math.abs(e.translationX)
@@ -525,27 +543,30 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
           // Horizontal: seek (1 screen = 60s)
           const seekDeltaMs = (e.translationX / SCREEN_W) * HORIZONTAL_SEEK_FULL_SCREEN_MS
           const basePos = playerRef.current?.currentTime ? playerRef.current.currentTime * 1000 : 0
-          // Calculate target based on the saved start position
           if (horizontalSeekBaseRef.current === null && playerRef.current) {
-            // first update — set base
             horizontalSeekBaseRef.current = playerRef.current.currentTime * 1000
           }
           const base = horizontalSeekBaseRef.current ?? basePos
           const target = Math.max(0, Math.min(durationMsRef.current - 500, base + seekDeltaMs))
           setHorizontalSeekDeltaMs(seekDeltaMs)
-          if (playerRef.current) playerRef.current.currentTime = target / 1000
+          if (playerRef.current) {
+            playerRef.current.currentTime = target / 1000
+            setPositionMs(target)
+          }
         } else if (absDy > 10) {
           // Vertical
           const xRatio = e.x / videoWidth
           if (xRatio < EDGE_ZONE_PCT) {
-            // Brightness (up = brighter)
-            const ratio = Math.max(0, Math.min(1, 1 - e.translationY / SCREEN_H))
+            // Brightness (up = brighter), relative to start
+            const delta = -(e.translationY / brightnessVolumeRangePx)
+            const ratio = Math.max(0, Math.min(1, startBrightnessRef.current + delta))
             void Brightness.setBrightnessAsync(ratio)
             setBrightnessPct(ratio)
             showOverlay(`亮度 ${Math.round(ratio * 100)}%`, ratio)
           } else if (xRatio > 1 - EDGE_ZONE_PCT) {
-            // Volume (up = louder)
-            const ratio = Math.max(0, Math.min(1, 1 - e.translationY / SCREEN_H))
+            // Volume (up = louder), relative to start
+            const delta = -(e.translationY / brightnessVolumeRangePx)
+            const ratio = Math.max(0, Math.min(1, startVolumeRatioRef.current + delta))
             void setSystemVolume(ratio)
             setVolumePct(ratio)
             showOverlay(`音量 ${Math.round(ratio * 100)}%`, ratio)
@@ -841,6 +862,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
         currentSpeed={playbackRate}
         player={playerRef.current}
         onClose={() => setSpeedSheetVisible(false)}
+        onSelectSpeed={(s) => { setPlaybackRate(s); if (playerRef.current) playerRef.current.playbackRate = s }}
       />
       </GestureHandlerRootView>
     </Modal>

@@ -11,6 +11,7 @@ interface Props {
   currentSpeed: number
   player: VideoPlayer | null
   onClose: () => void
+  onSelectSpeed?: (speed: number) => void
 }
 
 export default function PlayerSpeedSheet({ visible, currentSpeed, player, onClose }: Props) {
@@ -31,6 +32,7 @@ export default function PlayerSpeedSheet({ visible, currentSpeed, player, onClos
 
   const pick = (speed: number) => {
     if (player) player.playbackRate = speed
+    onSelectSpeed?.(speed)
     handleClose()
   }
 
