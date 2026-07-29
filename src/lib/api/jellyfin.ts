@@ -150,7 +150,7 @@ export async function jellyfinGetResumeItems(
 ): Promise<{ ok: boolean; items?: JellyfinItem[]; error?: string }> {
   const result = await jellyfinFetch<{ Items?: JellyfinItem[] }>(
     server,
-    `/Users/${server.userId}/Items/Resume?limit=${limit}&fields=PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,Overview,BackdropImageTags,ImageTags`,
+    `/Users/${server.userId}/Items/Resume?limit=${limit}&fields=PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,Overview,BackdropImageTags,ImageTags,SeriesPrimaryImageTag,SeriesThumbImageTag,SeriesBackdropImageTag,RunTimeTicks,ChildCount`,
   )
   if (!result.ok) return { ok: false, error: result.error }
   return { ok: true, items: result.data?.Items ?? [] }

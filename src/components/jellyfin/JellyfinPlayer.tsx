@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { View, Text, TouchableOpacity, Modal, StyleSheet, Dimensions, ActivityIndicator, Platform, StatusBar, Animated, Alert } from 'react-native'
 import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video'
 import * as ScreenOrientation from 'expo-screen-orientation'
+import type { Orientation } from 'expo-screen-orientation'
 import * as Brightness from 'expo-brightness'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import type { JellyfinItem, JellyfinServerConfig, JellyfinMediaStream, PlaybackReportMethod } from '@/types'
 import { useTheme } from '@/lib/theme'
 import {
@@ -54,6 +55,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const reportedStoppedRef = useRef(false)
   const initialBrightnessRef = useRef<number | null>(null)
   const initialVolumeRatioRef = useRef<number | null>(null)
+  const initialOrientationRef = useRef<Orientation | null>(null)
   const fastScrubIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const savedPlaybackRateRef = useRef<number>(1)
   const controlsVisibleRef = useRef(true)
@@ -221,7 +223,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     }
   }, [visible, handleCloseInternal])
 
-  // Capture initial brightness/volume when player opens; restore on close.
+  // Capture initial brightness/volume/orientation when player opens; restore on close.
   useEffect(() => {
     if (!visible) return
     let cancelled = false
@@ -236,6 +238,10 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
           initialVolumeRatioRef.current = max > 0 ? cur / max : 0
         }
       } catch {}
+      try {
+        const ori = await ScreenOrientation.getOrientationAsync()
+        if (!cancelled) initialOrientationRef.current = ori
+      } catch {}
     })()
     return () => {
       cancelled = true
@@ -246,16 +252,14 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       if (initialVolumeRatioRef.current != null) {
         void setSystemVolume(initialVolumeRatioRef.current).catch(() => {})
       }
-      // Reset to default layout when leaving
-      if (prefs.landscapeByDefault) {
-        void ScreenOrientation.unlockAsync().catch(() => {})
-      }
+      // Always unlock orientation (will fall back to default which matches app startup)
+      void ScreenOrientation.unlockAsync().catch(() => {})
       if (progressTimerRef.current) clearInterval(progressTimerRef.current)
       if (pingTimerRef.current) clearInterval(pingTimerRef.current)
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
       if (fastScrubIntervalRef.current) clearInterval(fastScrubIntervalRef.current)
     }
-  }, [visible, prefs.landscapeByDefault])
+  }, [visible])
 
   const toggleLandscape = useCallback(async () => {
     try {
@@ -274,6 +278,9 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const player = useVideoPlayer({ uri: url }, (p) => {
     playerRef.current = p
     p.playbackRate = prefs.defaultPlaybackSpeed
+    if (!prefs.resumeLastPosition || !item.UserData?.PlaybackPositionTicks) {
+      try { p.play() } catch {}
+    }
   })
 
   useEffect(() => {
@@ -297,11 +304,11 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       setDurationMs(dur)
       durationMsRef.current = dur
       if (prefs.resumeLastPosition && item.UserData?.PlaybackPositionTicks && player.currentTime < 1) {
-        const resumeMs = item.UserData.PlaybackPositionTicks / 10000
-        p_seekTo(resumeMs)
-      }
-      // Auto-play after source is ready
-      try { player.play() } catch {}
+    const resumeMs = item.UserData.PlaybackPositionTicks / 10000
+    p_seekTo(resumeMs)
+    setPositionMs(resumeMs)
+  }
+  try { player.play() } catch {}
     })
     const subTime = player.addListener('timeUpdate', ({ currentTime }) => {
       setPositionMs(currentTime * 1000)
@@ -502,53 +509,6 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const videoWidth = isLandscape ? SCREEN_H : SCREEN_W
   const videoHeight = isLandscape ? SCREEN_W : SCREEN_H
 
-  const tapGesture = useMemo(() =>
-    Gesture.Tap()
-      .numberOfTaps(1)
-      .maxDuration(250)
-      .runOnJS(true)
-      .onEnd(() => {
-        if (controlsVisibleRef.current) {
-          hideControls()
-        } else {
-          showControls()
-        }
-      }),
-    [hideControls, showControls],
-  )
-
-  const doubleTapGesture = useMemo(() =>
-    Gesture.Tap()
-      .numberOfTaps(2)
-      .maxDelay(DOUBLE_TAP_MAX_MS)
-      .runOnJS(true)
-      .onEnd((e) => {
-        const xRatio = e.x / videoWidth
-        if (xRatio < EDGE_ZONE_PCT) {
-          seekBy(-prefs.doubleTapBackMs)
-        } else if (xRatio > 1 - EDGE_ZONE_PCT) {
-          seekBy(prefs.doubleTapForwardMs)
-        } else {
-          togglePlay()
-        }
-      }),
-    [videoWidth, prefs.doubleTapBackMs, prefs.doubleTapForwardMs, seekBy, togglePlay],
-  )
-
-  const longPressGesture = useMemo(() =>
-    Gesture.LongPress()
-      .minDuration(LONG_PRESS_MS)
-      .runOnJS(true)
-      .onStart((e) => {
-        const xRatio = e.x / videoWidth
-        if (xRatio < EDGE_ZONE_PCT) startFastScrub('left')
-        else if (xRatio > 1 - EDGE_ZONE_PCT) startFastScrub('right')
-      })
-      .onEnd(() => stopFastScrub())
-      .onFinalize(() => stopFastScrub()),
-    [videoWidth, startFastScrub, stopFastScrub],
-  )
-
   const horizontalSeekBaseRef = useRef<number | null>(null)
 
   const panGesture = useMemo(() =>
@@ -566,7 +526,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
           const seekDeltaMs = (e.translationX / SCREEN_W) * HORIZONTAL_SEEK_FULL_SCREEN_MS
           const basePos = playerRef.current?.currentTime ? playerRef.current.currentTime * 1000 : 0
           // Calculate target based on the saved start position
-          if (horizontalSeekDeltaMs === null && playerRef.current) {
+          if (horizontalSeekBaseRef.current === null && playerRef.current) {
             // first update — set base
             horizontalSeekBaseRef.current = playerRef.current.currentTime * 1000
           }
@@ -608,14 +568,61 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     [videoWidth, showOverlay, reportProgressNow],
   )
 
-  // Compose: long press + double tap + single tap + pan
-  const composedGesture = useMemo(() =>
-    Gesture.Race(
-      Gesture.Race(longPressGesture, panGesture),
-      Gesture.Exclusive(doubleTapGesture, tapGesture),
-    ),
-    [longPressGesture, panGesture, doubleTapGesture, tapGesture],
-  )
+  // Stable gesture composition using refs (so gestures don't recreate on state changes)
+  const toggleControls = useCallback(() => {
+    if (controlsVisibleRef.current) {
+      hideControls()
+    } else {
+      showControls()
+    }
+  }, [hideControls, showControls])
+
+  const handleDoubleTapEnd = useCallback((e: { x: number }) => {
+    const w = isLandscapeRef.current ? SCREEN_H : SCREEN_W
+    const xRatio = e.x / w
+    if (xRatio < EDGE_ZONE_PCT) {
+      seekBy(-prefs.doubleTapBackMs)
+    } else if (xRatio > 1 - EDGE_ZONE_PCT) {
+      seekBy(prefs.doubleTapForwardMs)
+    } else {
+      togglePlay()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekBy, togglePlay, prefs.doubleTapBackMs, prefs.doubleTapForwardMs])
+
+  const handleLongPressStart = useCallback((e: { x: number }) => {
+    const w = isLandscapeRef.current ? SCREEN_H : SCREEN_W
+    const xRatio = e.x / w
+    if (xRatio < EDGE_ZONE_PCT) startFastScrub('left')
+    else if (xRatio > 1 - EDGE_ZONE_PCT) startFastScrub('right')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startFastScrub])
+
+  const composedGesture = useMemo(() => {
+    const tap = Gesture.Tap()
+      .numberOfTaps(1)
+      .maxDuration(250)
+      .runOnJS(true)
+      .onEnd(toggleControls)
+
+    const doubleTap = Gesture.Tap()
+      .numberOfTaps(2)
+      .maxDelay(DOUBLE_TAP_MAX_MS)
+      .runOnJS(true)
+      .onEnd(handleDoubleTapEnd)
+
+    const longPress = Gesture.LongPress()
+      .minDuration(LONG_PRESS_MS)
+      .runOnJS(true)
+      .onStart(handleLongPressStart)
+      .onEnd(stopFastScrub)
+      .onFinalize(stopFastScrub)
+
+    const pan = panGesture
+
+    return Gesture.Race(Gesture.Exclusive(doubleTap, tap), longPress, pan)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toggleControls, handleDoubleTapEnd, handleLongPressStart, stopFastScrub, panGesture])
 
   const progressPct = durationMs > 0 ? Math.min(100, (positionMs / durationMs) * 100) : 0
 
@@ -652,6 +659,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
 
   return (
     <Modal visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <GestureHandlerRootView style={styles.container}>
       <View style={[styles.container, { backgroundColor: '#000' }]}>
         <GestureDetector gesture={composedGesture}>
           <View style={[styles.videoTouch, { width: videoWidth, height: videoHeight }]}>
@@ -834,6 +842,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
         player={playerRef.current}
         onClose={() => setSpeedSheetVisible(false)}
       />
+      </GestureHandlerRootView>
     </Modal>
   )
 }

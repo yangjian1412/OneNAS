@@ -14,9 +14,20 @@ export default function JellyfinItemCard({ server, item, direction, onPress }: P
   const t = useTheme()
   if (!server) return null
   const isHorizontal = direction === 'horizontal'
-  const pct = item.UserData?.PlaybackPositionTicks && item.UserData?.TotalRuntimeTicks
-    ? Math.round((item.UserData.PlaybackPositionTicks / item.UserData.TotalRuntimeTicks) * 100)
+  const posTicks = item.UserData?.PlaybackPositionTicks
+  const totalTicks = item.UserData?.TotalRuntimeTicks || item.RunTimeTicks
+  const pct = posTicks && totalTicks
+    ? Math.round((posTicks / totalTicks) * 100)
     : 0
+
+  // For episodes, prefer series-level images when item has none
+  const isEpisode = item.Type === 'Episode'
+  const fallbackId = (isEpisode && item.SeriesId) || item.Id
+  const primaryImageTags = isEpisode && !item.ImageTags?.Primary && item.SeriesPrimaryImageTag
+    ? { Primary: item.SeriesPrimaryImageTag }
+    : item.ImageTags
+  const backdropTag = item.BackdropImageTags?.[0]
+    || (isEpisode ? item.SeriesBackdropImageTag : undefined)
 
   return (
     <TouchableOpacity
@@ -29,9 +40,9 @@ export default function JellyfinItemCard({ server, item, direction, onPress }: P
           <View style={[styles.hPosterWrap, { borderRadius: 8 }]}>
             <JellyfinPoster
               server={server}
-              itemId={item.Id}
-              imageTags={item.ImageTags}
-              backdropTag={item.BackdropImageTags?.[0]}
+              itemId={fallbackId}
+              imageTags={primaryImageTags}
+              backdropTag={backdropTag}
               imageType="Backdrop"
               width={240}
             />
@@ -50,9 +61,9 @@ export default function JellyfinItemCard({ server, item, direction, onPress }: P
         <>
           <JellyfinPoster
             server={server}
-            itemId={item.Id}
-            imageTags={item.ImageTags}
-            backdropTag={item.BackdropImageTags?.[0]}
+            itemId={fallbackId}
+            imageTags={primaryImageTags}
+            backdropTag={backdropTag}
             imageType="Primary"
           />
           <Text style={[styles.vTitle, { color: t.text }]} numberOfLines={2}>{item.Name}</Text>

@@ -181,6 +181,9 @@ export interface JellyfinItem {
   IndexNumber?: number
   ImageTags?: Record<string, string>
   BackdropImageTags?: string[]
+  SeriesPrimaryImageTag?: string
+  SeriesThumbImageTag?: string
+  SeriesBackdropImageTag?: string
   Overview?: string
   ProductionYear?: number
   Genres?: string[]
