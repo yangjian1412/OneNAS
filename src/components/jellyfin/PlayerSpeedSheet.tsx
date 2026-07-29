@@ -14,7 +14,7 @@ interface Props {
   onSelectSpeed?: (speed: number) => void
 }
 
-export default function PlayerSpeedSheet({ visible, currentSpeed, player, onClose }: Props) {
+export default function PlayerSpeedSheet({ visible, currentSpeed, player, onClose, onSelectSpeed }: Props) {
   const t = useTheme()
   const translateY = useRef(new Animated.Value(300)).current
 

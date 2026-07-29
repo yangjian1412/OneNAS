@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Dimensions } from 'react-native'
 import type { JellyfinItem, JellyfinServerConfig } from '@/types'
 import { jellyfinGetItem, jellyfinGetSeasons, jellyfinGetImageUrl } from '@/lib/api/jellyfin'
+import { getCached, setCached } from '@/lib/api/jellyfinCache'
 import { useTheme } from '@/lib/theme'
 import JellyfinPoster from './JellyfinPoster'
 import Icon from '@/components/Icon'
@@ -39,14 +40,24 @@ export default function JellyfinItemDetail({ server, item, onPlay, onSeasonPress
     setSeasonError(null)
     const run = async () => {
       setLoading(true)
+
+      const detailCacheKey = `itemDetail:${item.Id}`
+      const cachedDetail = await getCached<JellyfinItem>(detailCacheKey)
+      if (cachedDetail) setDetail(cachedDetail)
+
+      const seasonsCacheKey = `seasons:${item.Id}`
+      const cachedSeasons = await getCached<any[]>(seasonsCacheKey)
+      if (cachedSeasons) { setSeasons(cachedSeasons); if (cachedDetail) setLoading(false) }
+
       const itemRes = await jellyfinGetItem(server, item.Id)
       if (cancelled) return
-      if (itemRes.ok && itemRes.item) setDetail(itemRes.item)
+      if (itemRes.ok && itemRes.item) { setDetail(itemRes.item); await setCached(detailCacheKey, itemRes.item, 300000) }
       if (item.Type === 'Series' && itemRes.ok) {
         const seasonsRes = await jellyfinGetSeasons(server, item.Id)
         if (cancelled) return
         if (seasonsRes.ok) {
           setSeasons(seasonsRes.seasons ?? [])
+          await setCached(seasonsCacheKey, seasonsRes.seasons ?? [], 300000)
           setSeasonError(null)
         } else {
           setSeasonError(seasonsRes.error || '未知错误')

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, 
 import { useJellyfinStore } from '@/stores/jellyfinStore'
 import { useJellyfinPlaybackStore } from '@/stores/jellyfinPlaybackStore'
 import { flushQueue, startAutoFlush, stopAutoFlush } from '@/lib/api/jellyfinPlaybackQueue'
+import { getCached, setCached, clearJellyfinCache } from '@/lib/api/jellyfinCache'
 import {
   jellyfinLogin,
   jellyfinGetLibraries,
@@ -86,14 +87,23 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     setServer(result.server)
     setUser({ Id: result.server.userId!, Name: result.server.userName! })
 
+    // Show cached data immediately
+    const [cachedLibs, cachedResume] = await Promise.all([
+      getCached<JellyfinLibrary[]>('libraries'),
+      getCached<JellyfinItem[]>('resumeItems'),
+    ])
+    if (cachedLibs) setLibraries(cachedLibs)
+    if (cachedResume) setResumeItems(cachedResume)
+    if (cachedLibs || cachedResume) setLoading(false)
+
+    // Fetch fresh data in background
     const [libs, resume, sys] = await Promise.all([
       jellyfinGetLibraries(result.server),
       jellyfinGetResumeItems(result.server),
       jellyfinGetSystemInfo(result.server),
     ])
-
-    if (libs.ok) setLibraries(libs.libraries ?? [])
-    if (resume.ok) setResumeItems(resume.items ?? [])
+    if (libs.ok) { setLibraries(libs.libraries ?? []); await setCached('libraries', libs.libraries ?? [], 300000) }
+    if (resume.ok) { setResumeItems(resume.items ?? []); await setCached('resumeItems', resume.items ?? [], 30000) }
     if (sys.ok && sys.version) setServerVersion(sys.version)
 
     setLoading(false)
@@ -146,12 +156,17 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
 
   const handleLibraryPress = async (lib: JellyfinLibrary) => {
     if (!server) return
-    setLoading(true)
-    const result = await jellyfinGetLibraryItems(server, lib.ItemId, lib.CollectionType)
-    if (result.ok) setCurrentItems(result.items ?? [])
-    setLoading(false)
     setCurrentLibraryName(lib.Name)
     setView('items')
+    setLoading(true)
+
+    const cacheKey = `libItems:${lib.ItemId}`
+    const cached = await getCached<JellyfinItem[]>(cacheKey)
+    if (cached) { setCurrentItems(cached); setLoading(false) }
+
+    const result = await jellyfinGetLibraryItems(server, lib.ItemId, lib.CollectionType)
+    if (result.ok) { setCurrentItems(result.items ?? []); await setCached(cacheKey, result.items ?? [], 60000) }
+    setLoading(false)
   }
 
   const handleItemPress = async (item: JellyfinItem) => {
@@ -172,15 +187,16 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
       }
     } else if (item.Type === 'Folder') {
       setLoading(true)
+      setCurrentLibraryName(item.Name)
+      setView('items')
+
+      const folderCacheKey = `libItems:${item.Id}`
+      const cachedItems = await getCached<JellyfinItem[]>(folderCacheKey)
+      if (cachedItems) { setCurrentItems(cachedItems); setLoading(false) }
+
       const result = await jellyfinGetLibraryItems(server, item.Id, undefined)
+      if (result.ok) { setCurrentItems(result.items ?? []); await setCached(folderCacheKey, result.items ?? [], 60000) }
       setLoading(false)
-      if (result.ok) {
-        setCurrentItems(result.items ?? [])
-        setCurrentLibraryName(item.Name)
-        setView('items')
-      } else {
-        setError(result.error || '无法加载文件夹')
-      }
     }
   }
 
@@ -209,15 +225,26 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
   const handleSeasonPress = async (seasonId: string, seasonNumber: number) => {
     if (!server || !detailSeriesId) return
     setLoading(true)
-    const result = await jellyfinGetEpisodes(server, detailSeriesId, seasonId)
-    setLoading(false)
-    if (result.ok) {
-      setCurrentItems(result.episodes ?? [])
+
+    const cacheKey = `episodes:${detailSeriesId}:${seasonId}`
+    const cached = await getCached<JellyfinItem[]>(cacheKey)
+    if (cached) {
+      setCurrentItems(cached)
       setCurrentSeasons([{ Id: seasonId, Name: `第 ${seasonNumber} 季`, SeasonNumber: seasonNumber, SeriesId: detailSeriesId } as JellyfinSeason])
       setView('episodes')
-    } else {
+      setLoading(false)
+    }
+
+    const result = await jellyfinGetEpisodes(server, detailSeriesId, seasonId)
+    if (result.ok) {
+      setCurrentItems(result.episodes ?? [])
+      await setCached(cacheKey, result.episodes ?? [], 300000)
+      setCurrentSeasons([{ Id: seasonId, Name: `第 ${seasonNumber} 季`, SeasonNumber: seasonNumber, SeriesId: detailSeriesId } as JellyfinSeason])
+      setView('episodes')
+    } else if (!cached) {
       setError(result.error || '无法获取剧集')
     }
+    setLoading(false)
   }
 
   const handleSearch = async () => {
@@ -237,6 +264,19 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
       setView('home')
       setCurrentItems([])
     }
+  }
+
+  const handleClearCache = async () => {
+    await clearJellyfinCache()
+    setError(null)
+    setView('home')
+    setCurrentItems([])
+    setCurrentSeasons([])
+    setDetailItem(null)
+    setDetailSeriesId(null)
+    setLibraries([])
+    setResumeItems([])
+    await loadServer()
   }
 
   if (loading && !server) {
@@ -328,6 +368,7 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
         onClose={() => setDrawerOpen(false)}
         onServerSettings={() => setShowServerSettings(true)}
         onPlaybackSettings={() => setShowPlaybackSettings(true)}
+        onClearCache={handleClearCache}
       />
 
       {server?.url && (
