@@ -57,6 +57,17 @@ import XSvg from '@/icos/x.svg'
 import PauseSvg from '@/icos/pause.svg'
 import MenuSvg from '@/icos/flowbite--bars-from-left-outline.svg'
 
+import PlayFilledSvg from '@/icos/line-md--play-filled.svg'
+import PauseRoundedSvg from '@/icos/material-symbols-light--pause-rounded.svg'
+import FastRewindSvg from '@/icos/material-symbols--fast-rewind-rounded.svg'
+import FastForwardSvg from '@/icos/material-symbols--fast-forward-rounded.svg'
+import VolumeHighSvg from '@/icos/material-symbols--volume-up.svg'
+import VolumeMuteSvg from '@/icos/material-symbols--volume-off.svg'
+import CaptionsSvg from '@/icos/mdi--cc-outline.svg'
+import FullscreenSvg from '@/icos/mingcute--fullscreen-2-fill.svg'
+import ExitFullscreenSvg from '@/icos/mingcute--fullscreen-exit-2-fill.svg'
+import RotateSvg from '@/icos/fa7-solid--rotate.svg'
+
 type SvgComponent = React.ComponentType<{ width?: number; height?: number; fill?: string; color?: string; size?: number; style?: any }>
 
 const SVG_COMPONENTS = {
@@ -115,6 +126,17 @@ const SVG_COMPONENTS = {
   x: XSvg,
   pause: PauseSvg,
   menu: MenuSvg,
+
+  playFilled: PlayFilledSvg,
+  pauseRounded: PauseRoundedSvg,
+  fastRewind: FastRewindSvg,
+  fastForward: FastForwardSvg,
+  volumeHigh: VolumeHighSvg,
+  volumeMute: VolumeMuteSvg,
+  captions: CaptionsSvg,
+  fullscreen: FullscreenSvg,
+  exitFullscreen: ExitFullscreenSvg,
+  rotate: RotateSvg,
 } as const
 
 export type IconName = keyof typeof SVG_COMPONENTS
@@ -127,6 +149,9 @@ const MONO_ICONS: ReadonlySet<IconName> = new Set<IconName>([
   'cpu', 'memory', 'server', 'database', 'serverCog', 'boxes', 'monitor', 'gitBranch',
   'chevronLeft', 'chevronRight', 'alertCircle', 'film', 'playCircle',
   'x', 'pause', 'menu',
+  'playFilled', 'pauseRounded', 'fastRewind', 'fastForward',
+  'volumeHigh', 'volumeMute', 'captions',
+  'fullscreen', 'exitFullscreen', 'rotate',
 ])
 
 interface Props {

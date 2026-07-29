@@ -196,7 +196,7 @@ export async function jellyfinGetSeasons(
 ): Promise<{ ok: boolean; seasons?: JellyfinSeason[]; error?: string }> {
   if (!seriesId) return { ok: false, error: 'Invalid series ID' }
   const fields = 'ItemCounts,PrimaryImageAspectRatio,BasicSyncInfo,ImageTags,BackdropImageTags,Overview'
-  const primary = `/Shows/${seriesId}/Seasons?userId=${server.userId}&fields=${fields}&isSpecialSeason=true`
+  const primary = `/Shows/${seriesId}/Seasons?userId=${server.userId}&fields=${fields}`
   const alt = `/Items?ParentId=${seriesId}&IncludeItemTypes=Season&fields=${fields}&Recursive=true`
   const alt2 = `/Users/${server.userId}/Items?ParentId=${seriesId}&IncludeItemTypes=Season&fields=${fields}&Recursive=true`
   const r1 = await jellyfinFetch<{ Items?: JellyfinSeason[] }>(server, primary)

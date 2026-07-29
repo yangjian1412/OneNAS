@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, Modal, Animated, BackHandler, AppState, StyleSheet, Platform, StatusBar } from 'react-native'
+import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, Modal, Animated, BackHandler, AppState, StyleSheet, Platform, StatusBar, Dimensions } from 'react-native'
 import * as DocumentPicker from 'expo-document-picker'
 import { useAppStore, FileSortBy, FileSortDir } from '@/stores/appStore'
 import { ServerConfig, FileItem, ServiceConfig, ShareInfo } from '@/types'
@@ -264,10 +264,10 @@ export default function FileScreen() {
 
   useEffect(() => {
     const onBack = () => {
+      if (activeService) return false
       if (previewFile) { setPreviewFile(null); return true }
       if (shareManageOpen) { setShareManageOpen(false); return true }
       if (shareCreateItem) { setShareCreateItem(null); return true }
-      if (activeService) { setActiveService(null); return true }
       if (detailsItem) { setDetailsItem(null); return true }
       if (actionItem) { setActionItem(null); return true }
       if (editMode) { setEditMode(null); return true }
@@ -719,16 +719,12 @@ export default function FileScreen() {
           </View>
         </View>
       </Modal>
-      <Modal visible={!!activeService} animationType="slide" onRequestClose={() => setActiveService(null)}>
-        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
-          <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}><Text style={[styles.modalTitle, { color: t.text }]}>{activeService?.name ?? ''}</Text><TouchableOpacity onPress={() => setActiveService(null)}><Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text></TouchableOpacity></View>
-          {activeService?.type === 'jellyfin' ? (
-            <JellyfinScreen service={activeService} />
-          ) : (
-            activeService && <ServiceCard service={activeService} />
-          )}
-        </View>
-      </Modal>
+      {activeService && (
+        <ActiveServiceView
+          service={activeService}
+          onClose={() => setActiveService(null)}
+        />
+      )}
 
       <Modal visible={!!shareCreateItem} animationType="slide" onRequestClose={() => setShareCreateItem(null)}>
         <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
@@ -1131,6 +1127,52 @@ function DetailsChecksums({ server, token, path }: { server: ServerConfig; token
   )
 }
 
+interface ActiveServiceViewProps {
+  service: ServiceConfig
+  onClose: () => void
+}
+
+function ActiveServiceView({ service, onClose }: ActiveServiceViewProps) {
+  const t = useTheme()
+  const slideAnim = useRef(new Animated.Value(Dimensions.get('window').width)).current
+
+  useEffect(() => {
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start()
+  }, [slideAnim])
+
+  const handleClose = () => {
+    Animated.timing(slideAnim, {
+      toValue: Dimensions.get('window').width,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => {
+      onClose()
+    })
+  }
+
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.activeServiceRoot, { backgroundColor: t.bg }]}>
+      <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: slideAnim }] }]}>
+        <View style={[styles.activeServiceHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
+          <Text style={[styles.modalTitle, { color: t.text }]}>{service.name}</Text>
+          <TouchableOpacity onPress={handleClose}>
+            <Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text>
+          </TouchableOpacity>
+        </View>
+        {service.type === 'jellyfin' ? (
+          <JellyfinScreen service={service} onRequestClose={handleClose} />
+        ) : (
+          <ServiceCard service={service} />
+        )}
+      </Animated.View>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 }, withServiceBar: { paddingTop: 96 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -1150,6 +1192,8 @@ const styles = StyleSheet.create({
   gridCheckbox: { position: 'absolute', top: 8, right: 8, padding: 4 },
   bottomBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 76, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 4 }, selectedCount: { flex: 1, fontSize: 14, fontWeight: '700', paddingHorizontal: 6 }, bottomAction: { minWidth: 64, minHeight: 60, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }, bottomActionText: { fontSize: 14, fontWeight: '700' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth }, modalTitle: { fontSize: 17, fontWeight: '700' },
+  activeServiceRoot: { zIndex: 1000, elevation: 16 },
+  activeServiceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }, modalBackdrop: { ...StyleSheet.absoluteFill },
   actionSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32, gap: 4 }, editSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32 },
   sortSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }, sortSheetTitle: { fontSize: 15, fontWeight: '700', marginBottom: 6 }, sortOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth }, sortOptionText: { fontSize: 16, fontWeight: '500' }, sortOptionMark: { fontSize: 18, marginLeft: 12 }, sortCancel: { alignItems: 'center', paddingTop: 14 },

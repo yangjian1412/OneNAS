@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
-import { View, Text, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, BackHandler, StyleSheet, Dimensions } from 'react-native'
-import { useIsFocused, useNavigation } from '@react-navigation/native'
+import { View, Text, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, BackHandler, StyleSheet, Dimensions, Linking } from 'react-native'
 import { useJellyfinStore } from '@/stores/jellyfinStore'
+import { useJellyfinPlaybackStore } from '@/stores/jellyfinPlaybackStore'
+import { flushQueue, startAutoFlush, stopAutoFlush } from '@/lib/api/jellyfinPlaybackQueue'
 import {
   jellyfinLogin,
   jellyfinGetLibraries,
@@ -31,13 +32,25 @@ type ViewType = 'home' | 'items' | 'seasons' | 'episodes' | 'searchResults' | 'd
 
 interface Props {
   service: ServiceConfig
+  onRequestClose?: () => void
 }
 
-export default function JellyfinScreen({ service }: Props) {
+export default function JellyfinScreen({ service, onRequestClose }: Props) {
   const t = useTheme()
-  const navigation = useNavigation<any>()
-  const isFocused = useIsFocused()
   const { server, user, libraries, resumeItems, setServer, setUser, setLibraries, setResumeItems } = useJellyfinStore()
+  const prefsLoadFromStorage = useJellyfinPlaybackStore((s) => s.loadFromStorage)
+  const prefs = useJellyfinPlaybackStore()
+
+  useEffect(() => {
+    void prefsLoadFromStorage()
+  }, [prefsLoadFromStorage])
+
+  useEffect(() => {
+    if (!server) return
+    startAutoFlush(() => server)
+    void flushQueue(server)
+    return () => stopAutoFlush()
+  }, [server])
 
   const [view, setView] = useState<ViewType>('home')
   const [currentLibraryName, setCurrentLibraryName] = useState('')
@@ -114,7 +127,6 @@ export default function JellyfinScreen({ service }: Props) {
   // Returns true if the event was consumed (handled internally),
   // returns false to let the navigator handle it (i.e. switch tabs).
   const handleHardwareBack = useCallback((): boolean => {
-    if (!isFocused) return false
     if (drawerOpenRef.current) { setDrawerOpen(false); return true }
     if (showServerSettingsRef.current) { setShowServerSettings(false); return true }
     if (showPlaybackSettingsRef.current) { setShowPlaybackSettings(false); return true }
@@ -123,9 +135,9 @@ export default function JellyfinScreen({ service }: Props) {
       goBack()
       return true
     }
-    navigation.navigate('Files')
-    return true
-  }, [goBack, isFocused, navigation])
+    if (onRequestClose) { onRequestClose(); return true }
+    return false
+  }, [goBack, onRequestClose])
 
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack)
@@ -180,7 +192,15 @@ export default function JellyfinScreen({ service }: Props) {
     const stream = await jellyfinGetStreamUrl(server, item.Id)
     setLoading(false)
     if (stream.ok && stream.url) {
-      setPlaying({ url: stream.url, item })
+      if (prefs.useExternalPlayer) {
+        try {
+          await Linking.openURL(stream.url)
+        } catch (e: any) {
+          setError(`外部播放器启动失败: ${e?.message ?? e}`)
+        }
+      } else {
+        setPlaying({ url: stream.url, item })
+      }
     } else {
       setError(stream.error || '无法获取播放地址')
     }

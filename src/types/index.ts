@@ -152,6 +152,7 @@ export interface JellyfinUser {
 export interface JellyfinServerConfig {
   id: string
   name: string
+  type?: string
   url: string
   username: string
   password: string
@@ -202,14 +203,68 @@ export interface JellyfinSeason {
   SeasonNumber: number
   SeriesId: string
   ImageTags?: Record<string, string>
+  IndexNumber?: number
 }
 
 export interface JellyfinPlaybackInfo {
-  MediaSources: Array<{
-    Id: string
-    Path: string
-    DirectStreamUrl: string
-    SupportsDirectStream: boolean
-    SupportsDirectPlay: boolean
-  }>
+  MediaSources: JellyfinMediaSource[]
+  PlaySessionId?: string
+}
+
+export interface JellyfinMediaSource {
+  Id: string
+  Path: string
+  Container?: string
+  DirectStreamUrl?: string
+  SupportsDirectStream: boolean
+  SupportsDirectPlay: boolean
+  MediaStreams: JellyfinMediaStream[]
+  Bitrate?: number
+}
+
+export interface JellyfinMediaStream {
+  Index: number
+  Type: 'Video' | 'Audio' | 'Subtitle' | 'EmbeddedImage' | 'Data'
+  Language?: string
+  DisplayLanguage?: string
+  Title?: string
+  Codec?: string
+  Channels?: number
+  IsDefault?: boolean
+  IsForced?: boolean
+  IsExternal?: boolean
+  DeliveryMethod?: 'Encode' | 'Embed' | 'External'
+  DeliveryUrl?: string
+  IsTextSubtitleStream?: boolean
+}
+
+export type PlaybackReportMethod = 'DirectPlay' | 'DirectStream' | 'Transcode'
+
+export interface PlaybackProgressPayload {
+  ItemId: string
+  PositionTicks: number
+  CanSeek?: boolean
+  IsPaused: boolean
+  IsMuted?: boolean
+  Volume?: number
+  PlayMethod?: PlaybackReportMethod
+  RepeatMode?: 'RepeatNone' | 'RepeatOne' | 'RepeatAll'
+  PlaybackOrder?: 'Default' | 'Shuffle'
+  MediaSourceId?: string
+  PlaySessionId?: string
+  AudioStreamIndex?: number
+  SubtitleStreamIndex?: number
+}
+
+export interface PlaybackStartInfo {
+  ItemId: string
+  CanSeek?: boolean
+  IsPaused?: boolean
+  IsMuted?: boolean
+  PlayMethod?: PlaybackReportMethod
+  MediaSourceId?: string
+  AudioStreamIndex?: number
+  SubtitleStreamIndex?: number
+  MaxBitrate?: number
+  StartPositionTicks?: number
 }

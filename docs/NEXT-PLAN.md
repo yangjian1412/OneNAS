@@ -1,7 +1,21 @@
 # 下一步计划
 
 > 本文档记录接下来要做的事项，按优先级排序。
-> 最近更新：2026-07-28（Tab4 NAS 管理全面重构完成 ✅；参考源码全部下载 ✅）
+> 最近更新：2026-07-29（Jellyfin 季列表 + 返回键 bug 修复 ✅）
+
+---
+
+## 今日完成 (2026-07-29)
+
+### Jellyfin 季列表 + 返回键 bug 修复 ✅
+
+- **季列表只显示特别篇**
+  - 根因：`/Shows/{id}/Seasons` 端点传了 `isSpecialSeason=true`，服务端只返回 `IndexNumber=0` 的特别篇
+  - 修复：`src/lib/api/jellyfin.ts:199` 去掉 `&isSpecialSeason=true`，`src/types/index.ts` 给 `JellyfinSeason` 加 `IndexNumber` 字段
+
+- **Tab1 顶栏入口返回键失效（每层一次都跳 Tab1）**
+  - 根因：`FileScreen.tsx` 把 `JellyfinScreen` 包在 `<Modal>` 里，Modal 在原生层注册 BackHandler 拦截了 JellyfinScreen 自己的 JS handler
+  - 修复：用 `ActiveServiceView`（`Animated.View` 条件渲染 + 滑入动画）替换 Modal；`JellyfinScreen` 新增 `onRequestClose` prop；`FileScreen` 的 onBack 在 activeService 时直接 return false 让 JellyfinScreen 处理
 
 ---
 
