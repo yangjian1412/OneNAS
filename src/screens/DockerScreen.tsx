@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl, StyleSheet, Modal, Switch } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl, StyleSheet, Modal, Switch, Animated, BackHandler } from 'react-native'
+import { useIsFocused } from '@react-navigation/native'
 import { useAppStore } from '@/stores/appStore'
 import { ServerConfig, DashboardData } from '@/types'
 import { fetchDashboard, startContainer, stopContainer, restartContainer, startVM, stopVM, restartVM, pauseVM, resumeVM, fetchContainerDetail } from '@/lib/api/unraid'
@@ -62,6 +63,44 @@ export default function DockerScreen() {
   const [containerDetailLoading, setContainerDetailLoading] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastBackPressRef = useRef(0)
+  const toastAnim = useRef(new Animated.Value(0)).current
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isFocused = useIsFocused()
+  const isFocusedRef = useRef(isFocused)
+  isFocusedRef.current = isFocused
+
+  const showToast = () => {
+    Animated.timing(toastAnim, { toValue: 1, duration: 160, useNativeDriver: true }).start()
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => {
+      Animated.timing(toastAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start()
+    }, 1500)
+  }
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!isFocusedRef.current) return false
+      const now = Date.now()
+      if (now - lastBackPressRef.current < 2000) {
+        if (toastTimer.current) clearTimeout(toastTimer.current)
+        toastAnim.setValue(0)
+        return false
+      }
+      lastBackPressRef.current = now
+      showToast()
+      return true
+    })
+    return () => sub.remove()
+  }, [])
+
+  const ExitToast = (
+    <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+      <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
+        <Text style={styles.toastText}>再按一次退出</Text>
+      </View>
+    </Animated.View>
+  )
 
   const load = useCallback(async (server: ServerConfig, isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true)
@@ -141,6 +180,7 @@ export default function DockerScreen() {
         <Icon name="server" size={64} color={t.textMuted} />
         <Text style={[styles.emptyTitle, { color: t.text }]}>未配置 Unraid 服务器</Text>
         <Text style={[styles.emptySub, { color: t.textMuted }]}>请到设置 → 服务器 添加 Unraid</Text>
+        {ExitToast}
       </View>
     )
   }
@@ -157,6 +197,7 @@ export default function DockerScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        {ExitToast}
       </View>
     )
   }
@@ -166,6 +207,7 @@ export default function DockerScreen() {
       <View style={[styles.center, { backgroundColor: t.bg }]}>
         <ActivityIndicator size="large" color={t.primary} />
         <Text style={[styles.loadingText, { color: t.textMuted }]}>正在加载...</Text>
+        {ExitToast}
       </View>
     )
   }
@@ -310,6 +352,7 @@ export default function DockerScreen() {
       </ScrollView>
 
       <ContainerDetailModal detail={containerDetail} error={containerDetailError} loading={containerDetailLoading} onClose={() => { setContainerDetail(null); setContainerDetailError(null) }} />
+      {ExitToast}
     </View>
   )
 }
@@ -585,6 +628,9 @@ const modalStyles = StyleSheet.create({
   section: { marginBottom: 16, marginTop: 4 },
   sectionTitle: { fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   monoText: { fontFamily: 'monospace', fontSize: 12, marginTop: 2 },
+  toast: { position: 'absolute', left: 0, right: 0, bottom: 120, alignItems: 'center' },
+  toastInner: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24 },
+  toastText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 })
 
 const detailStyles = StyleSheet.create({

@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, Alert, Modal, StyleSheet, Switch, ScrollView } from 'react-native'
+import { useState, useRef, useEffect } from 'react'
+import { View, Text, TextInput, TouchableOpacity, Alert, Modal, StyleSheet, Switch, ScrollView, Animated, BackHandler } from 'react-native'
+import { useIsFocused } from '@react-navigation/native'
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist'
 import { useAppStore } from '@/stores/appStore'
 import { ServerConfig, ServiceConfig, ServiceType } from '@/types'
@@ -54,6 +55,36 @@ export default function SettingsScreen() {
   const [importText, setImportText] = useState('')
   const [importOpen, setImportOpen] = useState(false)
   const [sortMode, setSortMode] = useState(false)
+  const lastBackPressRef = useRef(0)
+  const toastAnim = useRef(new Animated.Value(0)).current
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isFocused = useIsFocused()
+  const isFocusedRef = useRef(isFocused)
+  isFocusedRef.current = isFocused
+
+  const showToast = () => {
+    Animated.timing(toastAnim, { toValue: 1, duration: 160, useNativeDriver: true }).start()
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => {
+      Animated.timing(toastAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start()
+    }, 1500)
+  }
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!isFocusedRef.current) return false
+      const now = Date.now()
+      if (now - lastBackPressRef.current < 2000) {
+        if (toastTimer.current) clearTimeout(toastTimer.current)
+        toastAnim.setValue(0)
+        return false
+      }
+      lastBackPressRef.current = now
+      showToast()
+      return true
+    })
+    return () => sub.remove()
+  }, [])
 
   const rows: ServiceRow[] = SERVICE_TYPES
     .map((type) => ({
@@ -372,12 +403,20 @@ export default function SettingsScreen() {
         {header}
       </ScrollView>
       <ConfigModal visible={modalVisible} onClose={() => setModalVisible(false)} type={modalType} server={modalServer} service={modalService} onSaveServer={handleSaveServer} onSaveService={handleSaveService} onDelete={handleDelete} />
+      <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+        <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
+          <Text style={styles.toastText}>再按一次退出</Text>
+        </View>
+      </Animated.View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  toast: { position: 'absolute', left: 0, right: 0, bottom: 120, alignItems: 'center' },
+  toastInner: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24 },
+  toastText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   list: { paddingTop: 12, paddingBottom: 48 },
   screenTitle: { fontSize: 26, fontWeight: '800', paddingHorizontal: 16, marginBottom: 14 },
   sectionLabel: { fontSize: 16, fontWeight: '700', paddingHorizontal: 16, marginTop: 24, marginBottom: 10 },

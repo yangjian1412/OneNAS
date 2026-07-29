@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, Modal, Animated, BackHandler, AppState, StyleSheet, Platform, StatusBar, Dimensions } from 'react-native'
 import * as DocumentPicker from 'expo-document-picker'
+import { useIsFocused, useNavigation } from '@react-navigation/native'
 import { useAppStore, FileSortBy, FileSortDir } from '@/stores/appStore'
 import { ServerConfig, FileItem, ServiceConfig, ShareInfo } from '@/types'
 import { login, listFiles, searchFilesStream, createFolder, deleteResource, renameResource, copyResource, uploadResource, getShares, createShare, deleteShare, getResourceInfo, getFileChecksum, ResourceInfo } from '@/lib/api/filebrowser'
@@ -72,6 +73,18 @@ export default function FileScreen() {
   const toastAnim = useRef(new Animated.Value(0)).current
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [toastMsg, setToastMsg] = useState('再按一次退出')
+  const navigation = useNavigation()
+  const defaultTabBarStyle = { backgroundColor: t.bg, borderTopColor: t.border, height: 72, paddingBottom: 14, paddingTop: 6 }
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: activeService
+        ? { height: 0, paddingTop: 0, paddingBottom: 0, borderTopWidth: 0, overflow: 'hidden', position: 'absolute', bottom: -100 }
+        : defaultTabBarStyle,
+    })
+  }, [activeService, t])
+  const isFocused = useIsFocused()
+  const isFocusedRef = useRef(isFocused)
+  isFocusedRef.current = isFocused
 
   const [storageAccess, setStorageAccess] = useState<boolean | null>(null)
   const [downloadManageOpen, setDownloadManageOpen] = useState(false)
@@ -264,6 +277,7 @@ export default function FileScreen() {
 
   useEffect(() => {
     const onBack = () => {
+      if (!isFocusedRef.current) return false
       if (activeService) return false
       if (previewFile) { setPreviewFile(null); return true }
       if (shareManageOpen) { setShareManageOpen(false); return true }
