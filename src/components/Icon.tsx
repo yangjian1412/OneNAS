@@ -50,6 +50,9 @@ import GitBranchSvg from '@/icos/lucide--git-branch.svg'
 
 import ChevronLeftSvg from '@/icos/chevron-left.svg'
 import ChevronRightSvg from '@/icos/chevron-right.svg'
+import ChevronDownSvg from '@/icos/chevron-down.svg'
+import ChevronUpSvg from '@/icos/chevron-up.svg'
+import CheckSvg from '@/icos/check.svg'
 import AlertCircleSvg from '@/icos/alert-circle.svg'
 import FilmSvg from '@/icos/film.svg'
 import PlayCircleSvg from '@/icos/play-circle.svg'
@@ -67,6 +70,8 @@ import CaptionsSvg from '@/icos/mdi--cc-outline.svg'
 import FullscreenSvg from '@/icos/mingcute--fullscreen-2-fill.svg'
 import ExitFullscreenSvg from '@/icos/mingcute--fullscreen-exit-2-fill.svg'
 import RotateSvg from '@/icos/fa7-solid--rotate.svg'
+import PowerSvg from '@/icos/power.svg'
+import CompassSvg from '@/icos/compass.svg'
 
 type SvgComponent = React.ComponentType<{ width?: number; height?: number; fill?: string; color?: string; size?: number; style?: any }>
 
@@ -120,6 +125,9 @@ const SVG_COMPONENTS = {
 
   chevronLeft: ChevronLeftSvg,
   chevronRight: ChevronRightSvg,
+  chevronDown: ChevronDownSvg,
+  chevronUp: ChevronUpSvg,
+  check: CheckSvg,
   alertCircle: AlertCircleSvg,
   film: FilmSvg,
   playCircle: PlayCircleSvg,
@@ -137,6 +145,8 @@ const SVG_COMPONENTS = {
   fullscreen: FullscreenSvg,
   exitFullscreen: ExitFullscreenSvg,
   rotate: RotateSvg,
+  power: PowerSvg,
+  compass: CompassSvg,
 } as const
 
 export type IconName = keyof typeof SVG_COMPONENTS
@@ -147,11 +157,12 @@ const MONO_ICONS: ReadonlySet<IconName> = new Set<IconName>([
   'folderNew', 'upload', 'sortArrow', 'folderEmpty', 'folderContent',
   'downloadRounded', 'shareManage',
   'cpu', 'memory', 'server', 'database', 'serverCog', 'boxes', 'monitor', 'gitBranch',
-  'chevronLeft', 'chevronRight', 'alertCircle', 'film', 'playCircle',
+  'chevronLeft', 'chevronRight', 'chevronDown', 'chevronUp', 'check', 'alertCircle', 'film', 'playCircle',
   'x', 'pause', 'menu',
   'playFilled', 'pauseRounded', 'fastRewind', 'fastForward',
   'volumeHigh', 'volumeMute', 'captions',
   'fullscreen', 'exitFullscreen', 'rotate',
+  'power', 'compass',
 ])
 
 interface Props {

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, Modal, StyleSheet, Platform, 
 import { useTheme } from '@/lib/theme'
 import { useJellyfinPlaybackStore, DEFAULT_PLAYBACK_PREFS } from '@/stores/jellyfinPlaybackStore'
 import Icon from '@/components/Icon'
+import DropdownOption from './DropdownOption'
 
 const LANGUAGES = [
   { label: '中文', value: 'chi' },
@@ -86,10 +87,15 @@ export default function JellyfinPlaybackSettings({ visible, onClose }: Props) {
     await store.resetDefaults()
   }
 
+  const speedOptions = SPEEDS.map((s) => ({
+    label: s === 1.0 ? '正常 (1x)' : `${s}x`,
+    value: s,
+  }))
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: t.bg }]}>
-        <View style={[styles.toolbar, { backgroundColor: t.card }]}>
+        <View style={[styles.toolbar, { backgroundColor: t.card, paddingTop: pt + 8 }]}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Icon name="x" size={24} color={t.text} />
           </TouchableOpacity>
@@ -102,92 +108,77 @@ export default function JellyfinPlaybackSettings({ visible, onClose }: Props) {
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={styles.content}>
-          <SectionTitle>画质 / 码率</SectionTitle>
-          <OptionGroup
+          <SectionTitle>画质与音频</SectionTitle>
+          <DropdownOption
+            label="画质 / 码率"
             options={BITRATES.map((b) => ({ label: b.label, value: b.value }))}
             selected={store.maxBitrate}
             onSelect={store.setMaxBitrate}
           />
-
-          <SectionTitle>默认字幕语言</SectionTitle>
-          <OptionGroup
+          <DropdownOption
+            label="默认字幕语言"
             options={LANGUAGES.map((l) => ({ label: l.label, value: l.value }))}
             selected={store.defaultSubtitleLang}
             onSelect={store.setDefaultSubtitleLang}
           />
-
-          <SectionTitle>默认音轨语言</SectionTitle>
-          <OptionGroup
+          <DropdownOption
+            label="默认音轨语言"
             options={LANGUAGES.map((l) => ({ label: l.label, value: l.value }))}
             selected={store.defaultAudioLang}
             onSelect={store.setDefaultAudioLang}
           />
-
-          <SectionTitle>默认播放速度</SectionTitle>
-          <OptionGroup
-            options={SPEEDS.map((s) => ({ label: s === 1.0 ? '正常 (1x)' : `${s}x`, value: s }))}
+          <DropdownOption
+            label="默认播放速度"
+            options={speedOptions}
             selected={store.defaultPlaybackSpeed}
             onSelect={store.setDefaultPlaybackSpeed}
           />
 
-          <SectionTitle>底部 ⏪ 按钮快退时长</SectionTitle>
-          <OptionGroup
+          <SectionTitle style={{ marginTop: 20 }}>快进快退</SectionTitle>
+          <DropdownOption
+            label="快退时长"
             options={SKIP_BACK_OPTIONS}
             selected={store.skipBackMs}
             onSelect={store.setSkipBackMs}
           />
-
-          <SectionTitle>底部 ⏩ 按钮快进时长</SectionTitle>
-          <OptionGroup
+          <DropdownOption
+            label="快进时长"
             options={SKIP_FORWARD_OPTIONS}
             selected={store.skipForwardMs}
             onSelect={store.setSkipForwardMs}
           />
-
-          <SectionTitle>双击左侧 20% 后退时长</SectionTitle>
-          <OptionGroup
+          <DropdownOption
+            label="双击左侧后退时长"
             options={DOUBLE_TAP_BACK_OPTIONS}
             selected={store.doubleTapBackMs}
             onSelect={store.setDoubleTapBackMs}
           />
-
-          <SectionTitle>双击右侧 20% 快进时长</SectionTitle>
-          <OptionGroup
+          <DropdownOption
+            label="双击右侧快进时长"
             options={DOUBLE_TAP_FORWARD_OPTIONS}
             selected={store.doubleTapForwardMs}
             onSelect={store.setDoubleTapForwardMs}
           />
 
-          <SectionTitle>双击左侧 20% 后退时长</SectionTitle>
-          <OptionGroup
-            options={DOUBLE_TAP_BACK_OPTIONS}
-            selected={store.doubleTapBackMs}
-            onSelect={store.setDoubleTapBackMs}
-          />
-
-          <SectionTitle>双击右侧 20% 快进时长</SectionTitle>
-          <OptionGroup
-            options={DOUBLE_TAP_FORWARD_OPTIONS}
-            selected={store.doubleTapForwardMs}
-            onSelect={store.setDoubleTapForwardMs}
-          />
-
-          <SectionTitle>进度阈值</SectionTitle>
-          <SubText>低于「重置阈值」时观看不记录进度；高于「已播阈值」时自动标记为已观看</SubText>
-          <Text style={[styles.subLabel, { color: t.textMuted }]}>低于即重置</Text>
-          <OptionGroup
+          <SectionTitle style={{ marginTop: 20 }}>进度阈值</SectionTitle>
+          <Text style={[styles.hint, { color: t.textMuted }]}>
+            低于「重置阈值」时观看不记录进度；高于「已播阈值」时自动标记为已观看
+          </Text>
+          <DropdownOption
+            label="低于即重置"
             options={THRESHOLD_OPTIONS}
             selected={store.resetPositionThresholdPct}
             onSelect={store.setResetPositionThresholdPct}
           />
-          <Text style={[styles.subLabel, { color: t.textMuted, marginTop: 12 }]}>高于即标记已观看</Text>
-          <OptionGroup
+          <View style={{ height: 8 }} />
+          <DropdownOption
+            label="高于即标记已观看"
             options={PLAYED_THRESHOLD_OPTIONS}
             selected={store.markPlayedThresholdPct}
             onSelect={store.setMarkPlayedThresholdPct}
           />
 
-          <SectionTitle>行为</SectionTitle>
+          <SectionTitle style={{ marginTop: 20 }}>行为</SectionTitle>
           <SwitchRow
             label="自动恢复上次观看位置"
             value={store.resumeLastPosition}
@@ -237,47 +228,9 @@ export default function JellyfinPlaybackSettings({ visible, onClose }: Props) {
   )
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+function SectionTitle({ children, style }: { children: React.ReactNode; style?: any }) {
   const t = useTheme()
-  return <Text style={[styles.sectionTitle, { color: t.text }]}>{children}</Text>
-}
-
-function SubText({ children }: { children: React.ReactNode }) {
-  const t = useTheme()
-  return <Text style={[styles.subText, { color: t.textMuted }]}>{children}</Text>
-}
-
-function OptionGroup({
-  options,
-  selected,
-  onSelect,
-}: {
-  options: Array<{ label: string; value: number | string }>
-  selected: number | string
-  onSelect: (v: any) => void
-}) {
-  const t = useTheme()
-  return (
-    <View style={styles.options}>
-      {options.map((opt) => {
-        const isSelected = selected === opt.value
-        return (
-          <TouchableOpacity
-            key={String(opt.value)}
-            style={[
-              styles.option,
-              { backgroundColor: t.card, borderColor: isSelected ? t.primary : t.border },
-            ]}
-            activeOpacity={0.7}
-            onPress={() => onSelect(opt.value)}
-          >
-            <Text style={[styles.optionText, { color: isSelected ? t.primary : t.text }]}>{opt.label}</Text>
-            {isSelected ? <View style={[styles.checkDot, { backgroundColor: t.primary }]} /> : null}
-          </TouchableOpacity>
-        )
-      })}
-    </View>
-  )
+  return <Text style={[{ fontSize: 15, fontWeight: '700', color: t.text, marginBottom: 10 }, style]}>{children}</Text>
 }
 
 function SwitchRow({ label, value, onValueChange }: { label: string; value: boolean; onValueChange: (v: boolean) => void }) {
@@ -307,20 +260,7 @@ const styles = StyleSheet.create({
   toolbarTitle: { fontSize: 17, fontWeight: '700', marginLeft: 8, flex: 1 },
 
   content: { padding: 16, paddingBottom: 40 },
-  sectionTitle: { fontSize: 15, fontWeight: '600', marginBottom: 10, marginTop: 8 },
-  subText: { fontSize: 12, marginBottom: 8 },
-  subLabel: { fontSize: 12, marginBottom: 6 },
-  options: { gap: 8 },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    borderWidth: 1.5,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  optionText: { flex: 1, fontSize: 15 },
-  checkDot: { width: 10, height: 10, borderRadius: 5 },
+  hint: { fontSize: 12, marginBottom: 12, lineHeight: 16 },
 
   switchRow: {
     flexDirection: 'row',
@@ -329,7 +269,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  switchLabel: { fontSize: 15, flex: 1, marginRight: 12 },
+  switchLabel: { fontSize: 14, flex: 1, marginRight: 12 },
 
   confirmOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   confirmSheet: {

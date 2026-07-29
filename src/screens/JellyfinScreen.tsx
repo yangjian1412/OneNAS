@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
-import { View, Text, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, BackHandler, StyleSheet, Dimensions, Linking } from 'react-native'
+import { View, Text, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, BackHandler, StyleSheet, Dimensions } from 'react-native'
+import { startActivityAsync } from 'expo-intent-launcher'
 import { useJellyfinStore } from '@/stores/jellyfinStore'
 import { useJellyfinPlaybackStore } from '@/stores/jellyfinPlaybackStore'
 import { flushQueue, startAutoFlush, stopAutoFlush } from '@/lib/api/jellyfinPlaybackQueue'
-import { getCached, setCached, clearJellyfinCache } from '@/lib/api/jellyfinCache'
+import { getCached, setCached } from '@/lib/api/jellyfinCache'
 import {
   jellyfinLogin,
   jellyfinGetLibraries,
@@ -15,7 +16,7 @@ import {
   jellyfinGetSystemInfo,
   jellyfinSearch,
 } from '@/lib/api/jellyfin'
-import type { ServiceConfig, JellyfinLibrary, JellyfinItem, JellyfinSeason } from '@/types'
+import type { ServiceConfig, JellyfinServerConfig, JellyfinLibrary, JellyfinItem, JellyfinSeason } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
 import JellyfinHeader from '@/components/jellyfin/JellyfinHeader'
@@ -26,7 +27,7 @@ import JellyfinEpisodeList from '@/components/jellyfin/JellyfinEpisodeList'
 import JellyfinItemDetail from '@/components/jellyfin/JellyfinItemDetail'
 import JellyfinDrawer from '@/components/jellyfin/JellyfinDrawer'
 import JellyfinPlayer from '@/components/jellyfin/JellyfinPlayer'
-import JellyfinWebView from '@/components/jellyfin/JellyfinWebView'
+import JellyfinServerSettings from '@/components/jellyfin/JellyfinServerSettings'
 import JellyfinPlaybackSettings from '@/components/jellyfin/JellyfinPlaybackSettings'
 
 type ViewType = 'home' | 'items' | 'seasons' | 'episodes' | 'searchResults' | 'detail'
@@ -73,30 +74,41 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
       setError('请先在设置中配置 Jellyfin 服务器地址和账号密码')
       return
     }
-    setServer(null)
-    setLoading(true)
     setError(null)
 
+    // Read cache first for instant display
+    const [cachedServer, cachedLibs, cachedResume] = await Promise.all([
+      getCached<JellyfinServerConfig>('serverInfo'),
+      getCached<JellyfinLibrary[]>('libraries'),
+      getCached<JellyfinItem[]>('resumeItems'),
+    ])
+
+    const hasCachedServer = cachedServer && cachedServer.url === service.url && cachedServer.username === service.username && cachedServer.userId && cachedServer.userName && cachedServer.accessToken
+    if (hasCachedServer) {
+      setServer(cachedServer)
+      setUser({ Id: cachedServer.userId!, Name: cachedServer.userName! })
+      if (cachedLibs) setLibraries(cachedLibs)
+      if (cachedResume) setResumeItems(cachedResume)
+      setLoading(false)
+    } else {
+      setServer(null)
+      setLoading(true)
+    }
+
+    // Background login + fresh data
     const result = await jellyfinLogin(service.url, service.username, service.password)
     if (!result.ok || !result.server) {
-      setError(result.error ?? '登录失败')
-      setLoading(false)
+      if (!hasCachedServer) {
+        setError(result.error ?? '登录失败')
+        setLoading(false)
+      }
       return
     }
 
     setServer(result.server)
     setUser({ Id: result.server.userId!, Name: result.server.userName! })
+    await setCached('serverInfo', result.server, 86400000)
 
-    // Show cached data immediately
-    const [cachedLibs, cachedResume] = await Promise.all([
-      getCached<JellyfinLibrary[]>('libraries'),
-      getCached<JellyfinItem[]>('resumeItems'),
-    ])
-    if (cachedLibs) setLibraries(cachedLibs)
-    if (cachedResume) setResumeItems(cachedResume)
-    if (cachedLibs || cachedResume) setLoading(false)
-
-    // Fetch fresh data in background
     const [libs, resume, sys] = await Promise.all([
       jellyfinGetLibraries(result.server),
       jellyfinGetResumeItems(result.server),
@@ -181,7 +193,15 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
       const stream = await jellyfinGetStreamUrl(server, item.Id)
       setLoading(false)
       if (stream.ok && stream.url) {
-        setPlaying({ url: stream.url, item })
+        if (prefs.useExternalPlayer) {
+          try {
+            await startActivityAsync('android.intent.action.VIEW', { data: stream.url, type: 'video/*' })
+          } catch (e: any) {
+            setError(`外部播放器启动失败: ${e?.message ?? e}`)
+          }
+        } else {
+          setPlaying({ url: stream.url, item })
+        }
       } else {
         setError(stream.error || '无法获取播放地址')
       }
@@ -210,7 +230,7 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     if (stream.ok && stream.url) {
       if (prefs.useExternalPlayer) {
         try {
-          await Linking.openURL(stream.url)
+          await startActivityAsync('android.intent.action.VIEW', { data: stream.url, type: 'video/*' })
         } catch (e: any) {
           setError(`外部播放器启动失败: ${e?.message ?? e}`)
         }
@@ -266,36 +286,31 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     }
   }
 
-  const handleClearCache = async () => {
-    await clearJellyfinCache()
-    setError(null)
-    setView('home')
-    setCurrentItems([])
-    setCurrentSeasons([])
-    setDetailItem(null)
-    setDetailSeriesId(null)
-    setLibraries([])
-    setResumeItems([])
-    await loadServer()
-  }
-
-  if (loading && !server) {
+  if (!server) {
+    if (loading) {
+      return (
+        <View style={[styles.center, { backgroundColor: t.bg }]}>
+          <ActivityIndicator size="large" color={t.primary} />
+          <Text style={[styles.loadingText, { color: t.textMuted }]}>正在连接 Jellyfin...</Text>
+        </View>
+      )
+    }
+    if (error) {
+      return (
+        <View style={[styles.center, { backgroundColor: t.bg }]}>
+          <Icon name="alertCircle" size={48} color={t.primary} />
+          <Text style={[styles.errorText, { color: t.text }]}>{error}</Text>
+          <TouchableOpacity style={[styles.retryBtn, { backgroundColor: t.primary }]} onPress={loadServer}>
+            <Text style={styles.retryBtnText}>重试</Text>
+          </TouchableOpacity>
+        </View>
+      )
+    }
+    // Initial mount — always show loading until loadServer sets a server
     return (
       <View style={[styles.center, { backgroundColor: t.bg }]}>
         <ActivityIndicator size="large" color={t.primary} />
         <Text style={[styles.loadingText, { color: t.textMuted }]}>正在连接 Jellyfin...</Text>
-      </View>
-    )
-  }
-
-  if (error && !server) {
-    return (
-      <View style={[styles.center, { backgroundColor: t.bg }]}>
-        <Icon name="alertCircle" size={48} color={t.primary} />
-        <Text style={[styles.errorText, { color: t.text }]}>{error}</Text>
-        <TouchableOpacity style={[styles.retryBtn, { backgroundColor: t.primary }]} onPress={loadServer}>
-          <Text style={styles.retryBtnText}>重试</Text>
-        </TouchableOpacity>
       </View>
     )
   }
@@ -368,12 +383,9 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
         onClose={() => setDrawerOpen(false)}
         onServerSettings={() => setShowServerSettings(true)}
         onPlaybackSettings={() => setShowPlaybackSettings(true)}
-        onClearCache={handleClearCache}
       />
 
-      {server?.url && (
-        <JellyfinWebView url={server.url} visible={showServerSettings} onClose={() => setShowServerSettings(false)} />
-      )}
+        <JellyfinServerSettings visible={showServerSettings} onClose={() => setShowServerSettings(false)} />
 
       <JellyfinPlaybackSettings visible={showPlaybackSettings} onClose={() => setShowPlaybackSettings(false)} />
 

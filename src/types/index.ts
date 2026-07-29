@@ -225,6 +225,39 @@ export interface JellyfinMediaSource {
   Bitrate?: number
 }
 
+export interface JellyfinSession {
+  Id: string
+  UserId: string
+  UserName: string
+  Client: string
+  DeviceName: string
+  NowPlayingItem?: {
+    Id: string
+    Name: string
+    Type: string
+    SeriesName?: string
+    SeasonName?: string
+    EpisodeTitle?: string
+  }
+  PlayState?: {
+    PositionTicks?: number
+    IsPaused: boolean
+  }
+  LastActivityDate: string
+}
+
+export interface JellyfinSystemInfo {
+  ServerName: string
+  Version: string
+  OperatingSystem: string
+  StartTime: string
+  Id: string
+  CachePath: string
+  LogPath: string
+  InternalMetadataPath: string
+  OperatingSystemDisplayName: string
+}
+
 export interface JellyfinMediaStream {
   Index: number
   Type: 'Video' | 'Audio' | 'Subtitle' | 'EmbeddedImage' | 'Data'

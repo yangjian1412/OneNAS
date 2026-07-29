@@ -11,12 +11,11 @@ interface Props {
   onClose: () => void
   onServerSettings: () => void
   onPlaybackSettings: () => void
-  onClearCache?: () => void
 }
 
 const DRAWER_W = Dimensions.get('window').width * 0.75
 
-export default function JellyfinDrawer({ visible, server, serverVersion, onClose, onServerSettings, onPlaybackSettings, onClearCache }: Props) {
+export default function JellyfinDrawer({ visible, server, serverVersion, onClose, onServerSettings, onPlaybackSettings }: Props) {
   const t = useTheme()
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
 
@@ -67,12 +66,7 @@ export default function JellyfinDrawer({ visible, server, serverVersion, onClose
               <Text style={[styles.menuItemText, { color: t.text }]}>服务器设置</Text>
               <Icon name="chevronRight" size={16} color={t.textMuted} />
             </TouchableOpacity>
-            {onClearCache && (
-              <TouchableOpacity style={[styles.menuItem, { backgroundColor: t.inputBg }]} onPress={() => { handleClose(); onClearCache() }}>
-                <Icon name="delete" size={20} color={t.text} />
-                <Text style={[styles.menuItemText, { color: t.text }]}>清除缓存</Text>
-              </TouchableOpacity>
-            )}
+
           </View>
 
           <View style={styles.bottomSection}>

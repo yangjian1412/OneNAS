@@ -6,6 +6,8 @@ import type {
   JellyfinItem,
   JellyfinSeason,
   JellyfinPlaybackInfo,
+  JellyfinSession,
+  JellyfinSystemInfo,
 } from '@/types'
 
 export { type JellyfinServerConfig, type JellyfinUser }
@@ -138,10 +140,34 @@ export function jellyfinGetImageUrl(
 
 export async function jellyfinGetSystemInfo(
   server: JellyfinServerConfig,
-): Promise<{ ok: boolean; version?: string; error?: string }> {
-  const result = await jellyfinFetch<{ Version?: string }>(server, '/System/Info')
+): Promise<{ ok: boolean; version?: string; info?: JellyfinSystemInfo; error?: string }> {
+  const result = await jellyfinFetch<JellyfinSystemInfo>(server, '/System/Info')
   if (!result.ok) return { ok: false, error: result.error }
-  return { ok: true, version: result.data?.Version }
+  return { ok: true, version: result.data?.Version, info: result.data }
+}
+
+export async function jellyfinGetSessions(
+  server: JellyfinServerConfig,
+): Promise<{ ok: boolean; sessions?: JellyfinSession[]; error?: string }> {
+  const result = await jellyfinFetch<JellyfinSession[]>(server, '/Sessions')
+  if (!result.ok) return { ok: false, error: result.error }
+  return { ok: true, sessions: result.data ?? [] }
+}
+
+export async function jellyfinRefreshLibrary(
+  server: JellyfinServerConfig,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await jellyfinFetch<unknown>(server, '/Library/Media/Updated', { method: 'POST' })
+  if (!result.ok) return { ok: false, error: result.error }
+  return { ok: true }
+}
+
+export async function jellyfinRestartServer(
+  server: JellyfinServerConfig,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await jellyfinFetch<unknown>(server, '/System/Restart', { method: 'POST' })
+  if (!result.ok) return { ok: false, error: result.error }
+  return { ok: true }
 }
 
 export async function jellyfinGetResumeItems(
