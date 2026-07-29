@@ -188,6 +188,7 @@ export async function jellyfinGetLibraryItems(
   collectionType?: string,
   limit = 50,
   sortBy = 'SortName',
+  sortOrder: 'Ascending' | 'Descending' = 'Ascending',
 ): Promise<{ ok: boolean; items?: JellyfinItem[]; error?: string }> {
   if (!parentId) return { ok: false, error: 'Invalid parent ID' }
 
@@ -209,7 +210,7 @@ export async function jellyfinGetLibraryItems(
 
   const result = await jellyfinFetch<{ Items?: JellyfinItem[] }>(
     server,
-    `/Items?ParentId=${parentId}${includeTypes}&Recursive=${recursive}&SortBy=${sortBy}&SortOrder=Ascending&limit=${limit}&fields=PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,Overview,Genres,ProductionYear,CommunityRating,BackdropImageTags,ImageTags,SeriesId,SeasonId,IndexNumber,SeasonNumber`,
+    `/Items?ParentId=${parentId}${includeTypes}&Recursive=${recursive}&SortBy=${sortBy}&SortOrder=${sortOrder}&limit=${limit}&fields=PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,Overview,Genres,ProductionYear,CommunityRating,BackdropImageTags,ImageTags,SeriesId,SeasonId,IndexNumber,SeasonNumber`,
   )
   if (!result.ok) return { ok: false, error: result.error }
   const items = (result.data?.Items ?? []).filter((i) => i.Id !== parentId)

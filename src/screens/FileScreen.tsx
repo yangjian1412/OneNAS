@@ -1157,7 +1157,7 @@ function ActiveServiceView({ service, onClose }: ActiveServiceViewProps) {
   return (
     <View style={[StyleSheet.absoluteFill, styles.activeServiceRoot, { backgroundColor: t.bg }]}>
       <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: slideAnim }] }]}>
-        <View style={[styles.activeServiceHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
+        <View style={[styles.activeServiceHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
           <Text style={[styles.modalTitle, { color: t.text }]}>{service.name}</Text>
           <TouchableOpacity onPress={handleClose}>
             <Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text>
