@@ -1,9 +1,30 @@
 import { Linking, Alert } from 'react-native'
+import { launchApp, queryMarketApps } from './packageManager'
 
-const APP_PACKAGES: Record<string, string> = {
-  immich: 'app.immich',
-  jellyfin: 'org.jellyfin.mobile',
-  jellyfin_tv: 'org.jellyfin.androidtv',
+const KNOWN_MARKETS: Record<string, string> = {
+  'com.android.vending': 'Play 商店',
+  'com.huawei.appmarket': '华为商店',
+  'com.xiaomi.market': '小米商店',
+  'com.oppo.market': 'OPPO 商店',
+  'com.bbk.appstore': 'vivo 商店',
+  'com.coolapk.market': '酷安',
+}
+
+const KNOWN_IMMICH_PACKAGES = [
+  'app.alextran.immich',
+  'app.immich.immich',
+  'app.immich',
+]
+
+async function tryLaunchImmich(pkg: string): Promise<boolean> {
+  return await launchApp(pkg, '.MainActivity')
+}
+
+async function openImmich(): Promise<void> {
+  for (const pkg of KNOWN_IMMICH_PACKAGES) {
+    if (await tryLaunchImmich(pkg)) return
+  }
+  pickAppStore()
 }
 
 export async function launchAppWithFallback(
@@ -11,10 +32,8 @@ export async function launchAppWithFallback(
   name: string,
   url: string,
 ): Promise<void> {
-  const pkg = APP_PACKAGES[serviceType]
-
-  if (!pkg) {
-    Linking.openURL(url)
+  if (serviceType === 'immich') {
+    await openImmich()
     return
   }
 
@@ -23,68 +42,38 @@ export async function launchAppWithFallback(
     `Launch the ${name} app?`,
     [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Open App',
-        onPress: async () => {
-          try {
-            const canOpen = await Linking.canOpenURL(`${pkg}://`)
-            if (canOpen) {
-              await Linking.openURL(`${pkg}://`)
-            } else if (serviceType === 'immich') {
-              openImmichStore()
-            } else {
-              tryNativeLaunch(pkg, url)
-            }
-          } catch {
-            if (serviceType === 'immich') openImmichStore()
-            else Linking.openURL(url)
-          }
-        },
-      },
-      ...(serviceType === 'immich'
-        ? [{ text: 'Install from Google Play', onPress: openImmichStore }]
-        : [{ text: 'Open in Browser', onPress: () => Linking.openURL(url) }]),
+      { text: 'Open in Browser', onPress: () => Linking.openURL(url) },
     ],
   )
 }
 
 export async function launchNativeApp(serviceType: string, fallbackUrl: string): Promise<void> {
-  const pkg = APP_PACKAGES[serviceType]
-  if (!pkg) {
-    if (fallbackUrl) await Linking.openURL(fallbackUrl)
+  if (serviceType === 'immich') {
+    await openImmich()
     return
   }
-
-  try {
-    if (await Linking.canOpenURL(`${pkg}://`)) {
-      await Linking.openURL(`${pkg}://`)
-    } else if (serviceType === 'immich') {
-      openImmichStore()
-    } else if (fallbackUrl) {
-      await Linking.openURL(fallbackUrl)
-    }
-  } catch {
-    if (serviceType === 'immich') openImmichStore()
-    else if (fallbackUrl) Linking.openURL(fallbackUrl)
-  }
+  if (fallbackUrl) Linking.openURL(fallbackUrl).catch(() => {})
 }
 
-function openImmichStore() {
-  Linking.openURL('market://details?id=app.immich').catch(() =>
-    Linking.openURL('https://play.google.com/store/apps/details?id=app.immich'),
+async function pickAppStore(): Promise<void> {
+  const markets = await queryMarketApps()
+  const stores = markets
+    .map((pkg) => ({ pkg, name: KNOWN_MARKETS[pkg] }))
+    .filter((s) => !!s.name)
+
+  const buttons: Array<{ text: string; onPress?: () => void; style?: 'cancel' }> = [
+    { text: '取消', style: 'cancel' },
+  ]
+  for (const s of stores) {
+    buttons.push({
+      text: s.name!,
+      onPress: () => Linking.openURL('market://search?q=Immich&c=apps').catch(() => {}),
+    })
+  }
+
+  Alert.alert(
+    '未检测到 Immich 应用',
+    '请在应用商店搜索下载后打开',
+    buttons,
   )
-}
-
-async function tryNativeLaunch(packageName: string, fallbackUrl: string) {
-  try {
-    const url = `intent://#Intent;scheme=https;package=${packageName};end`
-    const supported = await Linking.canOpenURL(url)
-    if (supported) {
-      await Linking.openURL(url)
-    } else {
-      Linking.openURL(fallbackUrl)
-    }
-  } catch {
-    Linking.openURL(fallbackUrl)
-  }
 }

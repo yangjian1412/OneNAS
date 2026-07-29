@@ -12,7 +12,7 @@ import { sortFiles } from '@/lib/sort'
 import ServiceBar from '@/components/ServiceBar'
 import ServiceCard from '@/components/ServiceCard'
 import Icon from '@/components/Icon'
-import { launchNativeApp } from '@/lib/android-intent'
+import { launchAppWithFallback } from '@/lib/android-intent'
 import { buildUrl } from '@/lib/api/client'
 import { checkStoragePermission, openAllFilesSettings, enqueueDownload, cancelDownload, removeDownload, pollTaskProgress } from '@/lib/downloadManager'
 import { getFileCategory } from '@/lib/fileTypes'
@@ -161,7 +161,7 @@ export default function FileScreen() {
   }
 
   const handleTopServicePress = (service: ServiceConfig) => {
-    if (service.type === 'immich') launchNativeApp(service.type, service.url)
+    if (service.type === 'immich') launchAppWithFallback(service.type, service.name, service.url)
     else setActiveService(service)
   }
 
