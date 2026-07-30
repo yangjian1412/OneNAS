@@ -304,3 +304,132 @@ export interface PlaybackStartInfo {
   MaxBitrate?: number
   StartPositionTicks?: number
 }
+
+// ─── Navidrome (Subsonic API) ──────────────────────────────────────────────
+
+export interface NavidromeServerConfig {
+  id: string
+  name: string
+  type?: string
+  url: string
+  username: string
+  password: string
+  // Subsonic auth
+  authToken?: string   // hex(md5(password + salt))
+  salt?: string        // random salt for token auth
+  // cached user identity from subsonic-api ping
+  userId?: string
+  userName?: string
+}
+
+export interface NavidromeArtist {
+  id: string
+  name: string
+  albumCount?: number
+  coverArt?: string
+  starred?: string
+}
+
+export interface NavidromeAlbum {
+  id: string
+  name: string
+  title?: string  // some responses use title instead of name
+  artist: string
+  artistId?: string
+  coverArt?: string
+  songCount?: number
+  duration?: number
+  created?: string
+  year?: number
+  genre?: string
+  starred?: string
+  playCount?: number
+}
+
+export interface NavidromeSong {
+  id: string
+  parent?: string
+  title: string
+  album?: string
+  albumId?: string
+  artist?: string
+  artistId?: string
+  track?: number
+  year?: number
+  size?: number
+  contentType?: string
+  suffix?: string
+  duration?: number
+  bitRate?: number
+  path?: string
+  coverArt?: string
+  starred?: string
+  playCount?: number
+  lastPlayed?: string
+  created?: string
+  type?: string
+}
+
+export interface NavidromePlaylist {
+  id: string
+  name: string
+  comment?: string
+  owner?: string
+  public?: boolean
+  songCount?: number
+  duration?: number
+  created?: string
+  changed?: string
+  coverArt?: string
+}
+
+export interface NavidromeLyricsLine {
+  start: number
+  value: string
+  duration?: number
+}
+
+export interface NavidromeStructuredLyrics {
+  lang: string
+  synced: boolean
+  line: NavidromeLyricsLine[]
+}
+
+export interface NavidromeDirectory {
+  id: string
+  parent?: string
+  title: string
+  name?: string
+  coverArt?: string
+  childCount?: number
+  isDir?: boolean
+}
+
+export interface NavidromePlayQueue {
+  username?: string
+  current?: string
+  position?: number
+  changed?: string
+  changedBy?: string
+  songs?: NavidromeSong[]
+}
+
+export type NavidromeLyricPosition = 'top' | 'middle' | 'bottom'
+
+export interface NavidromePreferences {
+  showRecentAlbums: boolean
+  showMostPlayed: boolean
+  showFreshAlbums: boolean
+  showStarred: boolean
+  showMusicFolders: boolean
+  showPlaylists: boolean
+  cacheSongs: boolean
+  maxCacheMB: number
+  lyricNotification: boolean
+  lyricDesktop: boolean
+  lyricInjectSystem: boolean
+  lyricFontSize: number
+  lyricOpacity: number
+  lyricPosition: NavidromeLyricPosition
+  lyricShowOnLockScreen: boolean
+}

@@ -18,6 +18,7 @@ import { checkStoragePermission, openAllFilesSettings, enqueueDownload, cancelDo
 import { getFileCategory } from '@/lib/fileTypes'
 import FilePreviewModal from '@/components/FilePreviewModal'
 import JellyfinScreen from '@/screens/JellyfinScreen'
+import NavidromeScreen from '@/screens/NavidromeScreen'
 
 type EditMode = 'folder' | 'rename' | 'copy' | 'move' | null
 type ViewMode = 'list' | 'grid'
@@ -1179,6 +1180,8 @@ function ActiveServiceView({ service, onClose }: ActiveServiceViewProps) {
         </View>
         {service.type === 'jellyfin' ? (
           <JellyfinScreen service={service} onRequestClose={handleClose} />
+        ) : service.type === 'navidrome' ? (
+          <NavidromeScreen service={service} onRequestClose={handleClose} />
         ) : (
           <ServiceCard service={service} />
         )}

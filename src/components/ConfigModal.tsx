@@ -5,6 +5,7 @@ import { SERVICE_TYPE_LABELS, SERVICE_TYPE_ICONS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
 import { login } from '@/lib/api/filebrowser'
 import { fetchContainers } from '@/lib/api/unraid'
+import { navidromeLogin } from '@/lib/api/navidrome'
 
 interface Props {
   visible: boolean
@@ -114,6 +115,9 @@ export default function ConfigModal({
         }
         const result = await fetchContainers(s)
         Alert.alert(result.ok ? 'Success' : 'Failed', result.ok ? 'Connected' : (result.error ?? 'Error'))
+      } else if (type === 'navidrome') {
+        const result = await navidromeLogin(url, username, password)
+        Alert.alert(result.ok ? 'Success' : 'Failed', result.ok ? `已连接到 ${result.server?.url ?? 'Navidrome'}` : (result.error ?? 'Error'))
       } else {
         Alert.alert('Info', 'Test not available for this service type')
       }
@@ -227,7 +231,7 @@ export default function ConfigModal({
               </>
             ) : isAppType ? (
               <>
-                {type === 'jellyfin' ? (
+                {(type === 'jellyfin' || type === 'navidrome') ? (
                   <>
                     <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}

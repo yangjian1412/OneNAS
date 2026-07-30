@@ -72,6 +72,17 @@ import ExitFullscreenSvg from '@/icos/mingcute--fullscreen-exit-2-fill.svg'
 import RotateSvg from '@/icos/fa7-solid--rotate.svg'
 import PowerSvg from '@/icos/power.svg'
 import CompassSvg from '@/icos/compass.svg'
+import MusicSvg from '@/icos/fa7-solid--music.svg'
+import PersonSvg from '@/icos/material-symbols--person.svg'
+import TrendingUpSvg from '@/icos/material-symbols--trending-up.svg'
+import AddSvg from '@/icos/material-symbols--add.svg'
+import GridViewSvg from '@/icos/material-symbols--grid-view.svg'
+import StarSvg from '@/icos/material-symbols--star.svg'
+import ImagesModeSvg from '@/icos/material-symbols--imagesmode.svg'
+import QueueMusicSvg from '@/icos/material-symbols--queue-music.svg'
+import ScheduleSvg from '@/icos/material-symbols--schedule.svg'
+import SkipPreviousSvg from '@/icos/material-symbols--skip-previous.svg'
+import SkipNextSvg from '@/icos/material-symbols--skip-next.svg'
 
 type SvgComponent = React.ComponentType<{ width?: number; height?: number; fill?: string; color?: string; size?: number; style?: any }>
 
@@ -147,6 +158,17 @@ const SVG_COMPONENTS = {
   rotate: RotateSvg,
   power: PowerSvg,
   compass: CompassSvg,
+  music: MusicSvg,
+  person: PersonSvg,
+  trendingUp: TrendingUpSvg,
+  plus: AddSvg,
+  grid: GridViewSvg,
+  star: StarSvg,
+  images: ImagesModeSvg,
+  queueMusic: QueueMusicSvg,
+  schedule: ScheduleSvg,
+  skipPrev: SkipPreviousSvg,
+  skipNext: SkipNextSvg,
 } as const
 
 export type IconName = keyof typeof SVG_COMPONENTS
@@ -163,6 +185,8 @@ const MONO_ICONS: ReadonlySet<IconName> = new Set<IconName>([
   'volumeHigh', 'volumeMute', 'captions',
   'fullscreen', 'exitFullscreen', 'rotate',
   'power', 'compass',
+  'music', 'person', 'trendingUp', 'plus', 'grid', 'star', 'images',
+  'queueMusic', 'schedule', 'skipPrev', 'skipNext',
 ])
 
 interface Props {

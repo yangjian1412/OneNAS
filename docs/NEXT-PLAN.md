@@ -1,7 +1,37 @@
 # 下一步计划
 
 > 本文档记录接下来要做的事项，按优先级排序。
-> 最近更新：2026-07-29（Jellyfin 季列表 + 返回键 bug 修复 ✅）
+> 最近更新：2026-07-30（Navidrome 大修启动）
+
+---
+
+## Navidrome 修复顺序 (2026-07-30)
+
+按依赖顺序排列：
+
+### 1. API 层 — `src/lib/api/navidrome.ts`
+检查每个 Subsonic 端点解析是否正确、返回值类型匹配
+
+### 2. 类型定义 — `src/types/index.ts`
+确保 `NavidromeAlbum`, `NavidromeSong`, `NavidromePlaylist` 等字段与 Navidrome 实际返回一致
+
+### 3. Store — `src/stores/navidromeStore.ts`, `navidromePlaybackStore.ts`
+数据流和状态管理，`loadNavidromeHome` 取哪些端点数据
+
+### 4. 主页 — `src/screens/NavidromeScreen.tsx`
+各 View 切换、loading/error、数据传入、分节渲染
+
+### 5. 设置 — `src/components/navidrome/NavidromeSettings.tsx`
+歌词/常用设置的 UI 和交互逻辑
+
+### 6. 播放器 — `src/components/navidrome/NavidromePlayer.tsx`
+内嵌播放器、底部 Bar、scrobble
+
+### 7. 数据格 — `NavidromeAlbumGrid`, `ArtistGrid`, `PlaylistGrid`, `SongList`
+列表/网格显示
+
+### 8. 侧边栏/顶栏 — `NavidromeDrawer`, `NavidromeHeader`, `NavidromeCoverArt`
+纯 UI 收尾
 
 ---
 
