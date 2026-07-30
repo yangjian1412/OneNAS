@@ -15,7 +15,7 @@ interface Props {
 
 const DRAWER_W = Dimensions.get('window').width * 0.75
 
-export default function NavidromeDrawer({ visible, server, serverVersion, onClose, onSettings }: Props) {
+export default function NavidromeDrawer({ visible, server, serverVersion, onClose, onCommonSettings, onLyricsSettings }: Props) {
   const t = useTheme()
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
 

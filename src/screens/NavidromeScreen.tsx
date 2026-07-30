@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, useRef } from 'react'
-import { View, Text, ScrollView, FlatList, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet } from 'react-native'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { View, Text, ScrollView, FlatList, TouchableOpacity, ActivityIndicator, BackHandler, Modal, StyleSheet } from 'react-native'
+import { useIsFocused } from '@react-navigation/native'
 import { useNavidromeStore, loadNavidromeHome } from '@/stores/navidromeStore'
 import { useNavidromePlaybackStore } from '@/stores/navidromePlaybackStore'
 import {
@@ -58,6 +59,8 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
   const prefs = useNavidromePlaybackStore()
   const prefsLoad = useNavidromePlaybackStore((s) => s.loadFromStorage)
 
+  const isFocused = useIsFocused()
+
   const [view, setView] = useState<ViewType>('home')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -91,6 +94,13 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
 
   // All albums (for "查看全部")
   const [allAlbums, setAllAlbums] = useState<NavidromeAlbum[]>([])
+  const [albumSortBy, setAlbumSortBy] = useState<'name' | 'artist' | 'created'>('created')
+  const [albumSortDir, setAlbumSortDir] = useState<'asc' | 'desc'>('desc')
+  const [showAlbumSort, setShowAlbumSort] = useState(false)
+
+  // All artists sort
+  const [artistSortDir, setArtistSortDir] = useState<'asc' | 'desc'>('asc')
+  const [showArtistSort, setShowArtistSort] = useState(false)
 
   // Search
   const [searchData, setSearchData] = useState<SearchData>({ artists: [], albums: [], songs: [] })
@@ -98,7 +108,31 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
   // Random
   const [random, setRandom] = useState<RandomData>({ songs: [], index: -1 })
 
+  const homeGridAlbums = useMemo(() => {
+    if (!freshAlbums.length) return []
+    const copy = [...freshAlbums]
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]]
+    }
+    return copy.slice(0, 6)
+  }, [freshAlbums])
+
+  const sortedArtists = useMemo(() => {
+    if (!artists.length) return artists
+    const copy = [...artists]
+    copy.sort((a, b) => artistSortDir === 'asc'
+      ? a.name.localeCompare(b.name)
+      : b.name.localeCompare(a.name))
+    return copy
+  }, [artists, artistSortDir])
+
   useEffect(() => { void prefsLoad() }, [prefsLoad])
+
+  const serverRef = useRef(server)
+  serverRef.current = server
+  const loadingRef = useRef(loading)
+  loadingRef.current = loading
 
   const loadHome = useCallback(async () => {
     try {
@@ -108,7 +142,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
         return
       }
       setError(null)
-      setLoading(true)
+      if (!serverRef.current) setLoading(true)
       const loginResult = await navidromeLogin(service.url, service.username, service.password)
       if (!loginResult.ok || !loginResult.server) {
         setError(loginResult.error ?? '登录失败')
@@ -116,7 +150,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
         return
       }
       setServer(loginResult.server)
-      setServerVersion('')
+      setServerVersion(loginResult.serverVersion ?? '')
       await setCached('serverInfo', loginResult.server, 86400000)
       const home = await loadNavidromeHome(loginResult.server)
       setArtists(home.artists)
@@ -134,7 +168,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
     }
   }, [service, setServer, setArtists, setRecentAlbums, setFreshAlbums, setMostPlayed, setPlaylists, setStarredAlbums, setStarredArtists, setStarredSongs])
 
-  useEffect(() => { void loadHome() }, [loadHome])
+  useEffect(() => { if (isFocused) void loadHome() }, [isFocused, loadHome])
 
   const goBack = useCallback(() => {
     // Directory back: pop stack and re-fetch parent
@@ -186,6 +220,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
   servRef.current = serverSettingsOpen
 
   const handleHardwareBack = useCallback((): boolean => {
+    if (loadingRef.current) { return true }
     if (drawRef.current) { setDrawerOpen(false); return true }
     if (commRef.current) { setCommonSettingsOpen(false); return true }
     if (lyriRef.current) { setLyricsSettingsOpen(false); return true }
@@ -286,17 +321,30 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
     }
   }
 
-  const handleSeeAllAlbums = useCallback(async () => {
+  const handleSeeAllAlbums = useCallback(async (sortBy?: string, sortDir?: string) => {
     if (!server) return
+    const sBy = sortBy ?? albumSortBy
+    const sDir = sortDir ?? albumSortDir
     setLoading(true)
-    const result = await navidromeGetAlbums(server, { type: 'newest', size: 200, offset: 0 })
+    const type = ALBUM_SORT_TYPE[sBy] ?? 'newest'
+    const result = await navidromeGetAlbums(server, { type, size: 200, offset: 0 })
     setLoading(false)
     if (result.ok) {
-      setAllAlbums(result.items ?? [])
+      let items = result.items ?? []
+      if (sDir === 'desc') {
+        if (sBy === 'name') {
+          items = [...items].sort((a, b) => (b.name ?? '').localeCompare(a.name ?? ''))
+        } else if (sBy === 'artist') {
+          items = [...items].sort((a, b) => (b.artist ?? '').localeCompare(a.artist ?? ''))
+        } else if (sBy === 'created') {
+          items = [...items].reverse()
+        }
+      }
+      setAllAlbums(items)
       viewStackRef.current.push(currentViewRef.current)
       setView('allAlbums')
     }
-  }, [server])
+  }, [server, albumSortBy, albumSortDir])
 
   const handleStarToggle = useCallback(async (id: string, type: 'song' | 'album' | 'artist', currentlyStarred?: boolean) => {
     if (!server) return
@@ -380,8 +428,8 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
             </HomeSection>
           )}
           <HomeSection server={server} title="专辑" icon="grid" onSeeAll={handleSeeAllAlbums}>
-            {freshAlbums.length > 0 && (
-              <NavidromeAlbumGrid server={server} albums={freshAlbums.slice(0, 6)} onAlbumPress={handleAlbumPress} emptyText="" />
+            {homeGridAlbums.length > 0 && (
+              <NavidromeAlbumGrid server={server} albums={homeGridAlbums} onAlbumPress={handleAlbumPress} emptyText="" />
             )}
           </HomeSection>
           <HomeSection server={server} title="艺术家" icon="person" onSeeAll={() => { viewStackRef.current.push(currentViewRef.current); setView('allArtists') }}>
@@ -511,16 +559,61 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
 
       {view === 'allAlbums' && (
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Text style={[styles.sectionTitle, { color: t.text, paddingHorizontal: 16 }]}>全部专辑</Text>
+          <View style={[styles.sortRow, { paddingHorizontal: 16 }]}>
+            <Text style={[styles.sectionTitle, { color: t.text }]}>全部专辑</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <TouchableOpacity onPress={() => setShowAlbumSort(true)} activeOpacity={0.7}>
+                <Text style={[styles.sortFieldText, { color: t.primary }]}>
+                  {ALBUM_SORT_OPTIONS.find((o) => o.value === albumSortBy)?.label}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => {
+                setAlbumSortDir('asc')
+                handleSeeAllAlbums(albumSortBy, 'asc')
+              }} style={styles.sortArrowBtn}>
+                <Icon name="chevronUp" size={14} color={albumSortDir === 'asc' ? t.primary : t.textMuted} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => {
+                setAlbumSortDir('desc')
+                handleSeeAllAlbums(albumSortBy, 'desc')
+              }} style={styles.sortArrowBtn}>
+                <Icon name="chevronDown" size={14} color={albumSortDir === 'desc' ? t.primary : t.textMuted} />
+              </TouchableOpacity>
+            </View>
+          </View>
           <NavidromeAlbumGrid server={server} albums={allAlbums} onAlbumPress={handleAlbumPress} emptyText="暂无专辑" />
           <View style={{ height: 80 }} />
         </ScrollView>
       )}
 
+      {showAlbumSort && (
+        <SortModal
+          options={ALBUM_SORT_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+          selected={albumSortBy}
+          onSelect={(value) => {
+            const dir = value === albumSortBy ? (albumSortDir === 'asc' ? 'desc' : 'asc') : 'desc'
+            setAlbumSortBy(value as 'name' | 'artist' | 'created')
+            setAlbumSortDir(dir)
+            setShowAlbumSort(false)
+            handleSeeAllAlbums(value, dir)
+          }}
+          onClose={() => setShowAlbumSort(false)}
+        />
+      )}
+
       {view === 'allArtists' && (
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Text style={[styles.sectionTitle, { color: t.text, paddingHorizontal: 16 }]}>全部艺术家</Text>
-          <NavidromeArtistGrid server={server} artists={artists} onArtistPress={handleArtistPress} emptyText="暂无艺术家" />
+          <View style={[styles.sortRow, { paddingHorizontal: 16 }]}>
+            <Text style={[styles.sectionTitle, { color: t.text }]}>全部艺术家</Text>
+            <TouchableOpacity onPress={() => {
+              const newDir = artistSortDir === 'asc' ? 'desc' : 'asc'
+              setArtistSortDir(newDir)
+            }} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 6 }}>
+              <Icon name={artistSortDir === 'asc' ? 'chevronUp' : 'chevronDown'} size={14} color={t.primary} />
+              <Text style={[styles.sortFieldText, { color: t.primary }]}>名称</Text>
+            </TouchableOpacity>
+          </View>
+          <NavidromeArtistGrid server={server} artists={sortedArtists} onArtistPress={handleArtistPress} emptyText="暂无艺术家" />
           <View style={{ height: 80 }} />
         </ScrollView>
       )}
@@ -691,6 +784,18 @@ const ICON_MAP: Record<string, IconKey> = {
   music: 'music',
 }
 
+const ALBUM_SORT_OPTIONS: { label: string; value: 'name' | 'artist' | 'created'; subsonicType: string }[] = [
+  { label: '名称', value: 'name', subsonicType: 'alphabeticalByName' },
+  { label: '艺术家', value: 'artist', subsonicType: 'alphabeticalByArtist' },
+  { label: '最近添加', value: 'created', subsonicType: 'newest' },
+]
+
+const ALBUM_SORT_TYPE: Record<string, string> = {
+  name: 'alphabeticalByName',
+  artist: 'alphabeticalByArtist',
+  created: 'newest',
+}
+
 function HomeSection({
   title,
   icon,
@@ -822,6 +927,36 @@ function UriImage({ uri }: { uri: string | undefined }) {
   return <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
 }
 
+function SortModal({
+  options, selected, onSelect, onClose,
+}: {
+  options: { label: string; value: string }[]
+  selected: string
+  onSelect: (value: string) => void
+  onClose: () => void
+}) {
+  const t = useTheme()
+  return (
+    <Modal transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.sortOverlay} activeOpacity={1} onPress={onClose}>
+        <View style={[styles.sortDropdown, { backgroundColor: t.card, borderColor: t.border }]}>
+          {options.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[styles.sortOption, { borderBottomColor: t.border }]}
+              onPress={() => onSelect(opt.value)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sortOptionText, { color: t.text }]}>{opt.label}</Text>
+              {selected === opt.value && <Icon name="check" size={14} color={t.primary} />}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  )
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
@@ -873,4 +1008,11 @@ const styles = StyleSheet.create({
   songArtist: { fontSize: 11, marginTop: 2 },
   songCount: { fontSize: 11, marginHorizontal: 8 },
   songDuration: { fontSize: 12, minWidth: 40, textAlign: 'right' },
+  sortRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  sortFieldText: { fontSize: 14, fontWeight: '500' },
+  sortArrowBtn: { paddingVertical: 4, paddingHorizontal: 6 },
+  sortOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
+  sortDropdown: { width: 200, borderRadius: 12, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
+  sortOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  sortOptionText: { flex: 1, fontSize: 15 },
 })

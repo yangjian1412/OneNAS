@@ -87,7 +87,7 @@ export async function navidromeLogin(
   serverUrl: string,
   username: string,
   password: string,
-): Promise<{ ok: boolean; server?: NavidromeServerConfig; error?: string }> {
+): Promise<{ ok: boolean; server?: NavidromeServerConfig; serverVersion?: string; error?: string }> {
   const normalUrl = serverUrl.replace(/\/+$/, '')
   // Try plaintext first; if server requires token-based auth, fall back to token-based using md5hex
   const baseServer: NavidromeServerConfig = {
@@ -102,7 +102,7 @@ export async function navidromeLogin(
     return { ok: false, error: result.error }
   }
   baseServer.userName = username
-  return { ok: true, server: baseServer }
+  return { ok: true, server: baseServer, serverVersion: result.server.serverVersion }
 }
 
 interface ListResult<T> {

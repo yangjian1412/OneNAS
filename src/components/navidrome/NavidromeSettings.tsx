@@ -39,7 +39,6 @@ function CommonContent({ prefs, t }: { prefs: any; t: any }) {
       <Row label="最常播放" value={prefs.showMostPlayed} onValueChange={prefs.setShowMostPlayed} t={t} />
       <Row label="最近添加" value={prefs.showFreshAlbums} onValueChange={prefs.setShowFreshAlbums} t={t} />
       <Row label="收藏" value={prefs.showStarred} onValueChange={prefs.setShowStarred} t={t} />
-      <Row label="音乐文件夹" value={prefs.showMusicFolders} onValueChange={prefs.setShowMusicFolders} t={t} />
       <Row label="播放列表" value={prefs.showPlaylists} onValueChange={prefs.setShowPlaylists} t={t} />
 
       <SectionLabel text="缓存" />
