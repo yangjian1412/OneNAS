@@ -57,7 +57,6 @@ import AlertCircleSvg from '@/icos/alert-circle.svg'
 import FilmSvg from '@/icos/film.svg'
 import PlayCircleSvg from '@/icos/play-circle.svg'
 import XSvg from '@/icos/x.svg'
-import PauseSvg from '@/icos/pause.svg'
 import MenuSvg from '@/icos/flowbite--bars-from-left-outline.svg'
 
 import PlayFilledSvg from '@/icos/line-md--play-filled.svg'
@@ -81,8 +80,18 @@ import StarSvg from '@/icos/material-symbols--star.svg'
 import ImagesModeSvg from '@/icos/material-symbols--imagesmode.svg'
 import QueueMusicSvg from '@/icos/material-symbols--queue-music.svg'
 import ScheduleSvg from '@/icos/material-symbols--schedule.svg'
-import SkipPreviousSvg from '@/icos/material-symbols--skip-previous.svg'
-import SkipNextSvg from '@/icos/material-symbols--skip-next.svg'
+import SkipPreviousSvg from '@/icos/mdi--skip-previous.svg'
+import SkipNextSvg from '@/icos/mdi--skip-next.svg'
+import ShuffleSvg from '@/icos/mdi--shuffle.svg'
+import RepeatSvg from '@/icos/mdi--repeat.svg'
+import RepeatOneSvg from '@/icos/mdi--repeat-once.svg'
+import FavoriteSvg from '@/icos/mdi--heart.svg'
+import FavoriteBorderSvg from '@/icos/mdi--heart-plus-outline.svg'
+import PlaySvg from '@/icos/mdi--play.svg'
+import PauseSvg from '@/icos/mdi--pause.svg'
+import PlaylistMusicSvg from '@/icos/mdi--playlist-music.svg'
+import ExpandMoreSvg from '@/icos/material-symbols--expand-more.svg'
+import SpeedSvg from '@/icos/material-symbols--speed.svg'
 
 type SvgComponent = React.ComponentType<{ width?: number; height?: number; fill?: string; color?: string; size?: number; style?: any }>
 
@@ -165,10 +174,19 @@ const SVG_COMPONENTS = {
   grid: GridViewSvg,
   star: StarSvg,
   images: ImagesModeSvg,
-  queueMusic: QueueMusicSvg,
+  queueMusic: PlaylistMusicSvg,
   schedule: ScheduleSvg,
   skipPrev: SkipPreviousSvg,
   skipNext: SkipNextSvg,
+  shuffle: ShuffleSvg,
+  repeat: RepeatSvg,
+  repeatOne: RepeatOneSvg,
+  favorite: FavoriteSvg,
+  favoriteBorder: FavoriteBorderSvg,
+  expandMore: ExpandMoreSvg,
+  speed: SpeedSvg,
+  play: PlaySvg,
+  pause: PauseSvg,
 } as const
 
 export type IconName = keyof typeof SVG_COMPONENTS
@@ -187,6 +205,7 @@ const MONO_ICONS: ReadonlySet<IconName> = new Set<IconName>([
   'power', 'compass',
   'music', 'person', 'trendingUp', 'plus', 'grid', 'star', 'images',
   'queueMusic', 'schedule', 'skipPrev', 'skipNext',
+  'shuffle', 'repeat', 'repeatOne', 'favorite', 'favoriteBorder', 'expandMore', 'speed', 'play', 'pause',
 ])
 
 interface Props {

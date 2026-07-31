@@ -325,10 +325,28 @@ export async function navidromeUnstar(
   } catch { return false }
 }
 
+export async function navidromeGetLyrics(
+  server: NavidromeServerConfig,
+  artist: string,
+  title: string,
+): Promise<{ ok: boolean; value?: string; error?: string }> {
+  try {
+    const url = buildApiUrl(server, 'getLyrics', { artist, title })
+    const res = await fetch(url)
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const data = await res.json()
+    const r = data['subsonic-response']
+    if (r.status !== 'ok') return { ok: false, error: r.error?.message ?? 'failed' }
+    return { ok: true, value: r.lyrics?.value }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? 'unknown' }
+  }
+}
+
 export async function navidromeGetLyricsBySongId(
   server: NavidromeServerConfig,
   songId: string,
-): Promise<{ ok: boolean; lyrics?: import('@/types').NavidromeStructuredLyrics[]; error?: string }> {
+): Promise<{ ok: boolean; lyrics?: import('@/types').NavidromeStructuredLyrics[]; plain?: string; error?: string }> {
   try {
     const url = buildApiUrl(server, 'getLyricsBySongId', { id: songId })
     const res = await fetch(url)
@@ -337,7 +355,22 @@ export async function navidromeGetLyricsBySongId(
     const r = data['subsonic-response']
     if (r.status !== 'ok') return { ok: false, error: r.error?.message ?? 'failed' }
     const list = r.lyricsList
-    return { ok: true, lyrics: list?.structuredLyrics as any }
+    const structured = (list?.structuredLyrics ?? []) as any[]
+    const arr = Array.isArray(structured) ? structured : [structured]
+    const normalized = arr
+      .filter(Boolean)
+      .map((s) => ({
+        lang: s.lang ?? 'und',
+        synced: !!s.synced,
+        line: Array.isArray(s.line) ? s.line : (s.line ? [s.line] : []),
+        offset: typeof s.offset === 'number' ? s.offset : 0,
+        displayArtist: s.displayArtist,
+        displayTitle: s.displayTitle,
+      }))
+    const plain = list?.structuredLyrics?.length
+      ? undefined
+      : (r.lyrics?.value ?? r.lyrics?.text ?? undefined)
+    return { ok: true, lyrics: normalized, plain }
   } catch (e: any) {
     return { ok: false, error: e?.message ?? 'unknown' }
   }

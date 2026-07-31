@@ -393,6 +393,9 @@ export interface NavidromeStructuredLyrics {
   lang: string
   synced: boolean
   line: NavidromeLyricsLine[]
+  offset?: number
+  displayArtist?: string
+  displayTitle?: string
 }
 
 export interface NavidromeDirectory {

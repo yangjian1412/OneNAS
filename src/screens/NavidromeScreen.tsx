@@ -3,6 +3,8 @@ import { View, Text, ScrollView, FlatList, TouchableOpacity, ActivityIndicator, 
 import { useIsFocused } from '@react-navigation/native'
 import { useNavidromeStore, loadNavidromeHome } from '@/stores/navidromeStore'
 import { useNavidromePlaybackStore } from '@/stores/navidromePlaybackStore'
+import { useNavidromePlayerStore } from '@/stores/navidromePlayerStore'
+import { initAudio, setServer, playList, playSong as acPlaySong, clear as clearPlayer } from '@/lib/audioController'
 import {
   navidromeLogin,
   navidromeGetAlbum, navidromeGetAlbums,
@@ -26,7 +28,8 @@ import NavidromeSongList from '@/components/navidrome/NavidromeSongList'
 import NavidromeDrawer from '@/components/navidrome/NavidromeDrawer'
 import NavidromeSettings from '@/components/navidrome/NavidromeSettings'
 import NavidromeServerSettings from '@/components/navidrome/NavidromeServerSettings'
-import NavidromePlayer, { NavidromePlayerBar } from '@/components/navidrome/NavidromePlayer'
+import NavidromeMiniPlayer from '@/components/navidrome/NavidromeMiniPlayer'
+import NavidromeFullPlayer from '@/components/navidrome/NavidromeFullPlayer'
 
 type ViewType = 'home' | 'albumDetail' | 'artistAlbums' | 'allAlbums' | 'allArtists' | 'playlistDetail' | 'search' | 'directory' | 'starred' | 'random'
 
@@ -70,6 +73,16 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
   const [commonSettingsOpen, setCommonSettingsOpen] = useState(false)
   const [lyricsSettingsOpen, setLyricsSettingsOpen] = useState(false)
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false)
+  const [fullPlayerVisible, setFullPlayerVisible] = useState(false)
+
+  useEffect(() => { void initAudio() }, [])
+
+  useEffect(() => {
+    setServer(server)
+  }, [server?.id])
+
+  const queueLen = useNavidromePlayerStore((s) => s.queue.length)
+  const currentIdx = useNavidromePlayerStore((s) => s.currentIndex)
 
   // Album detail
   const [albumDetail, setAlbumDetail] = useState<NavidromeAlbum | null>(null)
@@ -105,8 +118,9 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
   // Search
   const [searchData, setSearchData] = useState<SearchData>({ artists: [], albums: [], songs: [] })
 
-  // Random
-  const [random, setRandom] = useState<RandomData>({ songs: [], index: -1 })
+  // Random (legacy: navigation may still trigger setRandom from directory)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_randomLegacy, _setRandomLegacy] = useState<RandomData>({ songs: [], index: -1 })
 
   const homeGridAlbums = useMemo(() => {
     if (!freshAlbums.length) return []
@@ -206,7 +220,6 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
     setAllAlbums([])
     setSearchQuery('')
     setSearchData({ artists: [], albums: [], songs: [] })
-    setRandom({ songs: [], index: -1 })
     setView('home')
   }, [view, directoryStack, server])
 
@@ -354,7 +367,12 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
   }, [server])
 
   const handlePlaySong = (songs: NavidromeSong[], index: number) => {
-    setRandom({ songs, index })
+    if (!songs.length) return
+    if (index >= 0 && index < songs.length) {
+      playList(songs, index)
+    } else {
+      playList(songs, 0)
+    }
   }
 
   const playAlbum = (album: NavidromeAlbum, songs: NavidromeSong[]) => {
@@ -411,7 +429,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
       )}
 
       {view === 'home' && !loading && (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: queueLen > 0 ? 148 : 32 }]}>
           {prefs.showRecentAlbums && recentAlbums.length > 0 && (
             <HomeSection server={server} title="最近播放" icon="clock">
               <AlbumRow server={server} albums={recentAlbums} onPress={handleAlbumPress} />
@@ -519,7 +537,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
                   <Text style={[styles.songArtist, { color: t.textMuted }]} numberOfLines={1}>{song.artist ?? '未知艺术家'}</Text>
                 </View>
                 {song.playCount != null && song.playCount > 0 ? (
-                  <Text style={[styles.songCount, { color: t.warning }]}>▶ {song.playCount}</Text>
+                  <Text style={[styles.songCount, { color: t.warning }]}>▶{song.playCount}</Text>
                 ) : null}
                 <Text style={[styles.songDuration, { color: t.textMuted }]}>{(song.duration ? Math.round(song.duration) : 0) + 's'}</Text>
               </TouchableOpacity>
@@ -680,26 +698,14 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
       <NavidromeSettings visible={lyricsSettingsOpen} onClose={() => setLyricsSettingsOpen(false)} showLyrics={true} />
       <NavidromeServerSettings visible={serverSettingsOpen} onClose={() => setServerSettingsOpen(false)} serverUrl={server?.url} />
 
-      {random.songs.length > 0 && random.index >= 0 && (
-        <NavidromePlayer
-          visible
-          songs={random.songs}
-          startIndex={random.index}
-          server={server}
-          preferences={prefs}
-          onClose={() => setRandom({ songs: [], index: -1 })}
-        />
+      {queueLen > 0 && currentIdx >= 0 && !fullPlayerVisible && (
+        <NavidromeMiniPlayer onPress={() => setFullPlayerVisible(true)} />
       )}
-      {random.songs.length > 0 && random.index >= 0 && (
-        <NavidromePlayerBar
-          visible
-          songs={random.songs}
-          index={random.index}
-          server={server}
-          onClose={() => setRandom({ songs: [], index: -1 })}
-          onAdvance={() => { setRandom({ songs: random.songs, index: (random.index + 1) % random.songs.length }) }}
-        />
-      )}
+      <NavidromeFullPlayer
+        visible={fullPlayerVisible}
+        onClose={() => setFullPlayerVisible(false)}
+        server={server}
+      />
     </View>
   )
 }
@@ -845,7 +851,7 @@ function AlbumHeader({ server, album, songs, onPlay, onStarToggle }: { server: N
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
             {songs.length > 0 && (
               <TouchableOpacity onPress={onPlay} style={[styles.playAllBtn, { backgroundColor: t.primary }]}>
-                <Icon name="playCircle" size={18} color="#fff" />
+                <Icon name="play" size={18} color="#fff" />
                 <Text style={styles.playAllText}>播放全部</Text>
               </TouchableOpacity>
             )}
@@ -893,7 +899,7 @@ function PlaylistHeader({ server, playlist, onPlay }: { server: NavidromeServerC
             <Text style={[styles.detailMeta, { color: t.textMuted }]}>{playlist.songCount} 首</Text>
           ) : null}
           <TouchableOpacity onPress={onPlay} style={[styles.playAllBtn, { backgroundColor: t.primary, marginTop: 8 }]}>
-            <Icon name="playCircle" size={18} color="#fff" />
+            <Icon name="play" size={18} color="#fff" />
             <Text style={styles.playAllText}>播放</Text>
           </TouchableOpacity>
         </View>
