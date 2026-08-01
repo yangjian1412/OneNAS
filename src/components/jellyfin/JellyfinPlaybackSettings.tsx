@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, Modal, StyleSheet, Platform, StatusBar, Switch } from 'react-native'
 import { useTheme } from '@/lib/theme'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useJellyfinPlaybackStore, DEFAULT_PLAYBACK_PREFS } from '@/stores/jellyfinPlaybackStore'
 import Icon from '@/components/Icon'
 import DropdownOption from './DropdownOption'
@@ -72,6 +73,7 @@ interface Props {
 
 export default function JellyfinPlaybackSettings({ visible, onClose }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const pt = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0
   const store = useJellyfinPlaybackStore()
   const [confirmReset, setConfirmReset] = useState(false)
@@ -94,7 +96,7 @@ export default function JellyfinPlaybackSettings({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: t.bg }]}>
+      <View style={[styles.container, { backgroundColor: t.bg, paddingBottom: insets.bottom }]}>
         <View style={[styles.toolbar, { backgroundColor: t.card, paddingTop: pt + 8 }]}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Icon name="x" size={24} color={t.text} />

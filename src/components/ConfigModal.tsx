@@ -3,6 +3,7 @@ import { View, Text, Modal, ScrollView, TextInput, TouchableOpacity, ActivityInd
 import { ServerConfig, ServiceConfig, ServiceType } from '@/types'
 import { SERVICE_TYPE_LABELS, SERVICE_TYPE_ICONS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { login } from '@/lib/api/filebrowser'
 import { fetchContainers } from '@/lib/api/unraid'
 import { navidromeLogin } from '@/lib/api/navidrome'
@@ -23,6 +24,7 @@ export default function ConfigModal({
   onSaveServer, onSaveService, onDelete,
 }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const isServerType = type === 'filebrowser' || type === 'unraid'
   const isAppType = type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'immich'
   const [testing, setTesting] = useState(false)
@@ -165,7 +167,7 @@ export default function ConfigModal({
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-          <View style={[styles.sheet, { backgroundColor: t.bg }]}>
+          <View style={[styles.sheet, { backgroundColor: t.bg, paddingBottom: insets.bottom }]}>
             <View style={[styles.handleRow, { borderBottomColor: t.border }]}>
               <TouchableOpacity onPress={onClose}>
                 <Text style={[styles.cancelBtn, { color: t.textMuted }]}>Cancel</Text>

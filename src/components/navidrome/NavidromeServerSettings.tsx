@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native'
 import { useTheme } from '@/lib/theme'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { clearNavidromeCache } from '@/lib/api/navidromeCache'
 
 interface Props {
@@ -10,10 +11,11 @@ interface Props {
 
 export default function NavidromeServerSettings({ visible, onClose, serverUrl }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   if (!visible) return null
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: t.bg, paddingTop: 40 }]}>
+      <View style={[styles.container, { backgroundColor: t.bg, paddingTop: 40, paddingBottom: insets.bottom }]}>
         <View style={[styles.header, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
           <Text style={[styles.title, { color: t.text }]}>服务器设置</Text>
           <TouchableOpacity onPress={onClose}><Text style={{ color: t.primary, fontSize: 16 }}>关闭</Text></TouchableOpacity>

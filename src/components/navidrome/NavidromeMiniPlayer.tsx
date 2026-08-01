@@ -1,12 +1,11 @@
 import { View, Text, Image, TouchableOpacity, Pressable, StyleSheet, Animated } from 'react-native'
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavidromePlayerStore } from '@/stores/navidromePlayerStore'
 import { useTheme } from '@/lib/theme'
 import { togglePlay, next, getServer } from '@/lib/audioController'
-import { navidromeGetCoverArtUrl, navidromeGetLyrics } from '@/lib/api/navidrome'
-import { findCurrentLine } from './useLyrics'
+import { navidromeGetCoverArtUrl } from '@/lib/api/navidrome'
+import { useLyrics, findCurrentLine } from './useLyrics'
 import Icon from '@/components/Icon'
-import type { NavidromeSong, NavidromeServerConfig, NavidromeLyricsLine } from '@/types'
 
 interface Props {
   onPress: () => void
@@ -24,8 +23,22 @@ export default function NavidromeMiniPlayer({ onPress }: Props) {
   const duration = useNavidromePlayerStore((s) => s.duration)
 
   const server = getServer()
-  const [lyricLines, setLyricLines] = useState<NavidromeLyricsLine[]>([])
-  const [currentLyric, setCurrentLyric] = useState('')
+  const lyricsData = useLyrics(server, song ?? null)
+  const currentLyric = useMemo(() => {
+    if (lyricsData.structured && lyricsData.structured.length > 0) {
+      const first = lyricsData.structured[0]
+      const lines = first.line
+      const synced = first.synced && lines.length > 0 && lines[0].start != null
+      if (synced) {
+        const idx = findCurrentLine(lines, currentTime, first.offset ?? 0)
+        if (idx >= 0) return lines[idx].value ?? ''
+        if (currentTime < 0.5) return lines[0]?.value ?? ''
+        return ''
+      }
+      return lines[0]?.value ?? ''
+    }
+    return (lyricsData.plain ?? '').trim()
+  }, [lyricsData, currentTime])
 
   const handlePlay = useCallback((e: any) => {
     e?.stopPropagation?.()
@@ -49,34 +62,6 @@ export default function NavidromeMiniPlayer({ onPress }: Props) {
       useNativeDriver: false,
     }).start()
   }, [currentTime, duration])
-
-  useEffect(() => {
-    let cancelled = false
-    setLyricLines([])
-    setCurrentLyric('')
-    if (!server || !song?.id) return
-    ;(async () => {
-      try {
-        const r = await navidromeGetLyricsBySongIdSafe(server, song)
-        if (cancelled) return
-        const structured = (r?.lyrics ?? []).filter((s: any) => s && Array.isArray(s.line) && s.synced)
-        if (structured.length > 0) {
-          setLyricLines(structured[0].line)
-        } else {
-          const plain = (r?.plain ?? '').trim()
-          setCurrentLyric(plain || '')
-        }
-      } catch {}
-    })()
-    return () => { cancelled = true }
-  }, [server, song?.id])
-
-  useEffect(() => {
-    if (lyricLines.length === 0) return
-    const idx = findCurrentLine(lyricLines, currentTime)
-    if (idx >= 0) setCurrentLyric(lyricLines[idx].value ?? '')
-    else if (idx === -1 && currentTime < 0.5) setCurrentLyric(lyricLines[0]?.value ?? '')
-  }, [currentTime, lyricLines])
 
   if (!song) return null
 
@@ -113,11 +98,6 @@ export default function NavidromeMiniPlayer({ onPress }: Props) {
       <Animated.View pointerEvents="none" style={[styles.progress, { backgroundColor: t.primary, width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]} />
     </Pressable>
   )
-}
-
-async function navidromeGetLyricsBySongIdSafe(server: NavidromeServerConfig, song: NavidromeSong) {
-  const mod = await import('@/lib/api/navidrome')
-  return mod.navidromeGetLyricsBySongId(server, song.id)
 }
 
 const styles = StyleSheet.create({

@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  View, Text, Image, TouchableOpacity, StyleSheet, Animated, Dimensions, ScrollView, FlatList, Modal, PanResponder,
+  View, Text, Image, TouchableOpacity, StyleSheet, Animated, Dimensions, ScrollView, FlatList, Modal,
 } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { useNavidromePlayerStore } from '@/stores/navidromePlayerStore'
 import { useTheme } from '@/lib/theme'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLyrics, findCurrentLine } from './useLyrics'
 import {
-  togglePlay, next, prev, seekTo, getServer, cyclePlayMode, navidromeScrobble,
+  togglePlay, next, prev, seekTo, getServer,
 } from '@/lib/audioController'
+import { useImmersive } from '@/lib/immersive'
 import { navidromeGetCoverArtUrl, navidromeStar, navidromeUnstar } from '@/lib/api/navidrome'
 import Icon from '@/components/Icon'
 import NavidromeQueueSheet from './NavidromeQueueSheet'
@@ -37,6 +39,8 @@ function formatTime(s: number): string {
 
 export default function NavidromeFullPlayer({ visible, onClose, server }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
+  useImmersive(visible)
   const queue = useNavidromePlayerStore((s) => s.queue)
   const currentIndex = useNavidromePlayerStore((s) => s.currentIndex)
   const isPlaying = useNavidromePlayerStore((s) => s.isPlaying)
@@ -44,12 +48,16 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
   const duration = useNavidromePlayerStore((s) => s.duration)
   const playMode = useNavidromePlayerStore((s) => s.playMode)
   const isReady = useNavidromePlayerStore((s) => s.isReady)
+  const playbackError = useNavidromePlayerStore((s) => s.playbackError)
+  const cyclePlayMode = useNavidromePlayerStore((s) => s.cyclePlayMode)
   const song = queue[currentIndex]
   const setIsScrubbing = useNavidromePlayerStore((s) => s.setIsScrubbing)
 
   const [panel, setPanel] = useState<Panel>('cover')
   const [queueVisible, setQueueVisible] = useState(false)
   const [starred, setStarred] = useState(false)
+  const [trackWidth, setTrackWidth] = useState(0)
+  const [scrubPct, setScrubPct] = useState<number | null>(null)
 
   const lyricsData = useLyrics(server, song ?? null)
 
@@ -94,7 +102,39 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
     })
     .runOnJS(true)
 
+  const scrubTargetRef = useRef(0)
+
+  const seekGesture = useMemo(() => {
+    const clampPct = (x: number) => Math.max(0, Math.min(1, x / trackWidth))
+    const pan = Gesture.Pan()
+      .activeOffsetX([-8, 8])
+      .runOnJS(true)
+      .onStart(() => {
+        setIsScrubbing(true)
+        scrubTargetRef.current = useNavidromePlayerStore.getState().currentTime
+      })
+      .onUpdate((e) => {
+        if (trackWidth <= 0 || duration <= 0) return
+        const pct = clampPct(e.x)
+        scrubTargetRef.current = pct * duration
+        setScrubPct(pct)
+      })
+      .onFinalize(() => {
+        if (duration > 0) seekTo(scrubTargetRef.current)
+        setIsScrubbing(false)
+        setScrubPct(null)
+      })
+    const tap = Gesture.Tap()
+      .runOnJS(true)
+      .onEnd((e) => {
+        if (trackWidth <= 0 || duration <= 0) return
+        seekTo(clampPct(e.x) * duration)
+      })
+    return Gesture.Race(pan, tap)
+  }, [trackWidth, duration])
+
   const ratio = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0
+  const fillPct = (scrubPct ?? ratio) * 100
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -105,8 +145,6 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
           </View>
         ) : (
         <GestureHandlerRootView style={{ flex: 1 }}>
-          <View style={[styles.bgLayer, { backgroundColor: t.primary + '30' }]} />
-
           <GestureDetector gesture={swipeGesture}>
             <View style={{ flex: 1 }}>
               <View style={styles.header}>
@@ -211,42 +249,29 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
                 </Animated.View>
               </View>
 
-              <View style={styles.controls}>
+              <View style={[styles.controls, { paddingBottom: Math.max(24, insets.bottom) }]}>
                 <View style={styles.progressRow}>
                   <Text style={{ color: t.textMuted, fontSize: 11, width: 44 }}>{formatTime(currentTime)}</Text>
-                  <View
-                    style={[styles.progressTrack, { backgroundColor: t.border }]}
-                    onStartShouldSetResponder={() => true}
-                    onMoveShouldSetResponder={() => true}
-                    onResponderGrant={(e) => {
-                      setIsScrubbing(true)
-                      const x = e.nativeEvent.locationX
-                      const width = (e.target as any).__lastWidth || 0
-                      ;(e.target as any).__lastWidth = width
-                      const pct = Math.max(0, Math.min(1, x / 240))
-                      const sec = pct * duration
-                      seekTo(sec)
-                    }}
-                    onResponderMove={(e) => {
-                      const x = e.nativeEvent.locationX
-                      const pct = Math.max(0, Math.min(1, x / 240))
-                      const sec = pct * duration
-                      seekTo(sec)
-                    }}
-                    onResponderRelease={() => setIsScrubbing(false)}
-                    onResponderTerminate={() => setIsScrubbing(false)}
-                  >
-                    <View style={[styles.progressFill, { backgroundColor: t.primary, width: `${ratio * 100}%` }]} />
-                  </View>
+                  <GestureDetector gesture={seekGesture}>
+                    <View
+                      style={styles.seekArea}
+                      onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+                    >
+                      <View style={[styles.progressTrack, { backgroundColor: t.border }]}>
+                        <View style={[styles.progressFill, { backgroundColor: t.primary, width: `${fillPct}%` }]} />
+                        <View style={[styles.knob, { backgroundColor: t.primary, left: `${fillPct}%` }]} />
+                      </View>
+                    </View>
+                  </GestureDetector>
                   <Text style={{ color: t.textMuted, fontSize: 11, width: 44, textAlign: 'right' }}>{formatTime(duration)}</Text>
                 </View>
 
                 <View style={styles.btns}>
                   <TouchableOpacity onPress={cyclePlayMode} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                     <Icon
-                      name={playMode === 'shuffle' ? 'shuffle' : playMode === 'single-repeat' ? 'repeatOne' : 'repeat'}
+                      name={playMode === 'shuffle' ? 'shuffle' : playMode === 'single-repeat' ? 'repeatOne' : playMode === 'list' ? 'sortAscending' : 'repeat'}
                       size={22}
-                      color={playMode === 'list' ? t.textMuted : t.primary}
+                      color={t.text}
                     />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={prev} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.ctrlBtn}>
@@ -267,24 +292,11 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.extraRow}>
-                  <View style={{ width: 22 }} />
-                  <TouchableOpacity
-                    onPress={async () => {
-                      if (!server) return
-                      if (starred) {
-                        await navidromeUnstar(server, { id: song.id })
-                        setStarred(false)
-                      } else {
-                        await navidromeStar(server, { id: song.id })
-                        setStarred(true)
-                      }
-                    }}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  >
-                    <Icon name={starred ? 'favorite' : 'favoriteBorder'} size={22} color={starred ? t.primary : t.textMuted} />
-                  </TouchableOpacity>
-                </View>
+                {playbackError ? (
+                  <Text style={{ color: '#e5484d', fontSize: 11, textAlign: 'center', marginTop: 12, paddingHorizontal: 8 }} numberOfLines={2}>
+                    {playbackError}
+                  </Text>
+                ) : null}
               </View>
             </View>
           </GestureDetector>
@@ -469,7 +481,6 @@ function QueuePanel({
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: 36 },
-  bgLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, height: SCREEN_H },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: 44 },
   headerBtn: { padding: 6, minWidth: 60 },
   coverArea: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, paddingTop: 8 },
@@ -480,11 +491,12 @@ const styles = StyleSheet.create({
   album: { fontSize: 13, marginTop: 2 },
   controls: { paddingHorizontal: 16, paddingBottom: 24 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  progressTrack: { flex: 1, height: 4, borderRadius: 2 },
+  seekArea: { flex: 1, height: 32, justifyContent: 'center' },
+  progressTrack: { height: 4, borderRadius: 2 },
   progressFill: { height: '100%', borderRadius: 2 },
+  knob: { position: 'absolute', width: 14, height: 14, borderRadius: 7, top: -5, marginLeft: -7 },
   btns: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, paddingHorizontal: 4 },
   ctrlBtn: { padding: 4 },
   playBtn: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
-  extraRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingHorizontal: 4 },
   volumeTrack: { width: 120, height: 4, borderRadius: 2 }, // unused, kept for future
 })

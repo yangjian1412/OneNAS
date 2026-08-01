@@ -1,8 +1,9 @@
 import { View, Text, TouchableOpacity, Modal, FlatList, Image, StyleSheet } from 'react-native'
 import { useNavidromePlayerStore } from '@/stores/navidromePlayerStore'
 import { useTheme } from '@/lib/theme'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { navidromeGetCoverArtUrl } from '@/lib/api/navidrome'
-import { getServer, playAt, removeFromQueue } from '@/lib/audioController'
+import { getServer, playAt } from '@/lib/audioController'
 import Icon from '@/components/Icon'
 
 interface Props {
@@ -12,14 +13,16 @@ interface Props {
 
 export default function NavidromeQueueSheet({ visible, onClose }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const queue = useNavidromePlayerStore((s) => s.queue)
   const currentIndex = useNavidromePlayerStore((s) => s.currentIndex)
+  const removeFromQueue = useNavidromePlayerStore((s) => s.removeFromQueue)
   const server = getServer()
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={[styles.sheet, { backgroundColor: t.card }]} onStartShouldSetResponder={() => true}>
+        <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom }]} onStartShouldSetResponder={() => true}>
           <View style={styles.handle} />
           <View style={styles.header}>
             <Text style={[styles.title, { color: t.text }]}>播放队列</Text>
@@ -53,7 +56,7 @@ export default function NavidromeQueueSheet({ visible, onClose }: Props) {
                     </View>
                   )}
                   <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={[styles.title, { color: isCurrent ? t.primary : t.text }]} numberOfLines={1}>
+                    <Text style={[styles.songTitle, { color: isCurrent ? t.primary : t.text }]} numberOfLines={1}>
                       {item.title}
                     </Text>
                     <Text style={[styles.artist, { color: t.textMuted }]} numberOfLines={1}>
@@ -93,7 +96,7 @@ const styles = StyleSheet.create({
   leadingIcon: { width: 24, marginRight: 4, alignItems: 'center' },
   index: { width: 24, fontSize: 13, textAlign: 'center' },
   cover: { width: 36, height: 36, borderRadius: 4, marginLeft: 6 },
-  title: { fontSize: 14, fontWeight: '600' },
+  songTitle: { fontSize: 14, fontWeight: '600' },
   artist: { fontSize: 11, marginTop: 1 },
   removeBtn: { padding: 6 },
 })

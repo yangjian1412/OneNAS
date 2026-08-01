@@ -27,7 +27,7 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={styles.container}>
-      <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'bottom']}>
         <StatusBar style="auto" />
         <TabNavigator />
       </SafeAreaView>

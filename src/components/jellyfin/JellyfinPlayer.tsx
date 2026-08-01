@@ -22,6 +22,7 @@ import { jellyfinGetEpisodes } from '@/lib/api/jellyfin'
 import { enqueueProgress, enqueueStop } from '@/lib/api/jellyfinPlaybackQueue'
 import { useJellyfinPlaybackStore } from '@/stores/jellyfinPlaybackStore'
 import { getSystemCurrentVolume, getSystemMaxVolume, setSystemVolume } from '@/lib/systemVolume'
+import { useImmersive } from '@/lib/immersive'
 import Icon from '@/components/Icon'
 import PlayerTrackSheet from './PlayerTrackSheet'
 import PlayerSpeedSheet from './PlayerSpeedSheet'
@@ -50,6 +51,7 @@ interface Props {
 export default function JellyfinPlayer({ visible, url, item, server, onClose }: Props) {
   const t = useTheme()
   const prefs = useJellyfinPlaybackStore()
+  useImmersive(visible)
   const playerRef = useRef<VideoPlayer | null>(null)
   const playSessionIdRef = useRef<string>(generatePlaySessionId())
   const reportedStoppedRef = useRef(false)

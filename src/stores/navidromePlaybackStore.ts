@@ -10,6 +10,7 @@ interface NavidromePlaybackState extends NavidromePreferences {
   setShowStarred: (v: boolean) => void
   setShowMusicFolders: (v: boolean) => void
   setShowPlaylists: (v: boolean) => void
+  setShowPlayCount: (v: boolean) => void
   setCacheSongs: (v: boolean) => void
   setMaxCacheMB: (v: number) => void
   setLyricNotification: (v: boolean) => void
@@ -30,6 +31,7 @@ const DEFAULTS: NavidromePreferences = {
   showStarred: true,
   showMusicFolders: true,
   showPlaylists: true,
+  showPlayCount: false,
   cacheSongs: true,
   maxCacheMB: 500,
   lyricNotification: false,
@@ -58,6 +60,7 @@ export const useNavidromePlaybackStore = create<NavidromePlaybackState>((set) =>
   setShowStarred: (v) => set({ showStarred: v }),
   setShowMusicFolders: (v) => set({ showMusicFolders: v }),
   setShowPlaylists: (v) => set({ showPlaylists: v }),
+  setShowPlayCount: (v) => set({ showPlayCount: v }),
   setCacheSongs: (v) => set({ cacheSongs: v }),
   setMaxCacheMB: (v) => set({ maxCacheMB: v }),
   setLyricNotification: (v) => set({ lyricNotification: v }),

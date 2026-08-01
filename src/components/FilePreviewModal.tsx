@@ -6,9 +6,11 @@ import { WebView } from 'react-native-webview'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { useAudioPlayer } from 'expo-audio'
 import { useTheme } from '@/lib/theme'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getFileContent, saveFileContent } from '@/lib/api/filebrowser'
 import { getFileCategory, getFileIcon } from '@/lib/fileTypes'
 import { buildUrl } from '@/lib/api/client'
+import { useImmersive } from '@/lib/immersive'
 import Icon from '@/components/Icon'
 import type { FileItem, ServerConfig } from '@/types'
 
@@ -35,12 +37,14 @@ interface Props {
 
 export default function FilePreviewModal({ visible, file, server, token, onClose, onRefresh }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const [content, setContent] = useState('')
   const [editContent, setEditContent] = useState('')
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const initialContentRef = useRef('')
+  useImmersive(visible && !editing)
 
   const category = file ? getFileCategory(file.name) : 'other'
   const isTextLike = category === 'text' || category === 'html'
@@ -98,7 +102,7 @@ export default function FilePreviewModal({ visible, file, server, token, onClose
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
-      <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
+      <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
         <View style={[styles.header, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
           <TouchableOpacity style={styles.headerBtn} onPress={handleClose}>
             <Icon name="back" size={22} color={t.primary} />

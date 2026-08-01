@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity, FlatList, StyleSheet, Dimensions } from 'react-native'
 import type { NavidromeAlbum, NavidromeArtist, NavidromePlaylist, NavidromeServerConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
+import { useNavidromePlaybackStore } from '@/stores/navidromePlaybackStore'
 import NavidromeCoverArt from './NavidromeCoverArt'
 import Icon from '@/components/Icon'
 
@@ -16,6 +17,7 @@ interface AlbumGridProps {
 
 export function NavidromeAlbumGrid({ server, albums, onAlbumPress, emptyText = '暂无专辑' }: AlbumGridProps) {
   const t = useTheme()
+  const showPlayCount = useNavidromePlaybackStore((s) => s.showPlayCount)
   if (albums.length === 0) {
     return (
       <View style={styles.emptyWrap}>
@@ -40,7 +42,7 @@ export function NavidromeAlbumGrid({ server, albums, onAlbumPress, emptyText = '
           <NavidromeCoverArt server={server} coverArtId={item.coverArt} width={CARD_W} aspectRatio={1} style={{ borderRadius: 8 }} />
           <Text style={[styles.title, { color: t.text }]} numberOfLines={2}>{item.name}</Text>
           {item.artist ? <Text style={[styles.meta, { color: t.textMuted }]} numberOfLines={1}>{item.artist}</Text> : null}
-          {item.playCount != null && item.playCount > 0 ? (
+          {showPlayCount && item.playCount != null && item.playCount > 0 ? (
             <Text style={[styles.rating, { color: t.warning }]}>▶ {item.playCount}</Text>
           ) : null}
         </TouchableOpacity>

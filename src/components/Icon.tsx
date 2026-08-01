@@ -85,6 +85,7 @@ import SkipNextSvg from '@/icos/mdi--skip-next.svg'
 import ShuffleSvg from '@/icos/mdi--shuffle.svg'
 import RepeatSvg from '@/icos/mdi--repeat.svg'
 import RepeatOneSvg from '@/icos/mdi--repeat-once.svg'
+import SortAscendingSvg from '@/icos/mdi--sort-ascending.svg'
 import FavoriteSvg from '@/icos/mdi--heart.svg'
 import FavoriteBorderSvg from '@/icos/mdi--heart-plus-outline.svg'
 import PlaySvg from '@/icos/mdi--play.svg'
@@ -181,12 +182,12 @@ const SVG_COMPONENTS = {
   shuffle: ShuffleSvg,
   repeat: RepeatSvg,
   repeatOne: RepeatOneSvg,
+  sortAscending: SortAscendingSvg,
   favorite: FavoriteSvg,
   favoriteBorder: FavoriteBorderSvg,
   expandMore: ExpandMoreSvg,
   speed: SpeedSvg,
   play: PlaySvg,
-  pause: PauseSvg,
 } as const
 
 export type IconName = keyof typeof SVG_COMPONENTS
@@ -205,7 +206,7 @@ const MONO_ICONS: ReadonlySet<IconName> = new Set<IconName>([
   'power', 'compass',
   'music', 'person', 'trendingUp', 'plus', 'grid', 'star', 'images',
   'queueMusic', 'schedule', 'skipPrev', 'skipNext',
-  'shuffle', 'repeat', 'repeatOne', 'favorite', 'favoriteBorder', 'expandMore', 'speed', 'play', 'pause',
+  'shuffle', 'repeat', 'repeatOne', 'sortAscending', 'favorite', 'favoriteBorder', 'expandMore', 'speed', 'play', 'pause',
 ])
 
 interface Props {

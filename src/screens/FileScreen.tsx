@@ -8,6 +8,7 @@ import { login, listFiles, searchFilesStream, createFolder, deleteResource, rena
 import { getFileIcon } from '@/lib/fileTypes'
 import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '@/lib/theme'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { sortFiles } from '@/lib/sort'
 import ServiceBar from '@/components/ServiceBar'
 import ServiceCard from '@/components/ServiceCard'
@@ -35,6 +36,7 @@ export default function FileScreen() {
   const servers = useAppStore((s) => s.servers)
   const fbServers = servers.filter((s) => s.type === 'filebrowser')
   const t = useTheme()
+  const insets = useSafeAreaInsets()
 
   const [selectedServer, setSelectedServer] = useState<ServerConfig | null>(null)
   const [token, setToken] = useState<string | null>(null)
@@ -742,7 +744,7 @@ export default function FileScreen() {
       )}
 
       <Modal visible={!!shareCreateItem} animationType="slide" onRequestClose={() => setShareCreateItem(null)}>
-        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
+        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>创建分享</Text>
             <TouchableOpacity onPress={() => setShareCreateItem(null)}><Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text></TouchableOpacity>
@@ -781,7 +783,7 @@ export default function FileScreen() {
       </Modal>
 
       <Modal visible={shareManageOpen} animationType="slide" onRequestClose={() => setShareManageOpen(false)}>
-        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
+        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>分享管理</Text>
             <TouchableOpacity onPress={() => setShareManageOpen(false)}><Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text></TouchableOpacity>
@@ -909,7 +911,7 @@ export default function FileScreen() {
       </Modal>
 
       <Modal visible={downloadManageOpen} animationType="slide" onRequestClose={() => setDownloadManageOpen(false)}>
-        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
+        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>下载管理</Text>
             {downloadTasks.length > 0 && (
@@ -966,7 +968,7 @@ export default function FileScreen() {
       </Modal>
 
       <Modal visible={searchModalOpen} animationType="slide" onRequestClose={() => { if (searchLoading) { stopSearch() } else { searchAbortRef.current?.abort(); setSearchResults([]); setSearchModalOpen(false) } }}>
-        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0 }]}>
+        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>搜索</Text>
             <TouchableOpacity onPress={() => { searchAbortRef.current?.abort(); setSearchResults([]); setSearchModalOpen(false) }}>

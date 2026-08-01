@@ -12,6 +12,7 @@ interface NavidromePlayerState {
   duration: number
   isReady: boolean
   isScrubbing: boolean
+  playbackError: string | null
 
   playSong: (song: NavidromeSong, queue?: NavidromeSong[]) => void
   playList: (songs: NavidromeSong[], startIndex?: number) => void
@@ -24,6 +25,7 @@ interface NavidromePlayerState {
   setDuration: (s: number) => void
   setIsReady: (v: boolean) => void
   setIsScrubbing: (v: boolean) => void
+  setPlaybackError: (msg: string | null) => void
   setPlayMode: (mode: PlayMode) => void
   cyclePlayMode: () => void
   removeFromQueue: (index: number) => void
@@ -39,6 +41,7 @@ export const useNavidromePlayerStore = create<NavidromePlayerState>((set, get) =
   duration: 0,
   isReady: false,
   isScrubbing: false,
+  playbackError: null,
 
   playSong: (song, queue) => {
     if (queue && queue.length) {
@@ -50,6 +53,7 @@ export const useNavidromePlayerStore = create<NavidromePlayerState>((set, get) =
         currentTime: 0,
         duration: 0,
         isReady: false,
+        playbackError: null,
       })
     } else {
       const q = get().queue
@@ -61,6 +65,7 @@ export const useNavidromePlayerStore = create<NavidromePlayerState>((set, get) =
         currentTime: 0,
         duration: 0,
         isReady: false,
+        playbackError: null,
       })
     }
   },
@@ -74,6 +79,7 @@ export const useNavidromePlayerStore = create<NavidromePlayerState>((set, get) =
       currentTime: 0,
       duration: 0,
       isReady: false,
+      playbackError: null,
     })
   },
 
@@ -86,6 +92,7 @@ export const useNavidromePlayerStore = create<NavidromePlayerState>((set, get) =
       currentTime: 0,
       duration: 0,
       isReady: false,
+      playbackError: null,
     })
   },
 
@@ -93,25 +100,25 @@ export const useNavidromePlayerStore = create<NavidromePlayerState>((set, get) =
     const { queue, currentIndex, playMode } = get()
     if (queue.length === 0) return
     if (playMode === 'single-repeat') {
-      set({ currentTime: 0, isReady: false })
+      set({ currentTime: 0, isReady: false, playbackError: null })
       return
     }
     if (playMode === 'shuffle') {
       if (queue.length === 1) {
-        set({ currentTime: 0, isReady: false })
+        set({ currentTime: 0, isReady: false, playbackError: null })
         return
       }
       let nextIdx = currentIndex
       while (nextIdx === currentIndex) {
         nextIdx = Math.floor(Math.random() * queue.length)
       }
-      set({ currentIndex: nextIdx, currentTime: 0, isReady: false })
+      set({ currentIndex: nextIdx, currentTime: 0, isReady: false, playbackError: null })
       return
     }
     if (currentIndex < queue.length - 1) {
-      set({ currentIndex: currentIndex + 1, currentTime: 0, isReady: false })
+      set({ currentIndex: currentIndex + 1, currentTime: 0, isReady: false, playbackError: null })
     } else if (playMode === 'list-repeat') {
-      set({ currentIndex: 0, currentTime: 0, isReady: false })
+      set({ currentIndex: 0, currentTime: 0, isReady: false, playbackError: null })
     } else {
       set({ isPlaying: false, currentTime: get().duration })
     }
@@ -125,9 +132,9 @@ export const useNavidromePlayerStore = create<NavidromePlayerState>((set, get) =
       return
     }
     if (currentIndex > 0) {
-      set({ currentIndex: currentIndex - 1, currentTime: 0, isReady: false })
+      set({ currentIndex: currentIndex - 1, currentTime: 0, isReady: false, playbackError: null })
     } else if (get().playMode === 'list-repeat') {
-      set({ currentIndex: queue.length - 1, currentTime: 0, isReady: false })
+      set({ currentIndex: queue.length - 1, currentTime: 0, isReady: false, playbackError: null })
     } else {
       set({ currentTime: 0 })
     }
@@ -139,6 +146,7 @@ export const useNavidromePlayerStore = create<NavidromePlayerState>((set, get) =
   setDuration: (s) => set({ duration: s }),
   setIsReady: (v) => set({ isReady: v }),
   setIsScrubbing: (v) => set({ isScrubbing: v }),
+  setPlaybackError: (msg) => set({ playbackError: msg }),
 
   setPlayMode: (mode) => set({ playMode: mode }),
   cyclePlayMode: () => {
@@ -164,5 +172,6 @@ export const useNavidromePlayerStore = create<NavidromePlayerState>((set, get) =
     currentTime: 0,
     duration: 0,
     isReady: false,
+    playbackError: null,
   }),
 }))

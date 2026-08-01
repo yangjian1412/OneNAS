@@ -54,7 +54,22 @@ export function navidromeGetCoverArtUrl(server: NavidromeServerConfig, id: strin
 }
 
 export function navidromeGetStreamUrl(server: NavidromeServerConfig, songId: string): string {
-  return buildApiUrl(server, 'stream', { id: songId, maxBitRate: '320' })
+  // Stream URLs must NOT include f=json (binary endpoint) or maxBitRate (forces server-side
+  // transcode which can fail if ffmpeg is unavailable). Matches the format used by working
+  // Subsonic clients (see ref-src/tempo-gai MusicUtil.getStreamUri).
+  const base = server.url.replace(/\/+$/, '')
+  const params = new URLSearchParams()
+  params.set('u', server.username)
+  if (server.authToken && server.salt) {
+    params.set('t', server.authToken)
+    params.set('s', server.salt)
+  } else {
+    params.set('p', server.password)
+  }
+  params.set('v', API_VERSION)
+  params.set('c', CLIENT_NAME)
+  params.set('id', songId)
+  return `${base}/rest/stream?${params.toString()}`
 }
 
 export function navidromeGetDownloadUrl(server: NavidromeServerConfig, songId: string): string {

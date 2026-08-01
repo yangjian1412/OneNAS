@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, Switch } from 'react-native'
 import { useTheme } from '@/lib/theme'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavidromePlaybackStore } from '@/stores/navidromePlaybackStore'
 
 interface Props {
@@ -10,13 +11,14 @@ interface Props {
 
 export default function NavidromeSettings({ visible, onClose, showLyrics }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const prefs = useNavidromePlaybackStore()
 
   if (!visible) return null
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: t.bg, paddingTop: 40 }]}>
+      <View style={[styles.container, { backgroundColor: t.bg, paddingTop: 40, paddingBottom: insets.bottom }]}>
         <View style={[styles.header, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
           <Text style={[styles.title, { color: t.text }]}>{showLyrics ? '歌词设置' : '常用设置'}</Text>
           <TouchableOpacity onPress={onClose}>
@@ -40,6 +42,9 @@ function CommonContent({ prefs, t }: { prefs: any; t: any }) {
       <Row label="最近添加" value={prefs.showFreshAlbums} onValueChange={prefs.setShowFreshAlbums} t={t} />
       <Row label="收藏" value={prefs.showStarred} onValueChange={prefs.setShowStarred} t={t} />
       <Row label="播放列表" value={prefs.showPlaylists} onValueChange={prefs.setShowPlaylists} t={t} />
+
+      <SectionLabel text="列表" />
+      <Row label="歌曲播放次数" value={prefs.showPlayCount} onValueChange={prefs.setShowPlayCount} hint="在歌曲/专辑列表中显示播放次数" t={t} />
 
       <SectionLabel text="缓存" />
       <Row label="缓存歌曲" value={prefs.cacheSongs} onValueChange={prefs.setCacheSongs} hint="让离线播放更流畅" t={t} />

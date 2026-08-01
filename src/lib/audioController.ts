@@ -1,7 +1,9 @@
 import { setAudioModeAsync, setIsAudioActiveAsync, AudioPlayer, createAudioPlayer } from 'expo-audio'
+import { PermissionsAndroid, Platform } from 'react-native'
 import { useNavidromePlayerStore } from '@/stores/navidromePlayerStore'
+import { useNavidromeStore } from '@/stores/navidromeStore'
 import type { NavidromeSong, NavidromeServerConfig } from '@/types'
-import { navidromeGetStreamUrl, navidromeScrobble } from '@/lib/api/navidrome'
+import { navidromeGetStreamUrl, navidromeGetCoverArtUrl, navidromeScrobble } from '@/lib/api/navidrome'
 
 let player: AudioPlayer | null = null
 let currentServer: NavidromeServerConfig | null = null
@@ -9,6 +11,71 @@ let scrobbled = false
 let listenersBound = false
 let initStarted = false
 let initDone = false
+let statusTimer: ReturnType<typeof setInterval> | null = null
+
+function redactUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    if (u.searchParams.has('p')) u.searchParams.set('p', '***')
+    return u.toString()
+  } catch {
+    return url
+  }
+}
+
+function applyStatus(status: any) {
+  try {
+    if (status?.error) {
+      console.warn('[np] playback error', status.error)
+      const storeErr = useNavidromePlayerStore.getState()
+      storeErr.setPlaybackError(String(status.error))
+    }
+    const store = useNavidromePlayerStore.getState()
+    if (!store.isScrubbing && typeof status.currentTime === 'number') {
+      store.setCurrentTime(status.currentTime)
+    }
+    if (typeof status.duration === 'number' && status.duration > 0) {
+      store.setDuration(status.duration)
+    }
+    if (typeof status.isLoaded === 'boolean') {
+      store.setIsReady(status.isLoaded)
+    }
+    if (status.playing && !scrobbled) {
+      scrobbled = true
+      const s = useNavidromePlayerStore.getState().queue[useNavidromePlayerStore.getState().currentIndex]
+      if (s && currentServer) {
+        navidromeScrobble(currentServer, s.id, true).catch(() => {})
+      }
+    }
+    if (status.didJustFinish && (status.currentTime ?? 0) > 1) {
+      scrobbled = false
+      next()
+    }
+  } catch (e) {
+    console.warn('[np] status error', e)
+  }
+}
+
+function startPoller() {
+  if (!player || statusTimer) return
+  statusTimer = setInterval(() => {
+    try {
+      const st = player!.currentStatus
+      if (st) {
+        applyStatus(st)
+      }
+    } catch (e) {
+      console.warn('[np] poll error', e)
+    }
+  }, 500)
+}
+
+function stopPoller() {
+  if (statusTimer) {
+    clearInterval(statusTimer)
+    statusTimer = null
+  }
+}
 
 function ensurePlayer(): AudioPlayer | null {
   if (player) return player
@@ -20,37 +87,14 @@ function ensurePlayer(): AudioPlayer | null {
     if (player && !listenersBound) {
       try {
         player.addListener('playbackStatusUpdate', (status: any) => {
-          try {
-            const store = useNavidromePlayerStore.getState()
-            if (!store.isScrubbing && typeof status.currentTime === 'number') {
-              store.setCurrentTime(status.currentTime)
-            }
-            if (typeof status.duration === 'number' && status.duration > 0) {
-              store.setDuration(status.duration)
-            }
-            if (typeof status.isLoaded === 'boolean') {
-              store.setIsReady(status.isLoaded)
-            }
-            if (status.playing && !scrobbled) {
-              scrobbled = true
-              const s = useNavidromePlayerStore.getState().queue[useNavidromePlayerStore.getState().currentIndex]
-              if (s && currentServer) {
-                navidromeScrobble(currentServer, s.id, true).catch(() => {})
-              }
-            }
-            if (status.didJustFinish && (status.currentTime ?? 0) > 1) {
-              scrobbled = false
-              next()
-            }
-          } catch (e) {
-            console.warn('[navidrome player] status error', e)
-          }
+          applyStatus(status)
         })
         listenersBound = true
       } catch (e) {
         console.warn('[navidrome player] bind listener failed', e)
       }
     }
+    startPoller()
     return player
   } catch (e) {
     console.warn('[navidrome player] create failed', e)
@@ -58,26 +102,15 @@ function ensurePlayer(): AudioPlayer | null {
   }
 }
 
-function buildStreamSource(server: NavidromeServerConfig, song: NavidromeSong) {
-  const url = navidromeGetStreamUrl(server, song.id)
-  const headers: Record<string, string> = {}
-  if (server.username) headers.u = server.username
-  if (server.authToken && server.salt) {
-    headers.t = server.authToken
-    headers.s = server.salt
-  } else if (server.password) {
-    headers.p = server.password
-  }
-  headers.v = '1.16.1'
-  headers.c = 'One NAS'
-  return { uri: url, headers }
+function buildStreamSource(server: NavidromeServerConfig, song: NavidromeSong): string {
+  return navidromeGetStreamUrl(server, song.id)
 }
 
 function safeUpdateLockScreen(server: NavidromeServerConfig | null, song: NavidromeSong | undefined) {
   if (!player || !song) return
   try {
     if (server) {
-      const artworkUrl = song.coverArt ? navidromeGetStreamUrl(server, song.coverArt) : undefined
+      const artworkUrl = song.coverArt ? navidromeGetCoverArtUrl(server, song.coverArt) : undefined
       player.setActiveForLockScreen(true, {
         title: song.title ?? '',
         artist: song.artist ?? '',
@@ -94,9 +127,17 @@ export async function initAudio() {
   if (initStarted) return
   initStarted = true
   try {
+    if (Platform.OS === 'android' && (Platform.Version as number) >= 33) {
+      await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)
+    }
+  } catch (e) {
+    console.warn('[navidrome player] notification permission request failed', e)
+  }
+  try {
     await setAudioModeAsync({
       playsInSilentMode: true,
       interruptionMode: 'doNotMix',
+      shouldPlayInBackground: true,
     })
   } catch (e) {
     console.warn('[navidrome player] setAudioModeAsync failed', e)
@@ -122,6 +163,16 @@ export function setServer(server: NavidromeServerConfig | null) {
   currentServer = server
 }
 
+function resolveServer(): NavidromeServerConfig | null {
+  if (currentServer) return currentServer
+  const fallback = useNavidromeStore.getState().server
+  if (fallback) {
+    currentServer = fallback
+    console.log('[np] resolved server from store', fallback.url)
+  }
+  return currentServer
+}
+
 export function getServer(): NavidromeServerConfig | null {
   return currentServer
 }
@@ -129,6 +180,8 @@ export function getServer(): NavidromeServerConfig | null {
 function safeReplace(src: any) {
   if (!player) return
   try {
+    const url = typeof src === 'string' ? src : src?.uri
+    console.log('[np] replace', redactUrl(String(url)))
     player.replace(src)
   } catch (e) {
     console.warn('[navidrome player] replace failed', e)
@@ -166,48 +219,48 @@ export function playSong(song: NavidromeSong, queue?: NavidromeSong[]) {
   const store = useNavidromePlayerStore.getState()
   store.playSong(song, queue)
   const newSong = useNavidromePlayerStore.getState().queue[useNavidromePlayerStore.getState().currentIndex]
-  if (!newSong) return
-  if (!currentServer) {
+  const server = resolveServer()
+  if (!newSong || !server) {
     console.warn('[navidrome player] no server')
     return
   }
   const p = ensurePlayer()
   if (!p) return
   scrobbled = false
-  safeReplace(buildStreamSource(currentServer, newSong))
+  safeReplace(buildStreamSource(server, newSong))
   if (useNavidromePlayerStore.getState().isPlaying) safePlay()
-  safeUpdateLockScreen(currentServer, newSong)
+  safeUpdateLockScreen(server, newSong)
 }
 
 export function playList(songs: NavidromeSong[], startIndex = 0) {
   const store = useNavidromePlayerStore.getState()
   store.playList(songs, startIndex)
   const newSong = useNavidromePlayerStore.getState().queue[useNavidromePlayerStore.getState().currentIndex]
-  if (!newSong) return
-  if (!currentServer) {
+  const server = resolveServer()
+  if (!newSong || !server) {
     console.warn('[navidrome player] no server')
     return
   }
   const p = ensurePlayer()
   if (!p) return
   scrobbled = false
-  safeReplace(buildStreamSource(currentServer, newSong))
+  safeReplace(buildStreamSource(server, newSong))
   safePlay()
-  safeUpdateLockScreen(currentServer, newSong)
+  safeUpdateLockScreen(server, newSong)
 }
 
 export function playAt(index: number) {
   const store = useNavidromePlayerStore.getState()
   store.playAt(index)
   const newSong = useNavidromePlayerStore.getState().queue[useNavidromePlayerStore.getState().currentIndex]
-  if (!newSong) return
-  if (!currentServer) return
+  const server = resolveServer()
+  if (!newSong || !server) return
   const p = ensurePlayer()
   if (!p) return
   scrobbled = false
-  safeReplace(buildStreamSource(currentServer, newSong))
+  safeReplace(buildStreamSource(server, newSong))
   if (useNavidromePlayerStore.getState().isPlaying) safePlay()
-  safeUpdateLockScreen(currentServer, newSong)
+  safeUpdateLockScreen(server, newSong)
 }
 
 export function next() {
@@ -218,24 +271,26 @@ export function next() {
   const stillPlaying = useNavidromePlayerStore.getState().isPlaying
   if (newIndex === prevIndex && !stillPlaying) return
   const newSong = useNavidromePlayerStore.getState().queue[newIndex]
-  if (!newSong || !currentServer) return
+  const server = resolveServer()
+  if (!newSong || !server) return
   if (!player) return
   scrobbled = false
-  safeReplace(buildStreamSource(currentServer, newSong))
+  safeReplace(buildStreamSource(server, newSong))
   if (stillPlaying) safePlay()
-  safeUpdateLockScreen(currentServer, newSong)
+  safeUpdateLockScreen(server, newSong)
 }
 
 export function prev() {
   const store = useNavidromePlayerStore.getState()
   store.prev()
   const newSong = useNavidromePlayerStore.getState().queue[useNavidromePlayerStore.getState().currentIndex]
-  if (!newSong || !currentServer) return
+  const server = resolveServer()
+  if (!newSong || !server) return
   if (!player) return
   scrobbled = false
-  safeReplace(buildStreamSource(currentServer, newSong))
+  safeReplace(buildStreamSource(server, newSong))
   if (useNavidromePlayerStore.getState().isPlaying) safePlay()
-  safeUpdateLockScreen(currentServer, newSong)
+  safeUpdateLockScreen(server, newSong)
 }
 
 export function togglePlay() {

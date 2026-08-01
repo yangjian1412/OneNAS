@@ -4,7 +4,7 @@ import { useIsFocused } from '@react-navigation/native'
 import { useNavidromeStore, loadNavidromeHome } from '@/stores/navidromeStore'
 import { useNavidromePlaybackStore } from '@/stores/navidromePlaybackStore'
 import { useNavidromePlayerStore } from '@/stores/navidromePlayerStore'
-import { initAudio, setServer, playList, playSong as acPlaySong, clear as clearPlayer } from '@/lib/audioController'
+import { initAudio, setServer as acSetServer, playList, playSong as acPlaySong, clear as clearPlayer } from '@/lib/audioController'
 import {
   navidromeLogin,
   navidromeGetAlbum, navidromeGetAlbums,
@@ -78,7 +78,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
   useEffect(() => { void initAudio() }, [])
 
   useEffect(() => {
-    setServer(server)
+    acSetServer(server)
   }, [server?.id])
 
   const queueLen = useNavidromePlayerStore((s) => s.queue.length)
@@ -375,9 +375,9 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
     }
   }
 
-  const playAlbum = (album: NavidromeAlbum, songs: NavidromeSong[]) => {
+  const playAlbum = (album: NavidromeAlbum, songs: NavidromeSong[], startIndex = 0) => {
     if (songs.length === 0) return
-    handlePlaySong(songs, 0)
+    handlePlaySong(songs, startIndex)
   }
 
   if (!server) {
@@ -489,7 +489,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
             }}
           />
           <View style={{ height: 12 }} />
-          <NavidromeSongList songs={albumSongs} onSongPress={(_, i) => playAlbum(albumDetail, albumSongs.slice(i))} emptyText="暂无曲目" />
+          <NavidromeSongList songs={albumSongs} onSongPress={(_, i) => playAlbum(albumDetail, albumSongs, i)} emptyText="暂无曲目" />
           <View style={{ height: 80 }} />
         </ScrollView>
       )}
@@ -520,7 +520,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
               <TouchableOpacity
                 style={[styles.songRow, { borderBottomColor: t.border }]}
                 activeOpacity={0.7}
-                onPress={() => playAlbum({} as NavidromeAlbum, playlistSongs.slice(index))}
+                onPress={() => playAlbum({} as NavidromeAlbum, playlistSongs, index)}
               >
                 <View style={{ width: 36, height: 36, borderRadius: 4, marginRight: 8, backgroundColor: t.border, overflow: 'hidden' }}>
                   <UriImage uri={navidromeGetCoverArtUrl(server, song.coverArt, 80)} />
@@ -536,7 +536,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
                   <Text style={[styles.songTitle, { color: t.text }]} numberOfLines={1}>{song.title}</Text>
                   <Text style={[styles.songArtist, { color: t.textMuted }]} numberOfLines={1}>{song.artist ?? '未知艺术家'}</Text>
                 </View>
-                {song.playCount != null && song.playCount > 0 ? (
+                {prefs.showPlayCount && song.playCount != null && song.playCount > 0 ? (
                   <Text style={[styles.songCount, { color: t.warning }]}>▶{song.playCount}</Text>
                 ) : null}
                 <Text style={[styles.songDuration, { color: t.textMuted }]}>{(song.duration ? Math.round(song.duration) : 0) + 's'}</Text>
@@ -565,7 +565,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
           {searchData.songs.length > 0 && (
             <View>
               <Text style={[styles.sectionTitle, { color: t.text, paddingHorizontal: 16, marginTop: 16 }]}>歌曲</Text>
-              <NavidromeSongList songs={searchData.songs} onSongPress={(_, i) => playAlbum({} as any, searchData.songs.slice(i))} emptyText="" />
+              <NavidromeSongList songs={searchData.songs} onSongPress={(_, i) => playAlbum({} as any, searchData.songs, i)} emptyText="" />
             </View>
           )}
           {searchData.artists.length === 0 && searchData.albums.length === 0 && searchData.songs.length === 0 && (

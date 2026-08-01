@@ -426,6 +426,7 @@ export interface NavidromePreferences {
   showStarred: boolean
   showMusicFolders: boolean
   showPlaylists: boolean
+  showPlayCount: boolean
   cacheSongs: boolean
   maxCacheMB: number
   lyricNotification: boolean

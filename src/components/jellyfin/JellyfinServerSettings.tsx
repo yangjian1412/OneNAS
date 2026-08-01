@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, Platform, StatusBar, Linking, Alert } from 'react-native'
 import { useTheme } from '@/lib/theme'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useJellyfinStore } from '@/stores/jellyfinStore'
 import {
   jellyfinGetSystemInfo,
@@ -26,6 +27,7 @@ function formatUptime(startTime: string): string {
 
 export default function JellyfinServerSettings({ visible, onClose }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const server = useJellyfinStore((s) => s.server)
   const pt = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0
 
@@ -94,7 +96,7 @@ export default function JellyfinServerSettings({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: t.bg }]}>
+      <View style={[styles.container, { backgroundColor: t.bg, paddingBottom: insets.bottom }]}>
         <View style={[styles.toolbar, { backgroundColor: t.card, paddingTop: pt + 8 }]}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Icon name="x" size={24} color={t.text} />
