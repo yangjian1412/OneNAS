@@ -63,6 +63,8 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
 
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current
   const panelAnim = useRef(new Animated.Value(0)).current
+  const panelVirtualRef = useRef(0)
+  const panelAnimSeqRef = useRef(0)
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -79,28 +81,54 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
   }, [song?.id])
 
   useEffect(() => {
+    const target = panel === 'cover' ? 0 : panel === 'lyrics' ? 1 : 2
+    let cur = panelVirtualRef.current
+    if (cur >= 3 || cur < 0) {
+      panelAnim.stopAnimation()
+      cur += cur >= 3 ? -3 : 3
+      panelVirtualRef.current = cur
+      panelAnim.setValue(cur)
+    }
+    if (target === cur) return
+    let delta = (target - cur + 3) % 3
+    if (delta === 2) delta = -1
+    const next = cur + delta
+    panelVirtualRef.current = next
+    const seq = ++panelAnimSeqRef.current
     Animated.timing(panelAnim, {
-      toValue: panel === 'cover' ? 0 : panel === 'lyrics' ? 1 : 2,
+      toValue: next,
       duration: 240,
       useNativeDriver: true,
-    }).start()
+    }).start(({ finished }) => {
+      if (!finished || seq !== panelAnimSeqRef.current) return
+      let v = panelVirtualRef.current
+      if (v >= 3) v -= 3
+      else if (v < 0) v += 3
+      panelVirtualRef.current = v
+      panelAnim.setValue(v)
+    })
   }, [panel])
 
   const cover = server && song ? navidromeGetCoverArtUrl(server, song.coverArt, 600) : undefined
   const coverSmall = server && song ? navidromeGetCoverArtUrl(server, song.coverArt, 160) : undefined
 
-  const swipeGesture = Gesture.Pan()
-    .activeOffsetY([-10, 10])
-    .onEnd((e) => {
-      if (e.translationY < -60 && e.velocityY < -0.3) {
-        if (panel === 'cover') setPanel('lyrics')
-        else if (panel === 'lyrics') setPanel('queue')
-      } else if (e.translationY > 60 && e.velocityY > 0.3) {
-        if (panel === 'queue') setPanel('lyrics')
-        else if (panel === 'lyrics') setPanel('cover')
-      }
-    })
-    .runOnJS(true)
+  const swipeGesture = useMemo(() => {
+    // Horizontal swipe cycles the three panels; vertical swipes are left to the inner
+    // lyrics ScrollView / queue FlatList so their content scrolls.
+    const order: Panel[] = ['cover', 'lyrics', 'queue']
+    return Gesture.Pan()
+      .activeOffsetX([-12, 12])
+      .runOnJS(true)
+      .onEnd((e) => {
+        if (e.translationX < -60 && e.velocityX < -0.3) {
+          const i = order.indexOf(panel)
+          setPanel(order[(i + 1) % order.length])
+        } else if (e.translationX > 60 && e.velocityX > 0.3) {
+          const i = order.indexOf(panel)
+          setPanel(order[(i + order.length - 1) % order.length])
+        }
+      })
+  }, [panel])
 
   const scrubTargetRef = useRef(0)
 
@@ -179,9 +207,15 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
                   style={{
                     flex: 1,
                     position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
-                    opacity: panelAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+                    opacity: panelAnim.interpolate({
+                      inputRange: [-1, 0, 0.4, 1, 2, 2.6, 3],
+                      outputRange: [0, 1, 0.1, 0, 0, 0.1, 1],
+                    }),
                     transform: [{
-                      translateY: panelAnim.interpolate({ inputRange: [0, 1, 2], outputRange: [0, -SCREEN_H * 0.15, -SCREEN_H * 0.3] }),
+                      translateX: panelAnim.interpolate({
+                        inputRange: [-1, 0, 1, 2, 2.0001, 3],
+                        outputRange: [SCREEN_W, 0, -SCREEN_W, -SCREEN_W * 2, SCREEN_W, 0],
+                      }),
                     }],
                   }}
                   pointerEvents={panel === 'cover' ? 'auto' : 'none'}
@@ -205,9 +239,15 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
                 <Animated.View
                   style={{
                     flex: 1, position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
-                    opacity: panelAnim.interpolate({ inputRange: [0, 1, 2], outputRange: [0, 1, 0] }),
+                    opacity: panelAnim.interpolate({
+                      inputRange: [-1, 0, 0.6, 1, 1.4, 2, 3],
+                      outputRange: [0, 0, 0.1, 1, 0.1, 0, 0],
+                    }),
                     transform: [{
-                      translateY: panelAnim.interpolate({ inputRange: [0, 1, 2], outputRange: [SCREEN_H * 0.15, 0, -SCREEN_H * 0.15] }),
+                      translateX: panelAnim.interpolate({
+                        inputRange: [-1, 0, 1, 2, 3],
+                        outputRange: [SCREEN_W * 2, SCREEN_W, 0, -SCREEN_W, -SCREEN_W * 2],
+                      }),
                     }],
                   }}
                   pointerEvents={panel === 'lyrics' ? 'auto' : 'none'}
@@ -227,9 +267,15 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
                 <Animated.View
                   style={{
                     flex: 1, position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
-                    opacity: panelAnim.interpolate({ inputRange: [1, 2], outputRange: [0, 1] }),
+                    opacity: panelAnim.interpolate({
+                      inputRange: [-1, -0.4, 0, 0.4, 1, 1.6, 2, 2.4, 3],
+                      outputRange: [1, 0.1, 0, 0.1, 0, 0.1, 1, 0.1, 0],
+                    }),
                     transform: [{
-                      translateY: panelAnim.interpolate({ inputRange: [0, 1, 2], outputRange: [SCREEN_H * 0.3, SCREEN_H * 0.15, 0] }),
+                      translateX: panelAnim.interpolate({
+                        inputRange: [-1, 0, 0.0001, 1, 2, 3],
+                        outputRange: [0, -SCREEN_W, SCREEN_W * 2, SCREEN_W, 0, -SCREEN_W],
+                      }),
                     }],
                   }}
                   pointerEvents={panel === 'queue' ? 'auto' : 'none'}

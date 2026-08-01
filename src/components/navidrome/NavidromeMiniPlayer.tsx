@@ -24,6 +24,10 @@ export default function NavidromeMiniPlayer({ onPress }: Props) {
 
   const server = getServer()
   const lyricsData = useLyrics(server, song ?? null)
+  const hasLyrics = useMemo(() => {
+    if (lyricsData.structured && lyricsData.structured.length > 0) return true
+    return !!lyricsData.plain?.trim()
+  }, [lyricsData])
   const currentLyric = useMemo(() => {
     if (lyricsData.structured && lyricsData.structured.length > 0) {
       const first = lyricsData.structured[0]
@@ -86,7 +90,7 @@ export default function NavidromeMiniPlayer({ onPress }: Props) {
       <View style={{ flex: 1, marginLeft: 10, justifyContent: 'center' }} pointerEvents="none">
         <Text style={[styles.title, { color: t.text }]} numberOfLines={1}>{titleLine}</Text>
         <Text style={[styles.lyric, { color: t.textMuted }]} numberOfLines={1}>
-          {currentLyric || (song.album ?? '')}
+          {hasLyrics ? currentLyric : (song.album ?? '')}
         </Text>
       </View>
       <TouchableOpacity onPress={handlePlay} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.btn}>

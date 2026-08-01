@@ -90,6 +90,10 @@ function ensurePlayer(): AudioPlayer | null {
         player.addListener('playbackStatusUpdate', (status: any) => {
           applyStatus(status)
         })
+        ;(player as any).addListener?.('mediaControl', (command: string) => {
+          if (command === 'previous') prev()
+          else if (command === 'next') next()
+        })
         listenersBound = true
       } catch (e) {
         console.warn('[navidrome player] bind listener failed', e)
