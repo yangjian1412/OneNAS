@@ -208,8 +208,8 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
                     flex: 1,
                     position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
                     opacity: panelAnim.interpolate({
-                      inputRange: [-1, 0, 0.4, 1, 2, 2.6, 3],
-                      outputRange: [0, 1, 0.1, 0, 0, 0.1, 1],
+                      inputRange: [-1, 0, 1, 2, 3],
+                      outputRange: [0, 1, 0, 0, 1],
                     }),
                     transform: [{
                       translateX: panelAnim.interpolate({
@@ -240,8 +240,8 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
                   style={{
                     flex: 1, position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
                     opacity: panelAnim.interpolate({
-                      inputRange: [-1, 0, 0.6, 1, 1.4, 2, 3],
-                      outputRange: [0, 0, 0.1, 1, 0.1, 0, 0],
+                      inputRange: [0, 1, 2],
+                      outputRange: [0, 1, 0],
                     }),
                     transform: [{
                       translateX: panelAnim.interpolate({
@@ -268,8 +268,8 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
                   style={{
                     flex: 1, position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
                     opacity: panelAnim.interpolate({
-                      inputRange: [-1, -0.4, 0, 0.4, 1, 1.6, 2, 2.4, 3],
-                      outputRange: [1, 0.1, 0, 0.1, 0, 0.1, 1, 0.1, 0],
+                      inputRange: [-1, 0, 1, 2, 3],
+                      outputRange: [1, 0, 0, 1, 0],
                     }),
                     transform: [{
                       translateX: panelAnim.interpolate({
