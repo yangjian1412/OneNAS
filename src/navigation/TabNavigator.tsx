@@ -1,6 +1,7 @@
 import { View } from 'react-native'
 import { NavigationContainer } from '@react-navigation/native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAppStore, getTab2Service, getTab3Service } from '@/stores/appStore'
 import { SERVICE_TYPE_ICONS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
@@ -19,6 +20,8 @@ export default function TabNavigator() {
   const tab2 = getTab2Service(services)
   const tab3 = getTab3Service(services)
   const t = useTheme()
+  const insets = useSafeAreaInsets()
+  const bottomInset = Math.max(insets.bottom, 0)
 
   const iconFor = (routeName: string, focused: boolean) => {
     const color = focused ? t.primary : t.textMuted
@@ -49,7 +52,20 @@ export default function TabNavigator() {
           tabBarLabelStyle: { fontSize: 12, marginTop: 2 },
           tabBarActiveTintColor: t.primary,
           tabBarInactiveTintColor: t.textMuted,
-          tabBarStyle: { backgroundColor: t.bg, borderTopColor: t.border, height: 72, paddingBottom: 14, paddingTop: 6 },
+          tabBarStyle: {
+            backgroundColor: t.bg,
+            borderTopColor: t.border,
+            height: 72,
+            paddingBottom: 14,
+            paddingTop: 6,
+          },
+          tabBarBackground: () => (
+            <View style={{ flex: 1, backgroundColor: t.bg }}>
+              {bottomInset > 0 && (
+                <View style={{ position: 'absolute', left: 0, right: 0, bottom: -bottomInset, height: bottomInset, backgroundColor: t.bg }} />
+              )}
+            </View>
+          ),
         })}
       >
         <Tab.Screen name="Files" component={FileScreen} options={{ tabBarLabel: '文件' }} />

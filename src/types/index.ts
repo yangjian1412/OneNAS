@@ -418,6 +418,8 @@ export interface NavidromePlayQueue {
 }
 
 export type NavidromeLyricPosition = 'top' | 'middle' | 'bottom'
+export type NavidromeLyricAlignment = 'left' | 'center' | 'right'
+export type NavidromeLyricLineCount = 1 | 2 | 3 | 4
 
 export interface NavidromePreferences {
   showRecentAlbums: boolean
@@ -432,8 +434,12 @@ export interface NavidromePreferences {
   lyricNotification: boolean
   lyricDesktop: boolean
   lyricInjectSystem: boolean
-  lyricFontSize: number
   lyricOpacity: number
   lyricPosition: NavidromeLyricPosition
-  lyricShowOnLockScreen: boolean
+  lyricColor: number
+  lyricBgAlpha: number
+  lyricAlignment: NavidromeLyricAlignment
+  lyricLineCount: NavidromeLyricLineCount
+  lyricDesktopPositionY: number
+  lyricDesktopFontSize: number
 }

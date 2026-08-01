@@ -1,40 +1,13 @@
-import { useEffect, useState } from 'react'
-import type { NavidromeSong, NavidromeServerConfig, NavidromeStructuredLyrics } from '@/types'
-import { navidromeGetLyricsBySongId } from '@/lib/api/navidrome'
+import { useNavidromeLyricsStore, type NavidromeLyricsData } from '@/stores/navidromeLyricsStore'
 
-export interface LyricsData {
-  structured: NavidromeStructuredLyrics[] | null
-  plain: string | null
-  loading: boolean
-  error: string | null
-}
+export type LyricsData = NavidromeLyricsData
 
-export function useLyrics(server: NavidromeServerConfig | null, song: NavidromeSong | null): LyricsData {
-  const [data, setData] = useState<LyricsData>({ structured: null, plain: null, loading: false, error: null })
-
-  useEffect(() => {
-    let cancelled = false
-    if (!server || !song) {
-      setData({ structured: null, plain: null, loading: false, error: null })
-      return
-    }
-    setData((d) => ({ ...d, loading: true, error: null }))
-    navidromeGetLyricsBySongId(server, song.id).then((r) => {
-      if (cancelled) return
-      if (r.ok) {
-        const structured = (r.lyrics ?? []).filter((s) => s && Array.isArray(s.line))
-        if (structured.length > 0) {
-          setData({ structured, plain: r.plain ?? null, loading: false, error: null })
-        } else {
-          setData({ structured: null, plain: r.plain ?? null, loading: false, error: null })
-        }
-      } else {
-        setData({ structured: null, plain: null, loading: false, error: r.error ?? '加载失败' })
-      }
-    })
-    return () => { cancelled = true }
-  }, [server, song?.id])
-
+export function useLyrics(_server: unknown, song: { id: string } | null): LyricsData {
+  const data = useNavidromeLyricsStore((s) => s.data)
+  if (!song) return { songId: '', structured: null, plain: null, loading: false, error: null }
+  if (!data || data.songId !== song.id) {
+    return { songId: song.id, structured: null, plain: null, loading: false, error: null }
+  }
   return data
 }
 

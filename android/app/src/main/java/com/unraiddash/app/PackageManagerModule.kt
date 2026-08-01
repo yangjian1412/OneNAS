@@ -1,9 +1,13 @@
 package com.unraiddash.app
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -56,6 +60,63 @@ class PackageManagerModule(reactContext: ReactApplicationContext) : ReactContext
     } catch (e: Exception) {
       android.util.Log.e("PackageManager", "launchApp failed: ${e.message}", e)
       promise.reject("LAUNCH_FAILED", e.message ?: "unknown", e)
+    }
+  }
+
+  @ReactMethod
+  fun isOverlayGranted(promise: Promise) {
+    try {
+      promise.resolve(Settings.canDrawOverlays(reactApplicationContext))
+    } catch (e: Exception) {
+      promise.reject("OVERLAY_CHECK_FAILED", e.message ?: "unknown", e)
+    }
+  }
+
+  @ReactMethod
+  fun openOverlaySettings(promise: Promise) {
+    try {
+      val intent = Intent(
+        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+        Uri.parse("package:${reactApplicationContext.packageName}")
+      )
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      reactApplicationContext.startActivity(intent)
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.reject("OVERLAY_SETTINGS_FAILED", e.message ?: "unknown", e)
+    }
+  }
+
+  @ReactMethod
+  fun isNotificationPermissionGranted(promise: Promise) {
+    try {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        promise.resolve(true)
+        return
+      }
+      val granted = ContextCompat.checkSelfPermission(
+        reactApplicationContext, Manifest.permission.POST_NOTIFICATIONS
+      ) == PackageManager.PERMISSION_GRANTED
+      promise.resolve(granted)
+    } catch (e: Exception) {
+      promise.reject("NOTIF_CHECK_FAILED", e.message ?: "unknown", e)
+    }
+  }
+
+  @ReactMethod
+  fun openAppNotificationSettings(promise: Promise) {
+    try {
+      val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+        putExtra(Settings.EXTRA_APP_PACKAGE, reactApplicationContext.packageName)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        intent.putExtra(Settings.EXTRA_CHANNEL_ID, "default")
+      }
+      reactApplicationContext.startActivity(intent)
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.reject("NOTIF_SETTINGS_FAILED", e.message ?: "unknown", e)
     }
   }
 }

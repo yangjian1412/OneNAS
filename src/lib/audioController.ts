@@ -152,6 +152,12 @@ export async function initAudio() {
   } catch (e) {
     console.warn('[navidrome player] ensurePlayer failed', e)
   }
+  try {
+    const { startLyricsDisplay } = await import('./lyricsDisplay')
+    startLyricsDisplay()
+  } catch (e) {
+    console.warn('[navidrome player] startLyricsDisplay failed', e)
+  }
   initDone = true
 }
 
@@ -315,6 +321,10 @@ export function setVolume(v: number) {
 export function clear() {
   try { safePause() } catch {}
   useNavidromePlayerStore.getState().clear()
+  try {
+    const { stopLyricsDisplay } = require('./lyricsDisplay') as { stopLyricsDisplay?: () => void }
+    stopLyricsDisplay?.()
+  } catch {}
 }
 
 export function getPlayer(): AudioPlayer | null {

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="match_parent"
+  android:layout_height="wrap_content"
+  android:orientation="vertical"
+  android:paddingHorizontal="12dp"
+  android:paddingVertical="10dp">
+
+  <TextView
+    android:id="@+id/notification_lyrics_prev"
+    android:layout_width="match_parent"
+    android:layout_height="22dp"
+    android:textColor="#88FFFFFF"
+    android:textSize="14sp"
+    android:singleLine="true"
+    android:ellipsize="end"/>
+
+  <TextView
+    android:id="@+id/notification_lyrics_current"
+    android:layout_width="match_parent"
+    android:layout_height="22dp"
+    android:textColor="#FFFFFF"
+    android:textSize="14sp"
+    android:singleLine="true"
+    android:ellipsize="end"/>
+
+  <TextView
+    android:id="@+id/notification_lyrics_next1"
+    android:layout_width="match_parent"
+    android:layout_height="22dp"
+    android:textColor="#88FFFFFF"
+    android:textSize="14sp"
+    android:singleLine="true"
+    android:ellipsize="end"/>
+
+  <TextView
+    android:id="@+id/notification_lyrics_next2"
+    android:layout_width="match_parent"
+    android:layout_height="22dp"
+    android:textColor="#55FFFFFF"
+    android:textSize="14sp"
+    android:singleLine="true"
+    android:ellipsize="end"/>
+</LinearLayout>

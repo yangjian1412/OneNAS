@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { StatusBar } from 'expo-status-bar'
 import { StyleSheet } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useAppStore } from '@/stores/appStore'
 import { useTheme } from '@/lib/theme'
@@ -26,12 +26,14 @@ export default function App() {
   }, [])
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'bottom']}>
-        <StatusBar style="auto" />
-        <TabNavigator />
-      </SafeAreaView>
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'bottom']}>
+          <StatusBar style="auto" />
+          <TabNavigator />
+        </SafeAreaView>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   )
 }
 

@@ -11,6 +11,7 @@ import com.facebook.react.ReactHost
 import com.facebook.react.common.ReleaseLevel
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 
+import com.unraiddash.app.navidromelyrics.NavidromeLyricsPackage
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ExpoReactHostFactory
 
@@ -25,6 +26,7 @@ class MainApplication : Application(), ReactApplication {
           add(DownloadManagerPackage())
           add(SystemVolumePackage())
           add(PackageManagerPackage())
+          add(NavidromeLyricsPackage())
         }
     )
   }
