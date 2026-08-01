@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import type { NavidromePreferences, NavidromeLyricPosition, NavidromeLyricAlignment, NavidromeLyricLineCount } from '@/types'
+import type { NavidromePreferences, NavidromeLyricAlignment } from '@/types'
 
 interface NavidromePlaybackState extends NavidromePreferences {
   loadFromStorage: () => Promise<void>
@@ -17,13 +17,11 @@ interface NavidromePlaybackState extends NavidromePreferences {
   setLyricDesktop: (v: boolean) => void
   setLyricInjectSystem: (v: boolean) => void
   setLyricOpacity: (v: number) => void
-  setLyricPosition: (v: NavidromeLyricPosition) => void
   setLyricColor: (v: number) => void
   setLyricBgAlpha: (v: number) => void
   setLyricAlignment: (v: NavidromeLyricAlignment) => void
-  setLyricLineCount: (v: NavidromeLyricLineCount) => void
   setLyricDesktopPositionY: (v: number) => void
-  setLyricDesktopFontSize: (v: number) => void
+  setLyricDesktopSwapOrder: (v: boolean) => void
 }
 
 const STORAGE_KEY = 'navidrome:preferences'
@@ -42,13 +40,11 @@ const DEFAULTS: NavidromePreferences = {
   lyricDesktop: false,
   lyricInjectSystem: false,
   lyricOpacity: 0.85,
-  lyricPosition: 'top',
-  lyricColor: 0xFFFFFF,
+  lyricColor: 0x4A90E2,
   lyricBgAlpha: 70,
-  lyricAlignment: 'center',
-  lyricLineCount: 4,
+  lyricAlignment: 'split',
   lyricDesktopPositionY: 0,
-  lyricDesktopFontSize: 24,
+  lyricDesktopSwapOrder: false,
 }
 
 export const useNavidromePlaybackStore = create<NavidromePlaybackState>((set) => ({
@@ -75,13 +71,11 @@ export const useNavidromePlaybackStore = create<NavidromePlaybackState>((set) =>
   setLyricDesktop: (v) => set({ lyricDesktop: v }),
   setLyricInjectSystem: (v) => set({ lyricInjectSystem: v }),
   setLyricOpacity: (v) => set({ lyricOpacity: v }),
-  setLyricPosition: (v) => set({ lyricPosition: v }),
   setLyricColor: (v) => set({ lyricColor: v }),
   setLyricBgAlpha: (v) => set({ lyricBgAlpha: v }),
   setLyricAlignment: (v) => set({ lyricAlignment: v }),
-  setLyricLineCount: (v) => set({ lyricLineCount: v }),
   setLyricDesktopPositionY: (v) => set({ lyricDesktopPositionY: v }),
-  setLyricDesktopFontSize: (v) => set({ lyricDesktopFontSize: v }),
+  setLyricDesktopSwapOrder: (v) => set({ lyricDesktopSwapOrder: v }),
 }))
 
 // persist prefs on change

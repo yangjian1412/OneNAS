@@ -9,34 +9,14 @@
   android:gravity="center">
 
   <TextView
-    android:id="@+id/desktop_lyrics_prev"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:textColor="#FFFFFF"
-    android:textSize="14sp"
-    android:singleLine="true"
-    android:ellipsize="end"
-    android:visibility="gone"/>
-
-  <TextView
-    android:id="@+id/desktop_lyrics_next2"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:textColor="#FFFFFF"
-    android:textSize="12sp"
-    android:singleLine="true"
-    android:ellipsize="end"
-    android:visibility="gone"/>
-
-  <TextView
     android:id="@+id/desktop_lyrics_next"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:textColor="#FFFFFF"
-    android:textSize="14sp"
+    android:textSize="24sp"
     android:singleLine="true"
     android:ellipsize="end"
-    android:visibility="gone"/>
+    android:visibility="invisible"/>
 
   <TextView
     android:id="@+id/desktop_lyrics_current"
@@ -46,5 +26,5 @@
     android:textSize="24sp"
     android:singleLine="true"
     android:ellipsize="end"
-    android:visibility="gone"/>
+    android:visibility="invisible"/>
 </LinearLayout>

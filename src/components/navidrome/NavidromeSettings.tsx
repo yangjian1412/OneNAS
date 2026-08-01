@@ -1,9 +1,9 @@
-import { useState } from 'react'
-import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, Switch, Alert, NativeModules, ToastAndroid } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, Switch, Alert, NativeModules, ToastAndroid, PanResponder } from 'react-native'
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg'
 import { useTheme } from '@/lib/theme'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavidromePlaybackStore } from '@/stores/navidromePlaybackStore'
-import { setDesktopLyricsPosition } from '@/lib/lyricsDisplay'
 
 interface Props {
   visible: boolean
@@ -20,20 +20,143 @@ const { PackageManagerModule } = NativeModules as {
   }
 }
 
-const COLOR_PRESETS = [
-  { label: '白', rgb: 0xFFFFFF },
-  { label: '黑', rgb: 0x000000 },
-  { label: '蓝', rgb: 0x4A90E2 },
-  { label: '绿', rgb: 0x4CAF50 },
-  { label: '黄', rgb: 0xFFC107 },
-  { label: '红', rgb: 0xE57373 },
+function rgbToHex(rgb: number): string {
+  return '#' + ((rgb & 0xffffff) >>> 0).toString(16).padStart(6, '0').toUpperCase()
+}
+
+const COLOR_STOPS: Array<{ t: number; r: number; g: number; b: number }> = [
+  { t: 0, r: 255, g: 255, b: 255 },
+  { t: 0.143, r: 255, g: 0, b: 0 },
+  { t: 0.286, r: 255, g: 255, b: 0 },
+  { t: 0.429, r: 0, g: 255, b: 0 },
+  { t: 0.571, r: 0, g: 255, b: 255 },
+  { t: 0.714, r: 0, g: 0, b: 255 },
+  { t: 0.857, r: 255, g: 0, b: 255 },
+  { t: 1, r: 0, g: 0, b: 0 },
 ]
 
-const POSITION_PRESETS: Array<{ label: string; value: 'top' | 'middle' | 'bottom' }> = [
-  { label: '顶部', value: 'top' },
-  { label: '中部', value: 'middle' },
-  { label: '底部', value: 'bottom' },
-]
+function gradientColor(t: number): number {
+  const clamped = Math.max(0, Math.min(1, t))
+  let i = 0
+  while (i < COLOR_STOPS.length - 2 && clamped > COLOR_STOPS[i + 1].t) i++
+  const a = COLOR_STOPS[i]
+  const b = COLOR_STOPS[i + 1]
+  const span = Math.max(1e-6, b.t - a.t)
+  const f = Math.max(0, Math.min(1, (clamped - a.t) / span))
+  const r = Math.round(a.r + (b.r - a.r) * f)
+  const g = Math.round(a.g + (b.g - a.g) * f)
+  const bl = Math.round(a.b + (b.b - a.b) * f)
+  return (r << 16) | (g << 8) | bl
+}
+
+function tForColor(rgb: number): number {
+  const r = (rgb >> 16) & 0xff
+  const g = (rgb >> 8) & 0xff
+  const b = rgb & 0xff
+  let best = 0
+  let bestDist = Infinity
+  for (let i = 0; i <= 360; i++) {
+    const t = i / 360
+    const c = gradientColor(t)
+    const dr = ((c >> 16) & 0xff) - r
+    const dg = ((c >> 8) & 0xff) - g
+    const db = (c & 0xff) - b
+    const d = dr * dr + dg * dg + db * db
+    if (d < bestDist) {
+      bestDist = d
+      best = t
+    }
+  }
+  return best
+}
+
+function HueSlider({ value, onChange }: { value: number; onChange: (rgb: number) => void }) {
+  const [trackW, setTrackW] = useState(0)
+  const trackWRef = useRef(0)
+  const viewLeftRef = useRef(0)
+  const draggingRef = useRef(false)
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  const [pos, setPos] = useState(() => tForColor(value))
+  const THUMB = 20
+
+  useEffect(() => {
+    if (!draggingRef.current) setPos(tForColor(value))
+  }, [value])
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => {
+        draggingRef.current = true
+        viewLeftRef.current = e.nativeEvent.pageX - e.nativeEvent.locationX
+        updateFromX(e.nativeEvent.pageX - viewLeftRef.current)
+      },
+      onPanResponderMove: (e) => updateFromX(e.nativeEvent.pageX - viewLeftRef.current),
+      onPanResponderRelease: () => {
+        draggingRef.current = false
+      },
+      onPanResponderTerminate: () => {
+        draggingRef.current = false
+      },
+    }),
+  ).current
+
+  function updateFromX(x: number) {
+    const w = trackWRef.current
+    if (w <= 0) return
+    const p = Math.max(0, Math.min(1, x / w))
+    setPos(p)
+    onChangeRef.current(gradientColor(p))
+  }
+
+  const thumbX = trackW > 0 ? pos * trackW : 0
+
+  return (
+    <View
+      style={{ marginTop: 10, height: 24, justifyContent: 'center' }}
+      onLayout={(e) => {
+        trackWRef.current = e.nativeEvent.layout.width
+        setTrackW(e.nativeEvent.layout.width)
+      }}
+      {...pan.panHandlers}
+    >
+      {trackW > 0 && (
+        <>
+          <Svg width={trackW} height={12} style={{ borderRadius: 6, overflow: 'hidden' }}>
+            <Defs>
+              <LinearGradient id="hueGrad" x1="0" y1="0" x2="1" y2="0">
+                <Stop offset="0%" stopColor="#FFFFFF" />
+                <Stop offset="14%" stopColor="#FF0000" />
+                <Stop offset="29%" stopColor="#FFFF00" />
+                <Stop offset="43%" stopColor="#00FF00" />
+                <Stop offset="57%" stopColor="#00FFFF" />
+                <Stop offset="71%" stopColor="#0000FF" />
+                <Stop offset="86%" stopColor="#FF00FF" />
+                <Stop offset="100%" stopColor="#000000" />
+              </LinearGradient>
+            </Defs>
+            <Rect x={0} y={0} width={trackW} height={12} rx={6} fill="url(#hueGrad)" />
+          </Svg>
+          <View
+            style={{
+              position: 'absolute',
+              top: 2,
+              left: Math.max(0, Math.min(trackW - THUMB, thumbX - THUMB / 2)),
+              width: THUMB,
+              height: THUMB,
+              borderRadius: THUMB / 2,
+              backgroundColor: '#fff',
+              borderWidth: 2,
+              borderColor: '#333',
+            }}
+          />
+        </>
+      )}
+    </View>
+  )
+}
 
 export default function NavidromeSettings({ visible, onClose, showLyrics }: Props) {
   const t = useTheme()
@@ -126,16 +249,15 @@ function LyricsContent({ t }: { t: any }) {
         label="通知栏歌词"
         value={lyricNotification}
         onValueChange={(v) => handleToggleNotification(v, setLyricNotification)}
-        hint="在系统通知栏显示歌词（独立通道）"
+        hint="在系统通知栏显示歌词（始终四行：上一句/当前/下一句/下两句）"
         t={t}
       />
-      {lyricNotification && <NotificationSubConfig t={t} />}
 
       <Row
         label="桌面歌词"
         value={lyricDesktop}
         onValueChange={(v) => handleToggleDesktop(v, setLyricDesktop)}
-        hint="浮动显示在屏幕顶部，可拖动"
+        hint="浮动显示在屏幕底部，可拖动调整位置"
         t={t}
       />
       {lyricDesktop && <DesktopSubConfig t={t} />}
@@ -151,33 +273,6 @@ function LyricsContent({ t }: { t: any }) {
   )
 }
 
-function NotificationSubConfig({ t }: { t: any }) {
-  const lyricLineCount = useNavidromePlaybackStore((s) => s.lyricLineCount)
-  const setLyricLineCount = useNavidromePlaybackStore((s) => s.setLyricLineCount)
-
-  return (
-    <>
-      <View style={[styles.row, { borderBottomColor: t.border }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.label, { color: t.text }]}>显示行数</Text>
-          <Text style={[styles.hint, { color: t.textMuted }]}>1=仅当前  2=+后1  3=+前1  4=+后2</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {([1, 2, 3, 4] as const).map((n, i) => (
-            <TouchableOpacity
-              key={n}
-              onPress={() => setLyricLineCount(n)}
-              style={[styles.chipSmall, { marginLeft: i > 0 ? 4 : 0, backgroundColor: lyricLineCount === n ? t.primary : t.inputBg }]}
-            >
-              <Text style={{ color: lyricLineCount === n ? '#fff' : t.text, fontSize: 11 }}>{n}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </>
-  )
-}
-
 function DesktopSubConfig({ t }: { t: any }) {
   const lyricOpacity = useNavidromePlaybackStore((s) => s.lyricOpacity)
   const setLyricOpacity = useNavidromePlaybackStore((s) => s.setLyricOpacity)
@@ -185,94 +280,61 @@ function DesktopSubConfig({ t }: { t: any }) {
   const setLyricAlignment = useNavidromePlaybackStore((s) => s.setLyricAlignment)
   const lyricColor = useNavidromePlaybackStore((s) => s.lyricColor)
   const setLyricColor = useNavidromePlaybackStore((s) => s.setLyricColor)
-  const lyricPosition = useNavidromePlaybackStore((s) => s.lyricPosition)
-  const setLyricPosition = useNavidromePlaybackStore((s) => s.setLyricPosition)
-  const lyricDesktopPositionY = useNavidromePlaybackStore((s) => s.lyricDesktopPositionY)
-  const setLyricDesktopPositionY = useNavidromePlaybackStore((s) => s.setLyricDesktopPositionY)
-  const lyricDesktopFontSize = useNavidromePlaybackStore((s) => s.lyricDesktopFontSize)
-  const setLyricDesktopFontSize = useNavidromePlaybackStore((s) => s.setLyricDesktopFontSize)
-  const lyricLineCount = useNavidromePlaybackStore((s) => s.lyricLineCount)
-  const setLyricLineCount = useNavidromePlaybackStore((s) => s.setLyricLineCount)
+  const lyricDesktopSwapOrder = useNavidromePlaybackStore((s) => s.lyricDesktopSwapOrder)
+  const setLyricDesktopSwapOrder = useNavidromePlaybackStore((s) => s.setLyricDesktopSwapOrder)
 
   return (
     <>
       <View style={[styles.row, { borderBottomColor: t.border }]}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.label, { color: t.text }]}>字号</Text>
-          <Text style={[styles.hint, { color: t.textMuted }]}>{lyricDesktopFontSize}sp</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity onPress={() => setLyricDesktopFontSize(Math.max(14, lyricDesktopFontSize - 2))} style={styles.btn}>
-            <Text style={{ color: t.primary, fontSize: 14 }}>−</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setLyricDesktopFontSize(Math.min(48, lyricDesktopFontSize + 2))} style={[styles.btn, { marginLeft: 8 }]}>
-            <Text style={{ color: t.primary, fontSize: 14 }}>+</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={[styles.row, { borderBottomColor: t.border }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.label, { color: t.text }]}>显示行数</Text>
-          <Text style={[styles.hint, { color: t.textMuted }]}>桌面歌词显示 1~4 行</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {([1, 2, 3, 4] as const).map((n, i) => (
-            <TouchableOpacity
-              key={n}
-              onPress={() => setLyricLineCount(n)}
-              style={[styles.chipSmall, { marginLeft: i > 0 ? 4 : 0, backgroundColor: lyricLineCount === n ? t.primary : t.inputBg }]}
-            >
-              <Text style={{ color: lyricLineCount === n ? '#fff' : t.text, fontSize: 11 }}>{n}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      <View style={[styles.row, { borderBottomColor: t.border }]}>
-        <View style={{ flex: 1 }}>
           <Text style={[styles.label, { color: t.text }]}>对齐</Text>
-          <Text style={[styles.hint, { color: t.textMuted }]}>桌面歌词水平对齐</Text>
+          <Text style={[styles.hint, { color: t.textMuted }]}>左右：第一句靠左、第二句靠右</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {(['left', 'center', 'right'] as const).map((a, i) => (
+          {(['left', 'center', 'right', 'split'] as const).map((a, i) => (
             <TouchableOpacity
               key={a}
               onPress={() => setLyricAlignment(a)}
               style={[styles.chipSmall, { marginLeft: i > 0 ? 4 : 0, backgroundColor: lyricAlignment === a ? t.primary : t.inputBg }]}
             >
               <Text style={{ color: lyricAlignment === a ? '#fff' : t.text, fontSize: 11 }}>
-                {a === 'left' ? '左' : a === 'center' ? '中' : '右'}
+                {a === 'left' ? '左' : a === 'center' ? '中' : a === 'right' ? '右' : '左右'}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
 
-      <View style={[styles.row, { borderBottomColor: t.border }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.label, { color: t.text }]}>文字颜色</Text>
-          <Text style={[styles.hint, { color: t.textMuted }]}>透明度受下方“不透明度”控制</Text>
+      <View style={[styles.row, { flexDirection: 'column', alignItems: 'stretch', borderBottomColor: t.border }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.label, { color: t.text }]}>文字颜色</Text>
+            <Text style={[styles.hint, { color: t.textMuted }]}>拖动进度条选择颜色（透明度受下方“不透明度”控制）</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: rgbToHex(lyricColor),
+                borderWidth: 1,
+                borderColor: t.border,
+              }}
+            />
+            <Text style={{ color: t.textMuted, fontSize: 11 }}>{rgbToHex(lyricColor)}</Text>
+          </View>
         </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', maxWidth: 200, gap: 6 }}>
-          {COLOR_PRESETS.map((c) => (
-            <TouchableOpacity
-              key={c.label}
-              onPress={() => setLyricColor(c.rgb)}
-              style={[
-                styles.chipSmall,
-                {
-                  backgroundColor: lyricColor === c.rgb ? t.primary : t.inputBg,
-                  borderWidth: lyricColor === c.rgb ? 2 : 0,
-                  borderColor: t.primary,
-                },
-              ]}
-            >
-              <Text style={{ color: lyricColor === c.rgb ? '#fff' : t.text, fontSize: 11 }}>{c.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <HueSlider value={lyricColor} onChange={setLyricColor} />
       </View>
+
+      <Row
+        label="交换显示顺序"
+        value={lyricDesktopSwapOrder}
+        onValueChange={setLyricDesktopSwapOrder}
+        hint="打开后第一句显示当前句、第二句显示下一句"
+        t={t}
+      />
 
       <View style={[styles.row, { borderBottomColor: t.border }]}>
         <View style={{ flex: 1 }}>
@@ -294,38 +356,6 @@ function DesktopSubConfig({ t }: { t: any }) {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
-      </View>
-
-      <View style={[styles.row, { borderBottomColor: t.border }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.label, { color: t.text }]}>Y 轴位置</Text>
-          <Text style={[styles.hint, { color: t.textMuted }]}>
-            预设位置或拖动桌面歌词保存（当前距底部 {lyricDesktopPositionY}px）
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {POSITION_PRESETS.map((p, i) => (
-            <TouchableOpacity
-              key={p.value}
-              onPress={() => {
-                setLyricPosition(p.value)
-                if (p.value === 'top') setLyricDesktopPositionY(0)
-              }}
-              style={[styles.chipSmall, { marginLeft: i > 0 ? 4 : 0, backgroundColor: lyricPosition === p.value ? t.primary : t.inputBg }]}
-            >
-              <Text style={{ color: lyricPosition === p.value ? '#fff' : t.text, fontSize: 11 }}>{p.label}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            onPress={() => {
-              setLyricDesktopPositionY(0)
-              setDesktopLyricsPosition(0)
-            }}
-            style={[styles.chipSmall, { marginLeft: 4, backgroundColor: t.inputBg }]}
-          >
-            <Text style={{ color: t.text, fontSize: 11 }}>重置</Text>
-          </TouchableOpacity>
         </View>
       </View>
     </>

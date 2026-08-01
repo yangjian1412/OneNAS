@@ -12,8 +12,7 @@ const { NavidromeLyricsModule } = NativeModules as {
     showDesktopLyrics: (prev: string, current: string, next1: string, next2: string, config: object) => void
     updateDesktopLyrics: (prev: string, current: string, next1: string, next2: string) => void
     hideDesktopLyrics: () => void
-    setDesktopLyricsPosition: (y: number) => void
-    showLyricsNotification: (prev: string, current: string, next1: string, next2: string, title: string, artist: string, lineCount: number) => void
+    showLyricsNotification: (prev: string, current: string, next1: string, next2: string, title: string, artist: string) => void
     cancelLyricsNotification: () => void
   }
 }
@@ -104,14 +103,12 @@ function computeLines(structured: NavidromeStructuredLyrics[] | null, currentTim
 function desktopConfigMap() {
   const p = useNavidromePlaybackStore.getState()
   return {
-    fontSize: p.lyricDesktopFontSize,
     rgb: p.lyricColor,
     bgAlpha: Math.round(p.lyricOpacity * 100),
     textAlpha: Math.round(p.lyricOpacity * 100),
-    alignment: p.lyricAlignment === 'left' ? 0 : p.lyricAlignment === 'right' ? 2 : 1,
-    lineCount: p.lyricLineCount,
+    alignment: p.lyricAlignment === 'left' ? 0 : p.lyricAlignment === 'right' ? 2 : p.lyricAlignment === 'split' ? 3 : 1,
     positionY: p.lyricDesktopPositionY,
-    lockScreenEnabled: false,
+    swapOrder: p.lyricDesktopSwapOrder,
   }
 }
 
@@ -132,7 +129,6 @@ function pushNotification(lines: LinesState, song: NavidromeSong, playing: boole
   }
   const title = song.title ?? 'Navidrome'
   const artist = song.artist ?? ''
-  const lineCount = useNavidromePlaybackStore.getState().lyricLineCount
   const same =
     lastNotifState.songId === song.id &&
     lastNotifState.playing === true &&
@@ -149,7 +145,6 @@ function pushNotification(lines: LinesState, song: NavidromeSong, playing: boole
       lines.next2,
       title,
       artist,
-      lineCount,
     )
   }
   lastNotifState = { songId: song.id, lines, playing: true }
@@ -309,12 +304,11 @@ export function startLyricsDisplay() {
       state.lyricNotification !== prev.lyricNotification ||
       state.lyricDesktop !== prev.lyricDesktop ||
       state.lyricInjectSystem !== prev.lyricInjectSystem ||
-      state.lyricDesktopFontSize !== prev.lyricDesktopFontSize ||
       state.lyricColor !== prev.lyricColor ||
       state.lyricOpacity !== prev.lyricOpacity ||
       state.lyricAlignment !== prev.lyricAlignment ||
-      state.lyricLineCount !== prev.lyricLineCount ||
-      state.lyricDesktopPositionY !== prev.lyricDesktopPositionY
+      state.lyricDesktopPositionY !== prev.lyricDesktopPositionY ||
+      state.lyricDesktopSwapOrder !== prev.lyricDesktopSwapOrder
     ) {
       tick().catch(() => {})
     }
@@ -356,11 +350,6 @@ export function onLockScreenMetaReset(songId: string | null) {
   if (songId !== originalMetaCache.songId) {
     lastInjectedLine = { songId: null, line: null, at: 0 }
   }
-}
-
-// Helper to push native position from settings UI
-export function setDesktopLyricsPosition(y: number) {
-  NavidromeLyricsModule?.setDesktopLyricsPosition(y)
 }
 
 // Re-export for callers that need to ensure metadata restore on logout etc.

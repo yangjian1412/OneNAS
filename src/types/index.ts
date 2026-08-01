@@ -416,11 +416,7 @@ export interface NavidromePlayQueue {
   changedBy?: string
   songs?: NavidromeSong[]
 }
-
-export type NavidromeLyricPosition = 'top' | 'middle' | 'bottom'
-export type NavidromeLyricAlignment = 'left' | 'center' | 'right'
-export type NavidromeLyricLineCount = 1 | 2 | 3 | 4
-
+export type NavidromeLyricAlignment = 'left' | 'center' | 'right' | 'split'
 export interface NavidromePreferences {
   showRecentAlbums: boolean
   showMostPlayed: boolean
@@ -435,11 +431,9 @@ export interface NavidromePreferences {
   lyricDesktop: boolean
   lyricInjectSystem: boolean
   lyricOpacity: number
-  lyricPosition: NavidromeLyricPosition
   lyricColor: number
   lyricBgAlpha: number
   lyricAlignment: NavidromeLyricAlignment
-  lyricLineCount: NavidromeLyricLineCount
   lyricDesktopPositionY: number
-  lyricDesktopFontSize: number
+  lyricDesktopSwapOrder: boolean
 }
