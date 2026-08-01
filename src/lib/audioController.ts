@@ -1,6 +1,7 @@
 import { setAudioModeAsync, setIsAudioActiveAsync, AudioPlayer, createAudioPlayer } from 'expo-audio'
 import { PermissionsAndroid, Platform } from 'react-native'
 import { useNavidromePlayerStore } from '@/stores/navidromePlayerStore'
+import { useNavidromePlaybackStore } from '@/stores/navidromePlaybackStore'
 import { useNavidromeStore } from '@/stores/navidromeStore'
 import type { NavidromeSong, NavidromeServerConfig } from '@/types'
 import { navidromeGetStreamUrl, navidromeGetCoverArtUrl, navidromeScrobble } from '@/lib/api/navidrome'
@@ -78,6 +79,16 @@ function stopPoller() {
   }
 }
 
+function syncPlayModeToNative() {
+  const mode = useNavidromePlayerStore.getState().playMode
+  try { (player as any)?.updatePlayMode?.(mode) } catch {}
+}
+
+function syncLyricsToggleToNative() {
+  const enabled = useNavidromePlaybackStore.getState().lyricInjectSystem
+  try { (player as any)?.updateLyricsToggle?.(enabled) } catch {}
+}
+
 function ensurePlayer(): AudioPlayer | null {
   if (player) return player
   try {
@@ -93,7 +104,18 @@ function ensurePlayer(): AudioPlayer | null {
         ;(player as any).addListener?.('mediaControl', (command: string) => {
           if (command === 'previous') prev()
           else if (command === 'next') next()
+          else if (command === 'cyclePlayMode') {
+            useNavidromePlayerStore.getState().cyclePlayMode()
+            syncPlayModeToNative()
+          } else if (command === 'toggleLyrics') {
+            const cur = useNavidromePlaybackStore.getState().lyricInjectSystem
+            useNavidromePlaybackStore.getState().setLyricInjectSystem(!cur)
+            syncLyricsToggleToNative()
+          }
         })
+        // Sync notification state when play mode or lyrics toggle changes
+        useNavidromePlayerStore.subscribe((s) => s.playMode, syncPlayModeToNative)
+        useNavidromePlaybackStore.subscribe((s) => s.lyricInjectSystem, syncLyricsToggleToNative)
         listenersBound = true
       } catch (e) {
         console.warn('[navidrome player] bind listener failed', e)

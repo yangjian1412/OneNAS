@@ -252,114 +252,186 @@ Apply-ExpoAudioPatch -path $svcFile -marker 'currentPlayer?.notifyMediaCommand("
       }
 '@
 
-Apply-ExpoAudioPatch -path $svcFile -marker '"Previous",' -old @'
-    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-      val compactViewIndices = mutableListOf<Int>()
-      var currentIndex = 0
-
-      if (currentOptions?.showSeekBackward == true) {
-        builder.addAction(
-          NotificationCompat.Action(
-            androidx.media3.session.R.drawable.media3_icon_skip_back,
-            "Seek Backward",
-            buildActionPendingIntent(ACTION_SEEK_BACKWARD)
-          )
-        )
-        compactViewIndices.add(currentIndex)
-        currentIndex++
-      }
-
-      builder.addAction(
-        NotificationCompat.Action(
-          if (session.player.isPlaying) {
-            androidx.media3.session.R.drawable.media3_icon_pause
-          } else {
-            androidx.media3.session.R.drawable.media3_icon_play
-          },
-          if (session.player.isPlaying) "Pause" else "Play",
-          buildActionPendingIntent(if (session.player.isPlaying) ACTION_PAUSE else ACTION_PLAY)
-        )
-      )
-      compactViewIndices.add(currentIndex)
-      currentIndex++
-
-      if (currentOptions?.showSeekForward == true) {
-        builder.addAction(
-          NotificationCompat.Action(
-            androidx.media3.session.R.drawable.media3_icon_skip_forward,
-            "Seek Forward",
-            buildActionPendingIntent(ACTION_SEEK_FORWARD)
-          )
-        )
-        compactViewIndices.add(currentIndex)
-      }
-
-      style.setShowActionsInCompactView(*compactViewIndices.toIntArray())
-    }
+Apply-ExpoAudioPatch -path $svcFile -marker 'getPlayModeIcon()' -old @'
+    val style = MediaStyleNotificationHelper.MediaStyle(session)
 '@ -new @'
-    {
-      val compactViewIndices = mutableListOf<Int>()
-      var currentIndex = 0
+    val style = MediaStyleNotificationHelper.MediaStyle(session)
 
-      builder.addAction(
-        NotificationCompat.Action(
-          androidx.media3.session.R.drawable.media3_icon_skip_back,
-          "Previous",
-          buildActionPendingIntent(ACTION_PREVIOUS)
-        )
+    // Play order (expanded only), Previous, PlayPause, Next (compact), Lyrics (expanded only)
+    val compactViewIndices = mutableListOf<Int>()
+    var currentIndex = 0
+
+    builder.addAction(
+      NotificationCompat.Action(
+        getPlayModeIcon(),
+        "Play Mode",
+        buildActionPendingIntent(ACTION_CYCLE_PLAY_MODE)
       )
-      compactViewIndices.add(currentIndex)
-      currentIndex++
+    )
+    currentIndex++
 
-      if (currentOptions?.showSeekBackward == true) {
-        builder.addAction(
-          NotificationCompat.Action(
-            androidx.media3.session.R.drawable.media3_icon_skip_back,
-            "Seek Backward",
-            buildActionPendingIntent(ACTION_SEEK_BACKWARD)
-          )
-        )
-        compactViewIndices.add(currentIndex)
-        currentIndex++
-      }
-
-      builder.addAction(
-        NotificationCompat.Action(
-          if (session.player.isPlaying) {
-            androidx.media3.session.R.drawable.media3_icon_pause
-          } else {
-            androidx.media3.session.R.drawable.media3_icon_play
-          },
-          if (session.player.isPlaying) "Pause" else "Play",
-          buildActionPendingIntent(if (session.player.isPlaying) ACTION_PAUSE else ACTION_PLAY)
-        )
+    compactViewIndices.add(currentIndex)
+    builder.addAction(
+      NotificationCompat.Action(
+        androidx.media3.session.R.drawable.media3_icon_previous,
+        "Previous",
+        buildActionPendingIntent(ACTION_PREVIOUS)
       )
-      compactViewIndices.add(currentIndex)
-      currentIndex++
+    )
+    currentIndex++
 
-      if (currentOptions?.showSeekForward == true) {
-        builder.addAction(
-          NotificationCompat.Action(
-            androidx.media3.session.R.drawable.media3_icon_skip_forward,
-            "Seek Forward",
-            buildActionPendingIntent(ACTION_SEEK_FORWARD)
-          )
-        )
-        compactViewIndices.add(currentIndex)
-        currentIndex++
-      }
-
-      builder.addAction(
-        NotificationCompat.Action(
-          androidx.media3.session.R.drawable.media3_icon_skip_forward,
-          "Next",
-          buildActionPendingIntent(ACTION_NEXT)
-        )
+    compactViewIndices.add(currentIndex)
+    builder.addAction(
+      NotificationCompat.Action(
+        if (session.player.isPlaying) {
+          androidx.media3.session.R.drawable.media3_icon_pause
+        } else {
+          androidx.media3.session.R.drawable.media3_icon_play
+        },
+        if (session.player.isPlaying) "Pause" else "Play",
+        buildActionPendingIntent(if (session.player.isPlaying) ACTION_PAUSE else ACTION_PLAY)
       )
-      compactViewIndices.add(currentIndex)
+    )
+    currentIndex++
 
-      style.setShowActionsInCompactView(*compactViewIndices.toIntArray())
+    compactViewIndices.add(currentIndex)
+    builder.addAction(
+      NotificationCompat.Action(
+        androidx.media3.session.R.drawable.media3_icon_next,
+        "Next",
+        buildActionPendingIntent(ACTION_NEXT)
+      )
+    )
+    currentIndex++
+
+    builder.addAction(
+      NotificationCompat.Action(
+        if (lyricsToggle) {
+          androidx.media3.session.R.drawable.media3_icon_subtitles
+        } else {
+          androidx.media3.session.R.drawable.media3_icon_subtitles_off
+        },
+        "Lyrics",
+        buildActionPendingIntent(ACTION_TOGGLE_LYRICS)
+      )
+    )
+
+    style.setShowActionsInCompactView(*compactViewIndices.toIntArray())
+'@
+
+# 3c-A: Notification visibility=PUBLIC + diagnostic Log.d for buildNotification
+Apply-ExpoAudioPatch -path $svcFile -marker 'setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' -old @'
+    val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+      .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
+'@ -new @'
+    val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+      .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
+'@
+
+Apply-ExpoAudioPatch -path $svcFile -marker 'buildNotification actions=' -old @'
+    builder.setStyle(style)
+    val n = builder.build()
+    return n
+'@ -new @'
+    builder.setStyle(style)
+    val n = builder.build()
+    android.util.Log.d("AudioControlsService", "buildNotification actions=${n.actions.size} title=${n.extras?.getString(Notification.EXTRA_TITLE)}")
+    return n
+'@
+
+# 3c-C: Play mode + lyrics toggle action constants and handlers
+Apply-ExpoAudioPatch -path $svcFile -marker 'ACTION_CYCLE_PLAY_MODE' -old @'
+    const val ACTION_NEXT = "expo.modules.audio.action.NEXT"
+
+    const val SEEK_INTERVAL_MS = 10000L
+'@ -new @'
+    const val ACTION_NEXT = "expo.modules.audio.action.NEXT"
+    const val ACTION_CYCLE_PLAY_MODE = "expo.modules.audio.action.CYCLE_PLAY_MODE"
+    const val ACTION_TOGGLE_LYRICS = "expo.modules.audio.action.TOGGLE_LYRICS"
+
+    const val SEEK_INTERVAL_MS = 10000L
+'@
+
+Apply-ExpoAudioPatch -path $svcFile -marker 'currentPlayMode' -old @'
+  var playbackListener: Player.Listener? = null
+'@ -new @'
+  var playbackListener: Player.Listener? = null
+  var currentPlayMode: String = "list"
+  var lyricsToggle: Boolean = false
+'@
+
+Apply-ExpoAudioPatch -path $svcFile -marker 'getPlayModeIcon' -old @'
+  fun updatePlayMode(mode: String) {
+    currentPlayMode = mode
+    postOrStartForegroundNotification(startInForeground = false)
+  }
+'@ -new @'
+  private fun getPlayModeIcon(): Int {
+    return when (currentPlayMode) {
+      "list" -> androidx.media3.session.R.drawable.media3_icon_repeat_off
+      "list-repeat" -> androidx.media3.session.R.drawable.media3_icon_repeat_all
+      "single-repeat" -> androidx.media3.session.R.drawable.media3_icon_repeat_one
+      "shuffle" -> androidx.media3.session.R.drawable.media3_icon_shuffle_on
+      else -> androidx.media3.session.R.drawable.media3_icon_repeat_off
     }
+  }
+
+  fun updatePlayMode(mode: String) {
+    currentPlayMode = mode
+    postOrStartForegroundNotification(startInForeground = false)
+  }
+'@
+
+Apply-ExpoAudioPatch -path $svcFile -marker 'updatePlayMode(mode: String)' -old @'
+  fun updateLyricsToggle(enabled: Boolean) {
+    lyricsToggle = enabled
+    postOrStartForegroundNotification(startInForeground = false)
+  }
+'@ -new @'
+  fun updatePlayMode(mode: String) {
+    currentPlayMode = mode
+    postOrStartForegroundNotification(startInForeground = false)
+  }
+
+  fun updateLyricsToggle(enabled: Boolean) {
+    lyricsToggle = enabled
+    postOrStartForegroundNotification(startInForeground = false)
+  }
+'@
+
+Apply-ExpoAudioPatch -path $svcFile -marker 'ACTION_CYCLE_PLAY_MODE ->' -old @'
+        ACTION_NEXT -> currentPlayer?.notifyMediaCommand("next")
+      }
+'@ -new @'
+        ACTION_NEXT -> currentPlayer?.notifyMediaCommand("next")
+        ACTION_CYCLE_PLAY_MODE -> currentPlayer?.notifyMediaCommand("cyclePlayMode")
+        ACTION_TOGGLE_LYRICS -> currentPlayer?.notifyMediaCommand("toggleLyrics")
+      }
+'@
+
+# 3c-D: AudioPlayer.kt — new methods for play mode + lyrics sync
+$playerFile = Join-Path $audioSvcDir "AudioPlayer.kt"
+Apply-ExpoAudioPatch -path $playerFile -marker 'updatePlayMode' -old @'
+  internal fun notifyMediaCommand(command: String) {
+    emit("mediaControl", command)
+  }
+'@ -new @'
+  fun updatePlayMode(mode: String) {
+    if (isActiveForLockScreen) {
+      serviceConnection.playbackServiceBinder?.service?.updatePlayMode(mode)
+    }
+  }
+
+  fun updateLyricsToggle(enabled: Boolean) {
+    if (isActiveForLockScreen) {
+      serviceConnection.playbackServiceBinder?.service?.updateLyricsToggle(enabled)
+    }
+  }
+
+  internal fun notifyMediaCommand(command: String) {
+    emit("mediaControl", command)
+  }
 '@
 
 Apply-ExpoAudioPatch -path $svcFile -marker 'setDisplayName("Previous")' -old @'

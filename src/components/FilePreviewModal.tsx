@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { View, Text, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, StatusBar, StyleSheet, Image, Pressable } from 'react-native'
+import { View, Text, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, StatusBar, StyleSheet, Image, Pressable, PanResponder } from 'react-native'
 import * as FileSystem from 'expo-file-system/legacy'
 import { startActivityAsync } from 'expo-intent-launcher'
 import { WebView } from 'react-native-webview'
@@ -296,16 +296,24 @@ function AudioPlayer({ url, token }: { url: string; token: string }) {
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
+  const progressRef = useRef<View>(null)
+  const barWidth = useRef(0)
+  const barLeft = useRef(0)
+  const seekFn = useRef<(pageX: number) => void>(() => {})
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (player.duration && player.currentTime) {
-        setDuration(player.duration)
-        setCurrentTime(player.currentTime)
-        setProgress(player.duration > 0 ? player.currentTime / player.duration : 0)
+    const sub = (player as any).addListener?.('playbackStatusUpdate', (status: any) => {
+      if (typeof status.currentTime === 'number') {
+        setCurrentTime(status.currentTime)
       }
-    }, 500)
-    return () => clearInterval(interval)
+      if (typeof status.duration === 'number') {
+        setDuration(status.duration)
+      }
+      if (typeof status.currentTime === 'number' && typeof status.duration === 'number' && status.duration > 0) {
+        setProgress(status.currentTime / status.duration)
+      }
+    })
+    return () => { sub?.remove?.() }
   }, [player])
 
   const togglePlay = () => {
@@ -313,20 +321,52 @@ function AudioPlayer({ url, token }: { url: string; token: string }) {
     else { player.play(); setPlaying(true) }
   }
 
-  const formatTime = (ms: number) => {
-    const total = Math.floor(ms / 1000)
+  const formatTime = (seconds: number) => {
+    const total = Math.floor(seconds)
     const m = Math.floor(total / 60)
     const s = total % 60
     return `${m}:${s.toString().padStart(2, '0')}`
   }
 
+  seekFn.current = (pageX: number, doSeek: boolean) => {
+    if (!duration || !barWidth.current) return
+    const ratio = Math.max(0, Math.min(1, (pageX - barLeft.current) / barWidth.current))
+    setProgress(ratio)
+    if (doSeek) {
+      player.seekTo(ratio * duration)
+    }
+  }
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => { seekFn.current(evt.nativeEvent.pageX, false) },
+      onPanResponderMove: (evt) => { seekFn.current(evt.nativeEvent.pageX, false) },
+      onPanResponderRelease: (evt) => { seekFn.current(evt.nativeEvent.pageX, true) },
+    })
+  ).current
+
   return (
     <View style={styles.audioContainer}>
       <Pressable onPress={togglePlay} style={[styles.audioPlayBtn, { backgroundColor: t.primary }]}>
-        <Text style={styles.audioPlayText}>{playing ? '暂停' : '播放'}</Text>
+        <Icon name={playing ? 'pause' : 'play'} size={36} color="#fff" />
       </Pressable>
-      <View style={styles.audioProgress}>
-        <View style={[styles.audioProgressBar, { width: `${progress * 100}%`, backgroundColor: t.primary }]} />
+      <View
+        ref={progressRef}
+        style={styles.audioProgressWrap}
+        onLayout={() => {
+          progressRef.current?.measureInWindow((x, y, w) => {
+            barLeft.current = x
+            barWidth.current = w
+          })
+        }}
+        {...panResponder.panHandlers}
+      >
+        <View style={styles.audioProgressTrack}>
+          <View style={[styles.audioProgressBar, { width: `${progress * 100}%`, backgroundColor: t.primary }]} />
+          <View style={[styles.audioThumb, { left: `${progress * 100}%`, backgroundColor: t.primary }]} />
+        </View>
       </View>
       <Text style={[styles.audioTime, { color: t.text }]}>
         {formatTime(currentTime)} / {formatTime(duration)}
@@ -358,8 +398,11 @@ const styles = StyleSheet.create({
   mediaPlayer: { flex: 1 },
   audioContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
   audioPlayBtn: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginVertical: 24 },
-  audioPlayText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  
   audioProgress: { width: '100%', height: 4, backgroundColor: '#333', borderRadius: 2, marginTop: 16 },
   audioProgressBar: { height: '100%', borderRadius: 2 },
   audioTime: { marginTop: 12, fontSize: 13 },
+  audioProgressWrap: { width: '100%', paddingVertical: 12, marginTop: 4 },
+  audioProgressTrack: { height: 4, backgroundColor: '#333', borderRadius: 2, justifyContent: 'center' },
+  audioThumb: { width: 14, height: 14, borderRadius: 7, position: 'absolute', marginLeft: -7, top: -5 },
 })
