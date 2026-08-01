@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Icon from '@/components/Icon'
 import { ServiceConfig, AudiobookshelfLibraryItem, AudiobookshelfLibrary, AudiobookshelfSearchResults, AudiobookshelfBookMedia } from '@/types'
 import { useAudiobookshelfStore } from '@/stores/audiobookshelfStore'
+import { useAudiobookshelfPlaybackStore } from '@/stores/audiobookshelfPlaybackStore'
 import {
   audiobookshelfGetLibraries,
   audiobookshelfGetResume,
@@ -32,6 +33,8 @@ import AudiobookshelfResumeRow from '@/components/audiobookshelf/AudiobookshelfR
 import AudiobookshelfLibraryRow from '@/components/audiobookshelf/AudiobookshelfLibraryRow'
 import AudiobookshelfItemDetail from '@/components/audiobookshelf/AudiobookshelfItemDetail'
 import AudiobookshelfPlayer from '@/components/audiobookshelf/AudiobookshelfPlayer'
+import AudiobookshelfServerSettings from '@/components/audiobookshelf/AudiobookshelfServerSettings'
+import AudiobookshelfPlaybackSettings from '@/components/audiobookshelf/AudiobookshelfPlaybackSettings'
 
 const SCREEN_W = Dimensions.get('window').width
 
@@ -52,6 +55,7 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
   const insets = useSafeAreaInsets()
 
   const server = useAudiobookshelfStore((s) => s.server)
+  const prefsLoad = useAudiobookshelfPlaybackStore((s) => s.loadFromStorage)
   const libraries = useAudiobookshelfStore((s) => s.libraries)
   const resumeItems = useAudiobookshelfStore((s) => s.resumeItems)
   const recentByLibrary = useAudiobookshelfStore((s) => s.recentByLibrary)
@@ -68,6 +72,8 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
   const [viewStack, setViewStack] = useState<ViewType[]>([])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [serverSettingsOpen, setServerSettingsOpen] = useState(false)
+  const [playbackSettingsOpen, setPlaybackSettingsOpen] = useState(false)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<AudiobookshelfSearchResults | null>(null)
@@ -92,6 +98,8 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
   useEffect(() => { drawerRef.current = drawerOpen }, [drawerOpen])
 
   const currentSort = ABS_SORT_OPTIONS.find((o) => o.value === sortBy) ?? ABS_SORT_OPTIONS[0]
+
+  useEffect(() => { void prefsLoad() }, [prefsLoad])
 
   // ===== init / login =====
   useEffect(() => {
@@ -407,6 +415,20 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
         server={server}
         serverVersion={serverVersion}
         onClose={() => setDrawerOpen(false)}
+        onServerSettings={() => setServerSettingsOpen(true)}
+      />
+
+      <AudiobookshelfServerSettings
+        visible={serverSettingsOpen}
+        onClose={() => setServerSettingsOpen(false)}
+        serverUrl={server?.url}
+        serverVersion={serverVersion}
+        userName={server?.userName}
+        onPlaybackSettings={() => setPlaybackSettingsOpen(true)}
+      />
+      <AudiobookshelfPlaybackSettings
+        visible={playbackSettingsOpen}
+        onClose={() => setPlaybackSettingsOpen(false)}
       />
 
       {playerVisible && playerItem && server && (

@@ -93,6 +93,10 @@ import PauseSvg from '@/icos/mdi--pause.svg'
 import PlaylistMusicSvg from '@/icos/mdi--playlist-music.svg'
 import ExpandMoreSvg from '@/icos/material-symbols--expand-more.svg'
 import SpeedSvg from '@/icos/material-symbols--speed.svg'
+import BookmarkAddSvg from '@/icos/material-symbols--bookmark-add-outline-rounded.svg'
+import BookmarkOutlineSvg from '@/icos/mdi--bookmark-outline.svg'
+import SleepSvg from '@/icos/mdi--sleep.svg'
+import SleepOffSvg from '@/icos/mdi--sleep-off.svg'
 
 type SvgComponent = React.ComponentType<{ width?: number; height?: number; fill?: string; color?: string; size?: number; style?: any }>
 
@@ -187,6 +191,10 @@ const SVG_COMPONENTS = {
   favoriteBorder: FavoriteBorderSvg,
   expandMore: ExpandMoreSvg,
   speed: SpeedSvg,
+  bookmarkAdd: BookmarkAddSvg,
+  bookmark: BookmarkOutlineSvg,
+  sleep: SleepSvg,
+  sleepOff: SleepOffSvg,
   play: PlaySvg,
 } as const
 
@@ -207,6 +215,7 @@ const MONO_ICONS: ReadonlySet<IconName> = new Set<IconName>([
   'music', 'person', 'trendingUp', 'plus', 'grid', 'star', 'images',
   'queueMusic', 'schedule', 'skipPrev', 'skipNext',
   'shuffle', 'repeat', 'repeatOne', 'sortAscending', 'favorite', 'favoriteBorder', 'expandMore', 'speed', 'play', 'pause',
+  'bookmarkAdd', 'bookmark', 'sleep', 'sleepOff',
 ])
 
 interface Props {

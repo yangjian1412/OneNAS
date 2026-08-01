@@ -625,6 +625,13 @@ export interface AudiobookshelfProgress {
   finishedAt?: number | null
 }
 
+export interface AudiobookshelfBookmark {
+  libraryItemId: string
+  title?: string
+  time: number
+  createdAt: number
+}
+
 export interface AudiobookshelfLibraryItem {
   id: string
   ino?: string

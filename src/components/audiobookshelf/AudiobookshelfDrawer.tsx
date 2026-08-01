@@ -2,17 +2,19 @@ import { useEffect, useRef, useCallback } from 'react'
 import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
 import { useTheme } from '@/lib/theme'
 import { AudiobookshelfServerConfig } from '@/types'
+import Icon from '@/components/Icon'
 
 interface Props {
   visible: boolean
   server: AudiobookshelfServerConfig | null
   serverVersion?: string
   onClose: () => void
+  onServerSettings: () => void
 }
 
 const DRAWER_W = Dimensions.get('window').width * 0.75
 
-export default function AudiobookshelfDrawer({ visible, server, serverVersion, onClose }: Props) {
+export default function AudiobookshelfDrawer({ visible, server, serverVersion, onClose, onServerSettings }: Props) {
   const t = useTheme()
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
 
@@ -56,6 +58,14 @@ export default function AudiobookshelfDrawer({ visible, server, serverVersion, o
             </Text>
           </View>
 
+          <View style={styles.menuSection}>
+            <TouchableOpacity style={[styles.menuItem, { backgroundColor: t.inputBg }]} onPress={() => { handleClose(); onServerSettings() }}>
+              <Icon name="serverCog" size={20} color={t.text} />
+              <Text style={[styles.menuItemText, { color: t.text }]}>服务器设置</Text>
+              <Icon name="chevronRight" size={16} color={t.textMuted} />
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.bottomSection}>
             <View style={[styles.divider, { backgroundColor: t.border }]} />
             <View style={styles.versionRow}>
@@ -97,6 +107,15 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 24, fontWeight: '700' as const },
   username: { fontSize: 17, fontWeight: '700' as const },
   serverUrl: { fontSize: 12, marginTop: 4 },
+  menuSection: { gap: 8, marginBottom: 24 },
+  menuItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  menuItemText: { flex: 1, fontSize: 15, fontWeight: '500' as const, marginLeft: 12 },
   bottomSection: { marginTop: 'auto' as any, paddingBottom: 32 },
   divider: { height: StyleSheet.hairlineWidth, marginBottom: 16 },
   versionRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingVertical: 4 },

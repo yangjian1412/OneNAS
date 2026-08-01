@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   AudiobookshelfLibrary,
   AudiobookshelfLibraryItem,
+  AudiobookshelfBookmark,
   AudiobookshelfPlaybackSession,
   AudiobookshelfProgress,
   AudiobookshelfServerConfig,
@@ -356,7 +357,7 @@ export async function audiobookshelfUpdateProgress(
       ? `${server.url}/api/me/progress/${itemId}/${episodeId}`
       : `${server.url}/api/me/progress/${itemId}`
     const result = await apiFetch<any>(url, {
-      method: 'POST',
+      method: 'PATCH',
       headers: {
         Authorization: `Bearer ${server.token}`,
         'Content-Type': 'application/json',
@@ -388,6 +389,67 @@ export async function audiobookshelfDeleteProgress(
     return { ok: true }
   } catch (e: any) {
     return { ok: false, error: e?.message ?? '删除进度失败' }
+  }
+}
+
+// ===== Bookmarks =====
+
+export async function audiobookshelfGetBookmarks(
+  server: AudiobookshelfServerConfig,
+  itemId: string
+): Promise<{ ok: boolean; bookmarks?: AudiobookshelfBookmark[]; error?: string }> {
+  if (!server.token) return { ok: false, error: '未登录' }
+  try {
+    const result = await apiFetch<any>(`${server.url}/api/me`, {
+      headers: { Authorization: `Bearer ${server.token}` },
+    })
+    if (!result.ok) return { ok: false, error: result.error ?? '获取书签失败' }
+    const all: AudiobookshelfBookmark[] = result.data?.user?.bookmarks ?? result.data?.bookmarks ?? []
+    const bookmarks = all.filter((b) => b.libraryItemId === itemId)
+    return { ok: true, bookmarks }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? '获取书签失败' }
+  }
+}
+
+export async function audiobookshelfCreateBookmark(
+  server: AudiobookshelfServerConfig,
+  itemId: string,
+  time: number,
+  title?: string
+): Promise<{ ok: boolean; bookmark?: AudiobookshelfBookmark; error?: string }> {
+  if (!server.token) return { ok: false, error: '未登录' }
+  try {
+    const result = await apiFetch<any>(`${server.url}/api/me/item/${itemId}/bookmark`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${server.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ time: Math.max(0, Math.floor(time)), title: title || undefined }),
+    })
+    if (!result.ok) return { ok: false, error: result.error ?? '创建书签失败' }
+    return { ok: true, bookmark: result.data }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? '创建书签失败' }
+  }
+}
+
+export async function audiobookshelfDeleteBookmark(
+  server: AudiobookshelfServerConfig,
+  itemId: string,
+  time: number
+): Promise<{ ok: boolean; error?: string }> {
+  if (!server.token) return { ok: false, error: '未登录' }
+  try {
+    const result = await apiFetch<any>(`${server.url}/api/me/item/${itemId}/bookmark/${Math.max(0, Math.floor(time))}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${server.token}` },
+    })
+    if (!result.ok) return { ok: false, error: result.error ?? '删除书签失败' }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? '删除书签失败' }
   }
 }
 
