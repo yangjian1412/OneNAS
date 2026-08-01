@@ -299,7 +299,7 @@ function AudioPlayer({ url, token }: { url: string; token: string }) {
   const progressRef = useRef<View>(null)
   const barWidth = useRef(0)
   const barLeft = useRef(0)
-  const seekFn = useRef<(pageX: number) => void>(() => {})
+  const seekFn = useRef<(pageX: number, doSeek: boolean) => void>(() => {})
 
   useEffect(() => {
     const sub = (player as any).addListener?.('playbackStatusUpdate', (status: any) => {

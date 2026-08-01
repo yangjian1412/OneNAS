@@ -437,3 +437,270 @@ export interface NavidromePreferences {
   lyricDesktopPositionY: number
   lyricDesktopSwapOrder: boolean
 }
+
+// ===== Audiobookshelf types =====
+
+export interface AudiobookshelfServerConfig {
+  id: string
+  name: string
+  url: string
+  username: string
+  password: string
+  token?: string
+  userId?: string
+  userName?: string
+  serverVersion?: string
+}
+
+export interface AudiobookshelfFolder {
+  id: string
+  fullPath: string
+  libraryId: string
+  addedAt: number
+}
+
+export interface AudiobookshelfLibrary {
+  id: string
+  name: string
+  folders: AudiobookshelfFolder[]
+  displayOrder: number
+  icon: string
+  mediaType: 'book' | 'podcast'
+  provider: string
+  createdAt: number
+  lastUpdate: number
+}
+
+export interface AudiobookshelfFileMetadata {
+  filename: string
+  ext: string
+  path: string
+  relPath: string
+  size: number
+  mtimeMs: number
+  ctimeMs: number
+  birthtimeMs: number
+}
+
+export interface AudiobookshelfAudioFile {
+  index: number
+  ino: string
+  metadata: AudiobookshelfFileMetadata
+  addedAt: number
+  updatedAt: number
+  duration: number
+  bitRate: number
+  language?: string
+  codec: string
+  mimeType: string
+  channels: number
+  channelLayout: string
+}
+
+export interface AudiobookshelfChapter {
+  id: number
+  start: number
+  end: number
+  title: string
+}
+
+export interface AudiobookshelfTrack {
+  index: number
+  startOffset: number
+  duration: number
+  title: string
+  contentUrl: string
+  mimeType: string
+  metadata?: AudiobookshelfFileMetadata
+}
+
+export interface AudiobookshelfBookMetadata {
+  title: string
+  titleIgnorePrefix?: string
+  subtitle?: string | null
+  authorName?: string
+  authorNameLF?: string
+  narratorName?: string
+  seriesName?: string
+  genres: string[]
+  publishedYear?: string | null
+  publishedDate?: string | null
+  publisher?: string | null
+  description?: string | null
+  isbn?: string | null
+  asin?: string | null
+  language?: string | null
+  explicit?: boolean
+}
+
+export interface AudiobookshelfAuthor {
+  id: string
+  name: string
+  asin?: string | null
+  description?: string | null
+  imagePath?: string | null
+  addedAt: number
+  updatedAt: number
+  numBooks?: number
+}
+
+export interface AudiobookshelfSeries {
+  id: string
+  name: string
+  description?: string | null
+  addedAt: number
+  updatedAt: number
+  sequence?: string | null
+  numBooks?: number
+}
+
+export interface AudiobookshelfBookMedia {
+  libraryItemId: string
+  metadata: AudiobookshelfBookMetadata
+  coverPath?: string | null
+  tags: string[]
+  numTracks?: number
+  numAudioFiles?: number
+  numChapters?: number
+  duration?: number
+  size?: number
+  audioFiles?: AudiobookshelfAudioFile[]
+  chapters?: AudiobookshelfChapter[]
+  tracks?: AudiobookshelfTrack[]
+  ebookFile?: AudiobookshelfAudioFile | null
+}
+
+export interface AudiobookshelfPodcastEpisode {
+  libraryItemId: string
+  id: string
+  index: number
+  season?: string
+  episode?: string
+  episodeType?: string
+  title: string
+  subtitle?: string
+  description?: string
+  pubDate?: string
+  publishedAt?: number
+  addedAt: number
+  updatedAt: number
+  audioFile?: AudiobookshelfAudioFile
+  audioTrack?: AudiobookshelfTrack
+  duration?: number
+  size?: number
+}
+
+export interface AudiobookshelfPodcastMedia {
+  libraryItemId: string
+  metadata: {
+    title: string
+    author?: string
+    description?: string
+    releaseDate?: string
+    genres: string[]
+    feedUrl?: string
+    imageUrl?: string
+    itunesPageUrl?: string
+    itunesId?: number
+    explicit?: boolean
+    language?: string
+    type?: string
+  }
+  coverPath?: string | null
+  tags: string[]
+  episodes: AudiobookshelfPodcastEpisode[]
+}
+
+export interface AudiobookshelfProgress {
+  id: string
+  libraryItemId: string
+  episodeId?: string | null
+  duration: number
+  progress: number
+  currentTime: number
+  isFinished: boolean
+  hideFromContinueListening: boolean
+  lastUpdate: number
+  startedAt: number
+  finishedAt?: number | null
+}
+
+export interface AudiobookshelfLibraryItem {
+  id: string
+  ino?: string
+  libraryId: string
+  folderId?: string
+  path: string
+  relPath?: string
+  addedAt: number
+  updatedAt: number
+  isMissing?: boolean
+  isInvalid?: boolean
+  mediaType: 'book' | 'podcast'
+  media: AudiobookshelfBookMedia | AudiobookshelfPodcastMedia
+  numFiles?: number
+  size?: number
+  userMediaProgress?: AudiobookshelfProgress | null
+  recentEpisode?: AudiobookshelfPodcastEpisode | null
+  progressLastUpdate?: number
+}
+
+export interface AudiobookshelfShelf<T> {
+  id: string
+  label: string
+  labelStringKey?: string
+  type: 'book' | 'podcast' | 'series' | 'authors' | 'episode'
+  entities: T[]
+  category?: string
+}
+
+export interface AudiobookshelfEbookFormat {
+  ebookFileFormat: string | null
+}
+
+export interface AudiobookshelfPlaybackSession {
+  id: string
+  userId: string
+  libraryId: string
+  libraryItemId: string
+  episodeId?: string | null
+  mediaType: 'book' | 'podcast'
+  audioTracks: AudiobookshelfTrack[]
+  chapters: AudiobookshelfChapter[]
+  displayTitle: string
+  displayAuthor: string
+  coverPath?: string
+  duration: number
+  playMethod: number
+  mediaPlayer: string
+  startTime: number
+  currentTime: number
+}
+
+export interface AudiobookshelfUser {
+  id: string
+  username: string
+  type: string
+  token: string
+  isActive: boolean
+}
+
+export interface AudiobookshelfSearchResult {
+  libraryItem: AudiobookshelfLibraryItem
+  matchKey: string
+  matchText: string
+}
+
+export interface AudiobookshelfSearchResults {
+  book?: AudiobookshelfSearchResult[]
+  podcast?: AudiobookshelfSearchResult[]
+  tags?: string[]
+  authors?: AudiobookshelfAuthor[]
+  series?: AudiobookshelfSeries[]
+}
+
+export interface AudiobookshelfPreferences {
+  showContinueListening: boolean
+  showRecentlyAdded: boolean
+  showNewestAuthors: boolean
+}

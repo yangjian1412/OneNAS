@@ -5,8 +5,9 @@ import { useAppStore } from '@/stores/appStore'
 import ServiceCard from '@/components/ServiceCard'
 import JellyfinScreen from './JellyfinScreen'
 import NavidromeScreen from './NavidromeScreen'
+import AudiobookshelfScreen from './AudiobookshelfScreen'
 import Icon from '@/components/Icon'
-import { SERVICE_TYPE_ICONS } from '@/lib/constants'
+import { SERVICE_TYPE_ICONS, isAudiobookshelfService } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
 
 interface Props {
@@ -81,6 +82,20 @@ export default function ServiceScreen({ serviceId }: Props) {
     return (
       <>
         <NavidromeScreen service={service} />
+        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+          <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
+            <Text style={styles.toastText}>再按一次退出</Text>
+          </View>
+        </Animated.View>
+      </>
+    )
+  }
+
+  if (isAudiobookshelfService(service)) {
+    console.log('[ABS] Routing to AudiobookshelfScreen, type=', service.type, 'name=', service.name, 'id=', service.id)
+    return (
+      <>
+        <AudiobookshelfScreen service={service} />
         <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>

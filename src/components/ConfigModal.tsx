@@ -142,10 +142,15 @@ export default function ConfigModal({
         apiKey: apiKey || undefined,
       })
     } else {
+      const normalizedType = (() => {
+        const t = String(type ?? '').toLowerCase()
+        if (t === 'audiobookshelf' || t.includes('audiobook')) return 'audiobookshelf' as ServiceType
+        return type
+      })()
       onSaveService({
         id: service?.id ?? '',
         name,
-        type,
+        type: normalizedType,
         url,
         category: service?.category ?? 'tools',
         showInTopBar: service?.showInTopBar ?? false,
@@ -233,7 +238,7 @@ export default function ConfigModal({
               </>
             ) : isAppType ? (
               <>
-                {(type === 'jellyfin' || type === 'navidrome') ? (
+                {(type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf') ? (
                   <>
                     <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
