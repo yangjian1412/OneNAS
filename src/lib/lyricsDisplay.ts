@@ -156,7 +156,7 @@ function restoreSystemMeta(force = false) {
   const o = originalMetaCache
   if (!force && !lastInjectedLine.line) return
   try {
-    player.setActiveForLockScreen(true, o.meta)
+    player.updateLockScreenMetadata(o.meta)
   } catch {}
   lastInjectedLine = { songId: o.songId, line: null, at: 0 }
 }
@@ -197,7 +197,7 @@ function pushSystemPlayer(lines: LinesState, song: NavidromeSong, server: Navidr
   const o = originalMetaCache.meta
   const composedArtist = o.artist && o.title ? `${o.artist} - ${o.title}` : o.artist || o.title
   try {
-    player.setActiveForLockScreen(true, {
+    player.updateLockScreenMetadata({
       title: lines.current,
       artist: composedArtist,
       albumTitle: o.albumTitle,
@@ -205,7 +205,7 @@ function pushSystemPlayer(lines: LinesState, song: NavidromeSong, server: Navidr
     })
     lastInjectedLine = { songId: song.id, line: lines.current, at: now }
   } catch (e) {
-    console.warn('[lyrics] setActiveForLockScreen failed', e)
+    console.warn('[lyrics] updateLockScreenMetadata failed', e)
   }
 }
 

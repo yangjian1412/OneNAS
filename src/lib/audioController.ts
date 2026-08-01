@@ -12,6 +12,7 @@ let listenersBound = false
 let initStarted = false
 let initDone = false
 let statusTimer: ReturnType<typeof setInterval> | null = null
+let lockScreenActive = false
 
 function redactUrl(url: string): string {
   try {
@@ -111,14 +112,22 @@ function safeUpdateLockScreen(server: NavidromeServerConfig | null, song: Navidr
   try {
     if (server) {
       const artworkUrl = song.coverArt ? navidromeGetCoverArtUrl(server, song.coverArt) : undefined
-      player.setActiveForLockScreen(true, {
+      const meta = {
         title: song.title ?? '',
         artist: song.artist ?? '',
         albumTitle: song.album ?? '',
         artworkUrl,
-      })
+      }
+      if (!lockScreenActive) {
+        // First activation rebuilds the MediaSession once; afterwards update in place to avoid flicker/reload
+        player.setActiveForLockScreen(true, meta)
+        lockScreenActive = true
+      } else {
+        player.updateLockScreenMetadata(meta)
+      }
     } else {
       try { player.clearLockScreenControls() } catch {}
+      lockScreenActive = false
     }
   } catch {}
 }
