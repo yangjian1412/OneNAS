@@ -33,7 +33,6 @@ import AudiobookshelfResumeRow from '@/components/audiobookshelf/AudiobookshelfR
 import AudiobookshelfLibraryRow from '@/components/audiobookshelf/AudiobookshelfLibraryRow'
 import AudiobookshelfItemDetail from '@/components/audiobookshelf/AudiobookshelfItemDetail'
 import AudiobookshelfPlayer from '@/components/audiobookshelf/AudiobookshelfPlayer'
-import AudiobookshelfServerSettings from '@/components/audiobookshelf/AudiobookshelfServerSettings'
 import AudiobookshelfPlaybackSettings from '@/components/audiobookshelf/AudiobookshelfPlaybackSettings'
 
 const SCREEN_W = Dimensions.get('window').width
@@ -72,7 +71,6 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
   const [viewStack, setViewStack] = useState<ViewType[]>([])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [serverSettingsOpen, setServerSettingsOpen] = useState(false)
   const [playbackSettingsOpen, setPlaybackSettingsOpen] = useState(false)
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -87,6 +85,7 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
   const [currentItem, setCurrentItem] = useState<AudiobookshelfLibraryItem | null>(null)
 
   const [playerItem, setPlayerItem] = useState<AudiobookshelfLibraryItem | null>(null)
+  const [playerStartAt, setPlayerStartAt] = useState<number | null>(null)
   const [playerVisible, setPlayerVisible] = useState(false)
 
   const loadingRef = useRef(false)
@@ -236,7 +235,7 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
   }, [])
 
   // ===== play =====
-  const handlePlay = useCallback(async (item: AudiobookshelfLibraryItem) => {
+  const handlePlay = useCallback(async (item: AudiobookshelfLibraryItem, startAt?: number) => {
     if (!server) return
     let playItem = item
     try {
@@ -244,6 +243,7 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
       if (detail.ok && detail.item) playItem = detail.item
     } catch {}
     setPlayerItem(playItem)
+    setPlayerStartAt(startAt ?? null)
     setPlayerVisible(true)
   }, [server])
 
@@ -415,15 +415,6 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
         server={server}
         serverVersion={serverVersion}
         onClose={() => setDrawerOpen(false)}
-        onServerSettings={() => setServerSettingsOpen(true)}
-      />
-
-      <AudiobookshelfServerSettings
-        visible={serverSettingsOpen}
-        onClose={() => setServerSettingsOpen(false)}
-        serverUrl={server?.url}
-        serverVersion={serverVersion}
-        userName={server?.userName}
         onPlaybackSettings={() => setPlaybackSettingsOpen(true)}
       />
       <AudiobookshelfPlaybackSettings
@@ -436,6 +427,7 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
           visible={playerVisible}
           server={server}
           item={playerItem}
+          startAt={playerStartAt}
           onClose={closePlayer}
         />
       )}

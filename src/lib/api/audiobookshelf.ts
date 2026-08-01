@@ -399,13 +399,24 @@ export async function audiobookshelfGetBookmarks(
   itemId: string
 ): Promise<{ ok: boolean; bookmarks?: AudiobookshelfBookmark[]; error?: string }> {
   if (!server.token) return { ok: false, error: '未登录' }
+  const ts = Date.now()
   try {
-    const result = await apiFetch<any>(`${server.url}/api/me`, {
-      headers: { Authorization: `Bearer ${server.token}` },
-    })
+    const result = await apiFetch<any>(
+      `${server.url}/api/me/bookmarks/${itemId}?_t=${ts}`,
+      { headers: { Authorization: `Bearer ${server.token}` } }
+    )
+    if (result.ok && Array.isArray(result.data?.bookmarks)) {
+      return { ok: true, bookmarks: result.data.bookmarks }
+    }
+  } catch {}
+  try {
+    const result = await apiFetch<any>(
+      `${server.url}/api/me?_t=${ts}`,
+      { headers: { Authorization: `Bearer ${server.token}` } }
+    )
     if (!result.ok) return { ok: false, error: result.error ?? '获取书签失败' }
     const all: AudiobookshelfBookmark[] = result.data?.user?.bookmarks ?? result.data?.bookmarks ?? []
-    const bookmarks = all.filter((b) => b.libraryItemId === itemId)
+    const bookmarks = all.filter((b: AudiobookshelfBookmark) => b.libraryItemId === itemId)
     return { ok: true, bookmarks }
   } catch (e: any) {
     return { ok: false, error: e?.message ?? '获取书签失败' }
@@ -419,6 +430,7 @@ export async function audiobookshelfCreateBookmark(
   title?: string
 ): Promise<{ ok: boolean; bookmark?: AudiobookshelfBookmark; error?: string }> {
   if (!server.token) return { ok: false, error: '未登录' }
+  const safeTitle = (title ?? '').trim() || '书签'
   try {
     const result = await apiFetch<any>(`${server.url}/api/me/item/${itemId}/bookmark`, {
       method: 'POST',
@@ -426,7 +438,7 @@ export async function audiobookshelfCreateBookmark(
         Authorization: `Bearer ${server.token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ time: Math.max(0, Math.floor(time)), title: title || undefined }),
+      body: JSON.stringify({ time: Math.max(0, Math.floor(time)), title: safeTitle }),
     })
     if (!result.ok) return { ok: false, error: result.error ?? '创建书签失败' }
     return { ok: true, bookmark: result.data }

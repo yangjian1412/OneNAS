@@ -9,12 +9,12 @@ interface Props {
   server: AudiobookshelfServerConfig | null
   serverVersion?: string
   onClose: () => void
-  onServerSettings: () => void
+  onPlaybackSettings: () => void
 }
 
 const DRAWER_W = Dimensions.get('window').width * 0.75
 
-export default function AudiobookshelfDrawer({ visible, server, serverVersion, onClose, onServerSettings }: Props) {
+export default function AudiobookshelfDrawer({ visible, server, serverVersion, onClose, onPlaybackSettings }: Props) {
   const t = useTheme()
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
 
@@ -59,9 +59,9 @@ export default function AudiobookshelfDrawer({ visible, server, serverVersion, o
           </View>
 
           <View style={styles.menuSection}>
-            <TouchableOpacity style={[styles.menuItem, { backgroundColor: t.inputBg }]} onPress={() => { handleClose(); onServerSettings() }}>
-              <Icon name="serverCog" size={20} color={t.text} />
-              <Text style={[styles.menuItemText, { color: t.text }]}>服务器设置</Text>
+            <TouchableOpacity style={[styles.menuItem, { backgroundColor: t.inputBg }]} onPress={() => { handleClose(); onPlaybackSettings() }}>
+              <Icon name="settings" size={20} color={t.text} />
+              <Text style={[styles.menuItemText, { color: t.text }]}>播放设置</Text>
               <Icon name="chevronRight" size={16} color={t.textMuted} />
             </TouchableOpacity>
           </View>

@@ -16,7 +16,7 @@ import {
 interface Props {
   item: AudiobookshelfLibraryItem
   server: AudiobookshelfServerConfig
-  onPlay: () => void
+  onPlay: (startAt?: number) => void
   onBack: () => void
 }
 
@@ -75,7 +75,7 @@ export default function AudiobookshelfItemDetail({ item, server, onPlay, onBack 
       key={ch.id}
       style={[styles.chapterRow, { borderBottomColor: t.border }]}
       activeOpacity={0.6}
-      onPress={onPlay}
+      onPress={() => onPlay(ch.start)}
     >
       <Text style={[styles.chapterIndex, { color: t.textMuted }]}>{ch.id + 1}</Text>
       <View style={{ flex: 1 }}>
@@ -138,9 +138,9 @@ export default function AudiobookshelfItemDetail({ item, server, onPlay, onBack 
         )}
 
         <TouchableOpacity
-          style={[styles.playBtn, { backgroundColor: t.primary }]}
-          onPress={onPlay}
-        >
+      style={[styles.playBtn, { backgroundColor: t.primary }]}
+      onPress={() => onPlay()}
+    >
           <Icon name="playFilled" size={20} color="#fff" />
           <Text style={styles.playBtnText}>{progress ? '继续播放' : '开始播放'}</Text>
         </TouchableOpacity>
