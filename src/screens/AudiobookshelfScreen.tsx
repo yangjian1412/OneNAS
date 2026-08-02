@@ -405,7 +405,7 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
         <AudiobookshelfItemDetail
           item={currentItem}
           server={server}
-          onPlay={() => handlePlay(currentItem)}
+          onPlay={(startAt) => handlePlay(currentItem, startAt)}
           onBack={goBack}
         />
       )}
