@@ -1,7 +1,7 @@
 # 下一步计划
 
 > 本文档记录接下来要做的事项，按优先级排序。
-> 最近更新：2026-07-30（Navidrome 大修启动）
+> 最近更新：2026-08-02（Audiobookshelf raw ADTS AAC 跳转问题登记为待解决）
 
 ---
 
@@ -285,7 +285,70 @@
 
 ---
 
+## 待解决问题（Known Issues）
+
+### Audiobookshelf：raw ADTS AAC 章节内无法精确跳转进度
+
+**登记时间**：2026-08-02
+**影响范围**：本 App + 官方 ABS Web App（两端表现一致，根因在源文件）
+**优先级**：低（暂时搁置，等合适时机再处理）
+
+#### 症状
+某本书（如 item `07a66277-dcf5-465e-9166-d70f86d96b3c`，325.6 小时、92 章）的**第 46–66 章**（21 个文件）：
+- 拖动进度条后，**音频总是从该章节开头 0:00 开始播放**，无法跳到拖到的位置
+- 官方 ABS Web App 在同一本书上**完全相同**的症状
+- 服务端 `userMediaProgress` 容易被污染成 `~chapter.start + 3~5s`（拖动后 currentTime 被反复写回 ~0）
+
+#### 根因（已通过 API 实测确认）
+- 这 21 个文件的 `format` 字段是 **`raw ADTS AAC (Advanced Audio Coding)`**，其余 71 个是 `MP2/3 (MPEG audio layer 2/3)` (MP3)
+- 命名规律：`... - 50-511-540-720P 清晰-AVC.aac` —— 是从 720P AVC MP4 视频里抽出来的**裸 AAC 流**
+- 文件 `mimeType: audio/aac`，**没有 MP4 容器、没有 moov atom、没有 seektable**
+- 这是**文件格式的物理限制**：所有播放器（ExoPlayer / HTML5 Audio / VLC / ffplay）拿到"我想去 10:30"指令后，**只能定位到 0:00**
+- 因此**客户端层面无法做到"在 raw ADTS AAC 文件内精确 seek 到任意位置"**
+
+#### 已尝试 / 排除
+1. ❌ `player.seekTo(target)` 静默失败 → 用户拖了等于没拖
+2. ❌ 把进度条按比例映射后再 seekTo → ExoPlayer 同样定位失败
+3. ❌ 让 ExoPlayer 缓存/索引 → expo-audio 不暴露该接口
+4. ⚠️ 本地下载整段建立 ADTS frame 索引再播 → 技术上可行但要下载 ~200MB/章、重写音频栈、对单本书价值过低
+5. ⚠️ 在 raw 轨道上把拖动条改写为"快进跳章" / "拖右半 = 几秒后跳下一章" → **不能解决"章内跳转"，只是把"拖了没反应"变成"拖了跳走"**（用户已确认这并非真正的跳转体验，未采纳）
+
+#### 唯一真正解决路径（服务端）
+在 ABS 服务器上把这 21 个裸 `.aac` 重封装为带索引的 `.m4a`，原地替换后触发 ABS 重扫：
+
+```bash
+cd /audiobooks/magi/...对应的书目录/
+for f in *.aac; do
+  ffmpeg -i "$f" -c:a copy -movflags +faststart "${f%.aac}.m4a" && mv "${f%.aac}.m4a" "$f"
+done
+```
+
+重扫后 `track.format` 会变成 `MP4` (M4A)，所有播放器（含本 App + 官方 Web + 任何第三方）即可精确 seek。进度无需重置（`currentTime` 是秒级绝对位置）。
+
+**注意**：仅当用户能访问 ABS 服务端文件目录时才可行。如服务器不可达或为只读挂载，则此问题**在客户端层面无解**。
+
+#### 客户端可行的妥协方案（备选，未实施）
+如果未来决定至少改善体验（而非真正修复），可考虑：
+1. **raw 轨道上拖动条改写为"快进跳章"**：`seekFn` 在 raw 轨道上不调 `player.seekTo`，而用 `setTimeout(剩余秒数)` 在拖动后跳下一章。视觉是快进，本质跨章。
+2. **raw 轨道上关闭 10s 节流 PATCH**：避免拖动把服务端 `currentTime` 污染回 ~0；只在 `didJustFinish` 自然跨章时上报一次。
+3. **首次进入 raw 章节弹一次 Toast**：说明"本章为无索引裸 AAC，无法精确拖动；建议在服务端重封装为 M4A"。
+
+实施位置：`src/components/audiobookshelf/AudiobookshelfPlayer.tsx`（约 35–45 行改动）。
+**用户已于 2026-08-02 确认这并非真正的跳转体验，暂不实施。**
+
+#### 何时再处理
+- 用户能拿到 ABS 服务端 shell 权限时 → 走"服务端重封装"（一行命令，永久解决）。
+- 出现**新书**也是 raw ADTS 格式且用户希望改善本 App 体验（即使官方 Web 仍然不可拖） → 评估是否实施客户端妥协方案。
+
+#### 调试时怎么再次确认这是同一个问题
+1. 登录后 `GET /audiobookshelf/api/items/{id}?expanded=1&include=progress`
+2. 看 `media.tracks[i].format`：是否包含 `raw ADTS`
+3. 找到 `currentTime` 落在哪个 `track.startOffset` 区间 → 该 track 如果是 raw ADTS 即可确诊
+
+---
+
 ## 参考源码目录（ref-src/）
+
 
 本文档同目录下的 `ref-src/` 文件夹存放各服务的参考源码，不参与构建，不上传 git。
 
