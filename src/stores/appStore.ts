@@ -32,6 +32,38 @@ async function persist(s: AppState, extra?: Partial<PersistPayload>) {
   await saveItem(STORAGE_KEYS.CONFIG, JSON.stringify(payload))
 }
 
+// 统一清洗：清除旧版 calibre 残留，保证每个服务类型只有一条真实配置。
+// - type 为 calibre 且无 url ⇒ 纯占位，直接删除
+// - type 为 calibre 且有 url ⇒ 转成 talebook（保守，避免误删真实配置）
+// - talebook 按 url 去重
+function normalizeServices(services: any[]): ServiceConfig[] {
+  const out: ServiceConfig[] = []
+  for (const s of services) {
+    if (!s) continue
+    const type = String(s.type ?? '').toLowerCase()
+    const url = String(s.url ?? '')
+    if (type === 'calibre') {
+      if (!url) continue
+      out.push({ ...s, type: 'talebook' as ServiceConfig['type'] })
+      continue
+    }
+    // 空地址的占位残留（如导入的数据里 name=Calibre、type=talebook、url=空）直接丢弃，
+    // 避免设置页 find() 匹配到该空条目导致标签名/开关错乱
+    if (type === 'talebook' && !url) continue
+    out.push(s)
+  }
+  // talebook 按 url 去重
+  const seenTalebook = new Set<string>()
+  return out.filter((s) => {
+    if (s.type === 'talebook') {
+      const key = `talebook:${String(s.url ?? '')}`
+      if (seenTalebook.has(key)) return false
+      seenTalebook.add(key)
+    }
+    return true
+  })
+}
+
 export interface AppState {
   loaded: boolean
   servers: ServerConfig[]
@@ -91,15 +123,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const cfg = JSON.parse(raw)
+      const servers = cfg.servers ?? []
+      const services = normalizeServices(cfg.services ?? [])
+      const theme = cfg.theme ?? 'system'
+      const hideNasManagement = cfg.hideNasManagement ?? false
+      const hideTabLabels = cfg.hideTabLabels ?? true
+      const fileSort = cfg.fileSort ?? { by: 'name', dir: 'asc' }
       set({
         loaded: true,
-        servers: cfg.servers ?? [],
-        services: cfg.services ?? [],
-        theme: cfg.theme ?? 'system',
-        hideNasManagement: cfg.hideNasManagement ?? false,
-        hideTabLabels: cfg.hideTabLabels ?? true,
-        fileSort: cfg.fileSort ?? { by: 'name', dir: 'asc' },
+        servers,
+        services,
+        theme,
+        hideNasManagement,
+        hideTabLabels,
+        fileSort,
       })
+      // 落盘：真正把残留（如空 url 的 calibre 占位）从磁盘清除
+      void persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort })
     } catch {
       set({ loaded: true })
     }
@@ -132,7 +172,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   importConfig: async (json: string) => {
     const cfg = JSON.parse(json)
     const servers = cfg.servers ?? []
-    const services = cfg.services ?? []
+    const services = normalizeServices(cfg.services ?? [])
     const theme = cfg.theme ?? 'light'
     const hideNasManagement = cfg.hideNasManagement ?? false
     const hideTabLabels = cfg.hideTabLabels ?? true

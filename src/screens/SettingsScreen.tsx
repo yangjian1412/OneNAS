@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { View, Text, TextInput, TouchableOpacity, Alert, Modal, StyleSheet, Switch, ScrollView, Animated, BackHandler } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, Alert, Modal, StyleSheet, Switch, Animated, BackHandler } from 'react-native'
 import { useIsFocused } from '@react-navigation/native'
-import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist'
+import { NestableScrollContainer, NestableDraggableFlatList, RenderItemParams } from 'react-native-draggable-flatlist'
 import { useAppStore } from '@/stores/appStore'
 import { ServerConfig, ServiceConfig, ServiceType } from '@/types'
 import { generateId } from '@/lib/crypto'
@@ -9,8 +9,9 @@ import { SERVICE_TYPE_LABELS, SERVICE_TYPE_ICONS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
 import ConfigModal from '@/components/ConfigModal'
 import Icon from '@/components/Icon'
+import * as Clipboard from 'expo-clipboard'
 
-const SERVICE_TYPES: ServiceType[] = ['jellyfin', 'navidrome', 'audiobookshelf', 'immich', 'aria2', 'calibre', 'qbittorrent', 'openlist']
+const SERVICE_TYPES: ServiceType[] = ['jellyfin', 'navidrome', 'audiobookshelf', 'immich', 'aria2', 'qbittorrent', 'openlist', 'talebook']
 
 interface ServiceRow {
   key: string
@@ -258,12 +259,11 @@ export default function SettingsScreen() {
       </View>
       <View style={styles.sectionGroup}>
         {sortMode ? (
-          <DraggableFlatList
+          <NestableDraggableFlatList
             data={rows}
             keyExtractor={(item) => item.key}
             renderItem={renderService}
             onDragEnd={handleDragEnd}
-            scrollEnabled={false}
             ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           />
         ) : (
@@ -369,7 +369,12 @@ export default function SettingsScreen() {
           <View style={[styles.sheet, { backgroundColor: t.card }]}>
             <Text style={[styles.pickerTitle, { color: t.text }]}>已导出配置</Text>
             <TextInput multiline editable={false} style={[styles.exportBox, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]} value={exportText ?? ''} />
-            <View style={styles.sheetActions}><TouchableOpacity onPress={() => setExportText(null)}><Text style={[styles.clearText, { color: t.primary }]}>关闭</Text></TouchableOpacity></View>
+            <View style={styles.sheetActions}>
+              <TouchableOpacity onPress={async () => { if (exportText) { await Clipboard.setStringAsync(exportText); Alert.alert('已复制', '配置已复制到剪贴板') } }}>
+                <Text style={[styles.clearText, { color: t.primary }]}>一键复制</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setExportText(null)}><Text style={[styles.clearText, { color: t.textMuted }]}>关闭</Text></TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -395,13 +400,13 @@ export default function SettingsScreen() {
   return (
     <View style={[styles.container, { backgroundColor: t.bg }]}>
       <Text style={[styles.screenTitle, { color: t.text }]}>设置</Text>
-      <ScrollView
+      <NestableScrollContainer
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
       >
         {header}
-      </ScrollView>
+      </NestableScrollContainer>
       <ConfigModal visible={modalVisible} onClose={() => setModalVisible(false)} type={modalType} server={modalServer} service={modalService} onSaveServer={handleSaveServer} onSaveService={handleSaveService} onDelete={handleDelete} />
       <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
         <View style={[styles.toastInner, { backgroundColor: '#000' }]}>

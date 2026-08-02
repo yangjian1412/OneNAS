@@ -35,6 +35,7 @@ import NavidromeLogo from '@/icos/selfhst--navidrome.svg'
 import AudiobookshelfLogo from '@/icos/selfhst--audiobookshelf.svg'
 import ImmichLogo from '@/icos/selfhst--immich.svg'
 import CalibreLogo from '@/icos/selfhst--calibre.svg'
+import TalebookLogo from '@/icos/selfhst--talebook.svg'
 import QbittorrentLogo from '@/icos/selfhst--qbittorrent.svg'
 import OpenlistLogo from '@/icos/selfhst--openlist.svg'
 import UnraidLogo from '@/icos/selfhst--unraid.svg'
@@ -135,6 +136,7 @@ const SVG_COMPONENTS = {
   audiobookshelf: AudiobookshelfLogo,
   immich: ImmichLogo,
   calibre: CalibreLogo,
+  talebook: TalebookLogo,
   qbittorrent: QbittorrentLogo,
   openlist: OpenlistLogo,
   unraid: UnraidLogo,

@@ -1,12 +1,31 @@
 import { useState, useEffect } from 'react'
 import { View, Text, Modal, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native'
 import { ServerConfig, ServiceConfig, ServiceType } from '@/types'
-import { SERVICE_TYPE_LABELS, SERVICE_TYPE_ICONS } from '@/lib/constants'
+import { SERVICE_TYPE_LABELS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { login } from '@/lib/api/filebrowser'
 import { fetchContainers } from '@/lib/api/unraid'
 import { navidromeLogin } from '@/lib/api/navidrome'
+
+function parseServerUrl(url: string): { protocol: 'http' | 'https'; host: string; port: number } {
+  try {
+    const u = new URL(url.includes('://') ? url : `https://${url}`)
+    const protocol = (u.protocol === 'http:' ? 'http' : 'https') as 'http' | 'https'
+    const host = u.hostname || url
+    const port = u.port ? parseInt(u.port) : (protocol === 'https' ? 443 : 80)
+    return { protocol, host, port }
+  } catch {
+    return { protocol: 'https', host: url, port: 443 }
+  }
+}
+
+function composeServerUrl(s: { protocol: string; host: string; port: number }): string {
+  const proto = s.protocol === 'http' ? 'http' : 'https'
+  const defaultPort = proto === 'https' ? 443 : 80
+  const port = s.port && s.port !== defaultPort ? `:${s.port}` : ''
+  return `${proto}://${s.host}${port}`
+}
 
 interface Props {
   visible: boolean
@@ -26,7 +45,7 @@ export default function ConfigModal({
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const isServerType = type === 'filebrowser' || type === 'unraid'
-  const isAppType = type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'immich'
+  const isAppType = type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'immich' || type === 'talebook'
   const [testing, setTesting] = useState(false)
 
   const [name, setName] = useState('')
@@ -38,12 +57,17 @@ export default function ConfigModal({
   const [apiKey, setApiKey] = useState('')
   const [url, setUrl] = useState('')
   const [authType, setAuthType] = useState<'none' | 'basic' | 'token' | 'apikey'>('none')
+  const [talebookLoginMode, setTalebookLoginMode] = useState<'code' | 'password' | 'guest'>('password')
 
   useEffect(() => {
     if (isServerType && server) {
       setName(server.name)
-      setHost(server.host)
-      setPort(String(server.port))
+      if (type === 'filebrowser') {
+        setUrl(composeServerUrl(server))
+      } else {
+        setHost(server.host)
+        setPort(String(server.port))
+      }
       setProtocol(server.protocol)
       setUsername(server.username ?? '')
       setPassword(server.password ?? '')
@@ -55,6 +79,11 @@ export default function ConfigModal({
       setUsername(service.username ?? '')
       setPassword(service.password ?? '')
       setApiKey(service.apiKey ?? '')
+      if (type === 'talebook') {
+        // 登录方式：code 写到 apiKey 字段、password 写到 username/password、guest 用空
+        const mode = service.apiKey ? 'code' : (service.username ? 'password' : 'guest')
+        setTalebookLoginMode(mode as 'code' | 'password' | 'guest')
+      }
     } else {
       setName('')
       setHost('')
@@ -65,6 +94,7 @@ export default function ConfigModal({
       setApiKey('')
       setUrl('')
       setAuthType('none')
+      setTalebookLoginMode('password')
     }
   }, [visible, type, server, service])
 
@@ -102,9 +132,10 @@ export default function ConfigModal({
     setTesting(true)
     try {
       if (type === 'filebrowser') {
+        const parsed = parseServerUrl(url)
         const s: ServerConfig = {
           id: server?.id ?? '', name, type: 'filebrowser',
-          host, port: parseInt(port) || 80, protocol,
+          host: parsed.host, port: parsed.port, protocol: parsed.protocol,
           username: username || undefined, password: password || undefined,
         }
         const result = await login(s)
@@ -130,6 +161,20 @@ export default function ConfigModal({
 
   const handleSave = () => {
     if (isServerType) {
+      if (type === 'filebrowser') {
+        const parsed = parseServerUrl(url)
+        onSaveServer({
+          id: server?.id ?? '',
+          name,
+          type: 'filebrowser',
+          host: parsed.host,
+          port: parsed.port,
+          protocol: parsed.protocol,
+          username: username || undefined,
+          password: password || undefined,
+        })
+        return
+      }
       onSaveServer({
         id: server?.id ?? '',
         name,
@@ -147,6 +192,11 @@ export default function ConfigModal({
         if (t === 'audiobookshelf' || t.includes('audiobook')) return 'audiobookshelf' as ServiceType
         return type
       })()
+      // talebook: code 写入 apiKey 字段方便统一持久化
+      const isTalebook = normalizedType === 'talebook'
+      const saveUsername = isTalebook ? (talebookLoginMode === 'password' ? (username || undefined) : undefined) : (username || undefined)
+      const savePassword = isTalebook ? (talebookLoginMode === 'password' ? (password || undefined) : undefined) : (password || undefined)
+      const saveApiKey = isTalebook ? (talebookLoginMode === 'code' ? (apiKey || undefined) : undefined) : (apiKey || undefined)
       onSaveService({
         id: service?.id ?? '',
         name,
@@ -157,15 +207,14 @@ export default function ConfigModal({
         tabAssignment: service?.tabAssignment ?? 'none',
         sortOrder: service?.sortOrder ?? 0,
         enabled: true,
-        authType,
-        username: username || undefined,
-        password: password || undefined,
-        apiKey: apiKey || undefined,
+        authType: isTalebook ? 'basic' : authType,
+        username: saveUsername,
+        password: savePassword,
+        apiKey: saveApiKey,
       })
     }
   }
 
-  const icon = SERVICE_TYPE_ICONS[type] ?? '🔗'
   const label = SERVICE_TYPE_LABELS[type] ?? type
 
   return (
@@ -178,7 +227,6 @@ export default function ConfigModal({
                 <Text style={[styles.cancelBtn, { color: t.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
               <View style={styles.titleRow}>
-                <Text style={styles.titleIcon}>{icon}</Text>
                 <Text style={[styles.title, { color: t.text }]}>{label}</Text>
               </View>
               <TouchableOpacity onPress={handleSave}>
@@ -193,6 +241,24 @@ export default function ConfigModal({
               value={name} onChangeText={setName} />
 
             {isServerType ? (
+              type === 'filebrowser' ? (
+                <>
+                  <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
+                  <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                    placeholder="http://..." placeholderTextColor={t.textMuted}
+                    value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} />
+
+                  <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Username</Text>
+                  <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                    placeholder="Username" placeholderTextColor={t.textMuted}
+                    value={username} onChangeText={setUsername} />
+
+                  <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Password</Text>
+                  <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                    placeholder="Password" secureTextEntry placeholderTextColor={t.textMuted}
+                    value={password} onChangeText={setPassword} />
+                </>
+              ) : (
               <>
                 <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Host</Text>
                 <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
@@ -236,9 +302,68 @@ export default function ConfigModal({
                   </>
                 )}
               </>
+              )
             ) : isAppType ? (
               <>
-                {(type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf') ? (
+                {type === 'talebook' ? (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="https://你的 Talebook 地址"
+                      placeholderTextColor={t.textMuted}
+                      value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} />
+
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>登录方式</Text>
+                    <View style={styles.authRow}>
+                      {(['code', 'password', 'guest'] as const).map((m) => {
+                        const labels = { code: '访问码', password: '账号密码', guest: '游客' }
+                        return (
+                          <TouchableOpacity
+                            key={m}
+                            style={[styles.authBtn, { borderColor: t.border },
+                              talebookLoginMode === m && { backgroundColor: t.primary, borderColor: t.primary }]}
+                            onPress={() => setTalebookLoginMode(m)}
+                          >
+                            <Text style={[styles.authBtnText, { color: t.textSecondary },
+                              talebookLoginMode === m && { color: '#fff' }]}>{labels[m]}</Text>
+                          </TouchableOpacity>
+                        )
+                      })}
+                    </View>
+
+                    {talebookLoginMode === 'code' ? (
+                      <>
+                        <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>访问码</Text>
+                        <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                          placeholder="服务端设置的访问码"
+                          placeholderTextColor={t.textMuted}
+                          value={apiKey} onChangeText={setApiKey}
+                          autoCapitalize="none" autoCorrect={false} />
+                      </>
+                    ) : talebookLoginMode === 'password' ? (
+                      <>
+                        <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>用户名</Text>
+                        <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                          placeholder="Username" placeholderTextColor={t.textMuted}
+                          value={username} onChangeText={setUsername}
+                          autoCapitalize="none" autoCorrect={false} />
+                        <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>密码</Text>
+                        <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                          placeholder="Password" secureTextEntry
+                          placeholderTextColor={t.textMuted}
+                          value={password} onChangeText={setPassword}
+                          autoCapitalize="none" autoCorrect={false} />
+                      </>
+                    ) : (
+                      <Text style={[styles.fieldLabel, { color: t.textMuted, marginTop: 8 }]}>
+                        游客模式无需账号密码，仅可浏览公开内容
+                      </Text>
+                    )}
+                    <Text style={[styles.fieldLabel, { color: t.textMuted, marginTop: 12 }]}>
+                      提示：保存后到 Talebook 首页抽屉里点「登录」完成登录会话。
+                    </Text>
+                  </>
+                ) : (type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf') ? (
                   <>
                     <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}

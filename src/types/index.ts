@@ -1,7 +1,8 @@
 export type ServiceType =
   | 'jellyfin' | 'navidrome' | 'audiobookshelf'
   | 'immich' | 'filebrowser' | 'unraid' | 'custom'
-  | 'aria2' | 'calibre' | 'qbittorrent' | 'openlist'
+  | 'aria2' | 'qbittorrent' | 'openlist'
+  | 'talebook' | 'calibre'
 
 type TabAssignment = 'none' | 'tab2' | 'tab3'
 
@@ -715,3 +716,75 @@ export interface AudiobookshelfPreferences {
   showRecentlyAdded: boolean
   showNewestAuthors: boolean
 }
+
+// ===== Talebook =====
+
+export type TalebookLoginMode = 'code' | 'password' | 'guest' | ''
+
+export interface TalebookServerConfig {
+  id: string
+  name: string
+  url: string
+  loginMode: TalebookLoginMode
+  username: string
+  password: string
+  accessCode: string
+  nickname?: string
+  cookie?: string
+  serverVersion?: string
+}
+
+export interface TalebookBook {
+  id: number
+  title: string
+  authors: string[]
+  publisher: string
+  isbn?: string
+  tags: string[]
+  rating: number
+  series?: string
+  seriesIndex?: string
+  comments: string
+  pubdate: string
+  cover: string
+  img: string
+  thumb: string
+  fmtEpub: string
+  fmtPdf: string
+  fmtAzw3: string
+  fmtMobi: string
+  availableFormats: string
+  countVisit: number
+  countDownload: number
+  scope: string
+  timestamp: string
+}
+
+export interface TalebookBookFile {
+  format: string
+  size: number
+  href: string
+}
+
+export interface TalebookBookDetail extends TalebookBook {
+  files: TalebookBookFile[]
+  language?: string
+  collector?: string
+  inShelf?: boolean
+}
+
+export interface TalebookIndexData {
+  randomBooks: TalebookBook[]
+  newBooks: TalebookBook[]
+}
+
+export interface TalebookUserInfo {
+  isLogin: boolean
+  isAdmin: boolean
+  nickname: string
+  username: string
+  serverVersion: string
+  bookCount: number
+  title: string
+}
+

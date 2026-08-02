@@ -2,6 +2,7 @@ export interface ApiResult<T> {
   ok: boolean
   data?: T
   error?: string
+  headers?: Record<string, string>
 }
 
 const TIMEOUT_MS = 15000
@@ -26,16 +27,26 @@ export function apiFetch<T>(
       xhr.onabort = () => resolve({ ok: false, error: '请求已取消' })
       xhr.onload = () => {
         const text = xhr.responseText
+        const headers: Record<string, string> = {}
+        const rawHeaders = xhr.getAllResponseHeaders() || ''
+        rawHeaders.split(/\r?\n/).forEach((line) => {
+          const idx = line.indexOf(':')
+          if (idx > 0) {
+            const k = line.slice(0, idx).trim().toLowerCase()
+            const v = line.slice(idx + 1).trim()
+            if (k) headers[k] = v
+          }
+        })
         if (xhr.status < 200 || xhr.status >= 300) {
           const st = xhr.statusText || ''
-          resolve({ ok: false, error: `${xhr.status}${st ? ` ${st}` : ''} ${url}` })
+          resolve({ ok: false, error: `${xhr.status}${st ? ` ${st}` : ''} ${url}`, headers })
           return
         }
         try {
           const data = text ? JSON.parse(text) : null
-          resolve({ ok: true, data })
+          resolve({ ok: true, data, headers })
         } catch (err: any) {
-          resolve({ ok: false, error: err.message || 'JSON 解析失败' })
+          resolve({ ok: false, error: err.message || 'JSON 解析失败', headers })
         }
       }
 

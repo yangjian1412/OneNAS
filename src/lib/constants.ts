@@ -15,6 +15,18 @@ export function isAudiobookshelfService(service: ServiceConfig): boolean {
   )
 }
 
+// calibre 是 talebook 的旧名/别名，统一视为 talebook
+export function isTalebookService(service: ServiceConfig): boolean {
+  const lowerType = (service.type ?? '').toLowerCase()
+  const lowerName = (service.name ?? '').toLowerCase()
+  return (
+    lowerType === 'talebook' ||
+    lowerType === 'calibre' ||
+    lowerName.includes('talebook') ||
+    lowerName.includes('calibre')
+  )
+}
+
 export const SERVICE_TYPE_LABELS: Record<string, string> = {
   jellyfin: 'Jellyfin',
   navidrome: 'Navidrome',
@@ -24,9 +36,10 @@ export const SERVICE_TYPE_LABELS: Record<string, string> = {
   unraid: 'Unraid',
   custom: 'Custom',
   aria2: 'Aria2',
-  calibre: 'Calibre',
   qbittorrent: 'qBittorrent',
   openlist: 'OpenList',
+  talebook: 'Talebook',
+  calibre: 'Calibre',
 }
 
 export const SERVICE_TYPE_ICONS: Record<string, IconName> = {
@@ -38,7 +51,8 @@ export const SERVICE_TYPE_ICONS: Record<string, IconName> = {
   unraid: 'unraid',
   custom: 'unraid',
   aria2: 'downloadCloud',
-  calibre: 'calibre',
   qbittorrent: 'qbittorrent',
   openlist: 'openlist',
+  talebook: 'talebook',
+  calibre: 'calibre',
 }

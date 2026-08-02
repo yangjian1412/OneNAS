@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { sortFiles } from '@/lib/sort'
 import ServiceBar from '@/components/ServiceBar'
 import ServiceCard from '@/components/ServiceCard'
-import { isAudiobookshelfService } from '@/lib/constants'
+import { isAudiobookshelfService, isTalebookService } from '@/lib/constants'
 import Icon from '@/components/Icon'
 import { launchAppWithFallback } from '@/lib/android-intent'
 import { buildUrl } from '@/lib/api/client'
@@ -22,6 +22,7 @@ import FilePreviewModal from '@/components/FilePreviewModal'
 import JellyfinScreen from '@/screens/JellyfinScreen'
 import NavidromeScreen from '@/screens/NavidromeScreen'
 import AudiobookshelfScreen from '@/screens/AudiobookshelfScreen'
+import TalebookScreen from '@/screens/TalebookScreen'
 
 type EditMode = 'folder' | 'rename' | 'copy' | 'move' | null
 type ViewMode = 'list' | 'grid'
@@ -1188,6 +1189,8 @@ function ActiveServiceView({ service, onClose }: ActiveServiceViewProps) {
           <NavidromeScreen service={service} onRequestClose={handleClose} />
         ) : isAudiobookshelfService(service) ? (
           <AudiobookshelfScreen service={service} />
+        ) : isTalebookService(service) ? (
+          <TalebookScreen service={service} onRequestClose={handleClose} />
         ) : (
           <ServiceCard service={service} />
         )}

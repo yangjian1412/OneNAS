@@ -46,6 +46,31 @@ export async function enqueueDownload(
   return { id, fileName, url, progress }
 }
 
+export async function enqueueDownloadWithHeader(
+  url: string,
+  fileName: string,
+  headerName: string,
+  headerValue: string,
+): Promise<DownloadTask> {
+  if (!isAndroid || !DownloadManagerModule) throw new Error('Not supported on this platform')
+
+  const nativeId = await DownloadManagerModule.enqueueDownloadWithHeader(url, fileName, headerName, headerValue) as number
+
+  downloadIdCounter++
+  const id = downloadIdCounter
+
+  const progress: DownloadProgress = {
+    bytesDownloaded: 0,
+    totalBytes: 0,
+    status: 'pending',
+    uri: '',
+  }
+
+  taskMap.set(id, { fileName, url, nativeId })
+
+  return { id, fileName, url, progress }
+}
+
 async function queryProgress(nativeId: number): Promise<DownloadProgress> {
   if (!isAndroid || !DownloadManagerModule) {
     return { bytesDownloaded: 0, totalBytes: 0, status: 'unknown', uri: '' }

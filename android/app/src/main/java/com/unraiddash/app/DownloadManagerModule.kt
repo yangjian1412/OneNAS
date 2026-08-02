@@ -59,11 +59,20 @@ class DownloadManagerModule(private val context: ReactApplicationContext) : Reac
     val id = nextId.getAndIncrement()
     val task = Task()
     tasks[id] = task
-    executor.execute { download(id, task, url, fileName, authToken) }
+    executor.execute { download(id, task, url, fileName, "X-Auth", authToken) }
     promise.resolve(id.toDouble())
   }
 
-  private fun download(id: Long, task: Task, url: String, fileName: String, authToken: String) {
+  @ReactMethod
+  fun enqueueDownloadWithHeader(url: String, fileName: String, headerName: String, headerValue: String, promise: Promise) {
+    val id = nextId.getAndIncrement()
+    val task = Task()
+    tasks[id] = task
+    executor.execute { download(id, task, url, fileName, headerName, headerValue) }
+    promise.resolve(id.toDouble())
+  }
+
+  private fun download(id: Long, task: Task, url: String, fileName: String, headerName: String, headerValue: String) {
     var connection: HttpURLConnection? = null
     val safeName = fileName.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "download" }
     val directory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "One NAS")
@@ -74,7 +83,7 @@ class DownloadManagerModule(private val context: ReactApplicationContext) : Reac
       connection = URL(url).openConnection() as HttpURLConnection
       connection.connectTimeout = 120000
       connection.readTimeout = 120000
-      connection.setRequestProperty("X-Auth", authToken)
+      connection.setRequestProperty(headerName, headerValue)
       connection.connect()
       val responseCode = connection.responseCode
       if (responseCode !in 200..299) throw IllegalStateException("HTTP $responseCode")
