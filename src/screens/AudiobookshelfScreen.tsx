@@ -33,6 +33,8 @@ import AudiobookshelfResumeRow from '@/components/audiobookshelf/AudiobookshelfR
 import AudiobookshelfLibraryRow from '@/components/audiobookshelf/AudiobookshelfLibraryRow'
 import AudiobookshelfItemDetail from '@/components/audiobookshelf/AudiobookshelfItemDetail'
 import AudiobookshelfPlayer from '@/components/audiobookshelf/AudiobookshelfPlayer'
+import AudiobookshelfMiniPlayer from '@/components/audiobookshelf/AudiobookshelfMiniPlayer'
+import { useAudiobookshelfPlayerStore } from '@/stores/audiobookshelfPlayerStore'
 import AudiobookshelfPlaybackSettings from '@/components/audiobookshelf/AudiobookshelfPlaybackSettings'
 
 const SCREEN_W = Dimensions.get('window').width
@@ -87,6 +89,7 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
   const [playerItem, setPlayerItem] = useState<AudiobookshelfLibraryItem | null>(null)
   const [playerStartAt, setPlayerStartAt] = useState<number | null>(null)
   const [playerVisible, setPlayerVisible] = useState(false)
+  const [playerResumeExisting, setPlayerResumeExisting] = useState(false)
 
   const loadingRef = useRef(false)
   const drawerRef = useRef(false)
@@ -237,6 +240,10 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
   // ===== play =====
   const handlePlay = useCallback(async (item: AudiobookshelfLibraryItem, startAt?: number) => {
     if (!server) return
+    const st = useAudiobookshelfPlayerStore.getState()
+    if (st.session && st.currentItem && st.currentItem.id !== item.id) {
+      st.controls?.stop()
+    }
     let playItem = item
     try {
       const detail = await audiobookshelfGetItem(server, item.id, true)
@@ -244,11 +251,30 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
     } catch {}
     setPlayerItem(playItem)
     setPlayerStartAt(startAt ?? null)
+    setPlayerResumeExisting(false)
     setPlayerVisible(true)
   }, [server])
 
+  const openMiniPlayer = useCallback(() => {
+    const st = useAudiobookshelfPlayerStore.getState()
+    if (st.currentItem && playerItem && st.currentItem.id === playerItem.id) {
+      setPlayerResumeExisting(true)
+    } else {
+      setPlayerResumeExisting(false)
+    }
+    setPlayerVisible(true)
+  }, [playerItem])
+
   const closePlayer = useCallback(() => {
     setPlayerVisible(false)
+  }, [])
+
+  const stopAndClearPlayer = useCallback(() => {
+    useAudiobookshelfPlayerStore.getState().controls?.stop()
+    setPlayerItem(null)
+    setPlayerStartAt(null)
+    setPlayerVisible(false)
+    setPlayerResumeExisting(false)
   }, [])
 
   // ===== UI =====
@@ -428,7 +454,15 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
           server={server}
           item={playerItem}
           startAt={playerStartAt}
+          resumeExisting={playerResumeExisting}
           onClose={closePlayer}
+        />
+      )}
+
+      {!playerVisible && playerItem && server && (
+        <AudiobookshelfMiniPlayer
+          onOpen={openMiniPlayer}
+          onClose={stopAndClearPlayer}
         />
       )}
 

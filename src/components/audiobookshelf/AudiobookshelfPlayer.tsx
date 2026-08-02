@@ -22,6 +22,7 @@ import {
 import { createAudioPlayer, setAudioModeAsync, setIsAudioActiveAsync, useAudioPlayerStatus } from 'expo-audio'
 import type { AudioPlayer } from 'expo-audio'
 import { useAudiobookshelfPlaybackStore } from '@/stores/audiobookshelfPlaybackStore'
+import { useAudiobookshelfPlayerStore } from '@/stores/audiobookshelfPlayerStore'
 import BookmarkEditDialog from './BookmarkEditDialog'
 
 const { width: SCREEN_W } = Dimensions.get('window')
@@ -45,13 +46,14 @@ interface Props {
   server: AudiobookshelfServerConfig
   item: AudiobookshelfLibraryItem
   startAt?: number | null
+  resumeExisting?: boolean
   onClose: () => void
 }
 
 const SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
 const SLEEP_OPTIONS = [5, 10, 15, 20, 30, 45, 60]
 
-export default function AudiobookshelfPlayer({ visible, server, item, startAt, onClose }: Props) {
+export default function AudiobookshelfPlayer({ visible, server, item, startAt, resumeExisting, onClose }: Props) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const prefs = useAudiobookshelfPlaybackStore()
@@ -74,6 +76,10 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, o
   const pendingReplaceRef = useRef(false)
   const wasLoadedRef = useRef(false)
   const finishHandledRef = useRef(false)
+  const playerRef = useRef<AudioPlayer | null>(null)
+  const playingRef = useRef(false)
+  const mountedRef = useRef(true)
+  const resumeMountRef = useRef(false)
 
   const [speedSheetVisible, setSpeedSheetVisible] = useState(false)
   const [sleepSheetVisible, setSleepSheetVisible] = useState(false)
@@ -106,6 +112,8 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, o
 
   const player = ensureAbsPlayer()
   const status = useAudioPlayerStatus(player!)
+  playerRef.current = player
+  playingRef.current = playing
 
   const activateLockScreen = useCallback(() => {
     if (!player) return
@@ -132,6 +140,7 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, o
   }, [player])
 
   useEffect(() => {
+    mountedRef.current = true
     ;(async () => {
       if (Platform.OS === 'android' && (Platform.Version as number) >= 33) {
         try {
@@ -150,12 +159,24 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, o
       } catch {}
     })()
     return () => {
-      setAudioModeAsync({ shouldPlayInBackground: false, interruptionMode: 'mixWithOthers' }).catch(() => {})
+      mountedRef.current = false
     }
   }, [])
 
   useEffect(() => {
     if (!visible) return
+    if (resumeExisting) {
+      const st = useAudiobookshelfPlayerStore.getState()
+      if (st.session) setSession(st.session)
+      if (st.currentTrackIdx > 0 || st.currentTime > 0 || st.duration > 0) {
+        setCurrentTrackIdx(st.currentTrackIdx)
+        setCurrentTime(st.currentTime)
+        setDuration(st.duration)
+        if (st.playing) setPlaying(true)
+      }
+      resumeMountRef.current = true
+      return
+    }
     let cancelled = false
     ;(async () => {
       setLoading(true)
@@ -188,7 +209,7 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, o
       }
     })()
     return () => { cancelled = true }
-  }, [visible, item.id, server, startAt])
+  }, [visible, item.id, server, startAt, resumeExisting])
 
   useEffect(() => {
     const dur = status.duration ?? 0
@@ -201,6 +222,7 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, o
 
   useEffect(() => {
     if (!player || !streamUri) return
+    if (resumeMountRef.current) return
     pendingReplaceRef.current = true
     initialSeekDone.current = false
     wasLoadedRef.current = false
@@ -213,6 +235,11 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, o
     const loaded = !!status?.isLoaded
     if (!player || !streamUri || !loaded) {
       if (!loaded) wasLoadedRef.current = false
+      return
+    }
+    if (resumeMountRef.current) {
+      resumeMountRef.current = false
+      wasLoadedRef.current = true
       return
     }
     if (pendingReplaceRef.current && !wasLoadedRef.current) {
@@ -385,11 +412,17 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, o
     }).catch(() => {})
   }
 
-  const handleClose = async () => {
+  const reallyStop = async () => {
     await flushProgress(false)
     try { player?.pause() } catch {}
     deactivateLockScreen()
-    setPlaying(false)
+    setAudioModeAsync({ shouldPlayInBackground: false, interruptionMode: 'mixWithOthers' }).catch(() => {})
+    if (mountedRef.current) setPlaying(false)
+    useAudiobookshelfPlayerStore.getState().clear()
+  }
+
+  const handleClose = async () => {
+    await flushProgress(false)
     setSleepSheetVisible(false)
     setSpeedSheetVisible(false)
     setBookmarkSheetVisible(false)
@@ -398,13 +431,53 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, o
   }
 
   const stopPlayback = async () => {
-    await flushProgress(false)
-    try { player?.pause() } catch {}
-    deactivateLockScreen()
-    setPlaying(false)
+    await reallyStop()
     setSleepSheetVisible(false)
     onClose()
   }
+
+  const handleStop = async () => {
+    setSleepSheetVisible(false)
+    setSpeedSheetVisible(false)
+    setBookmarkSheetVisible(false)
+    setPlaylistSheetVisible(false)
+    await reallyStop()
+    onClose()
+  }
+
+  useEffect(() => {
+    if (!session) return
+    useAudiobookshelfPlayerStore.getState().setSnapshot({
+      server,
+      currentItem: item,
+      session,
+      currentTrackIdx,
+      currentTime,
+      duration,
+      playing,
+      coverUrl,
+      titleText,
+      authorText,
+    })
+  }, [server, item, session, currentTrackIdx, currentTime, duration, playing, coverUrl, titleText, authorText])
+
+  useEffect(() => {
+    useAudiobookshelfPlayerStore.getState().setControls({
+      togglePlay: () => {
+        const p = playerRef.current
+        if (!p) return
+        if (playingRef.current) {
+          try { p.pause() } catch {}
+          setPlaying(false)
+        } else {
+          try { p.play() } catch {}
+          setPlaying(true)
+          activateLockScreen()
+        }
+      },
+      stop: () => { void reallyStop() },
+    })
+  })
 
   const setSleepTimer = (minutes: number) => {
     if (minutes <= 0) {
@@ -495,6 +568,9 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, o
           <View style={{ flex: 1 }} />
           <TouchableOpacity onPress={() => setBookmarkSheetVisible(true)} style={styles.closeBtn}>
             <Icon name="bookmark" size={24} color={t.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleStop} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Icon name="x" size={24} color={t.text} />
           </TouchableOpacity>
         </View>
 
