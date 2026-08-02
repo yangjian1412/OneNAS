@@ -34,6 +34,15 @@ export interface ServerConfig {
   apiKey?: string
 }
 
+// 导出配置格式
+// - v1: 旧版明文（无 v/format 标记，服务/服务器数组直接暴露，含密码）
+// - v2: 加密格式 { v, format:'enc-aes', cipher }
+export interface ExportPayloadV2 {
+  v: 2
+  format: 'enc-aes'
+  cipher: string   // CryptoJS.AES.encrypt(JSON.stringify(cfg), key).toString()
+}
+
 export interface FileItem {
   name: string
   path: string

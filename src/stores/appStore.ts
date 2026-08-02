@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import { ServerConfig, ServiceConfig, Container, SystemInfo, ThemeMode, DownloadTask } from '@/types'
+import { ServerConfig, ServiceConfig, Container, SystemInfo, ThemeMode, DownloadTask, ExportPayloadV2 } from '@/types'
 import { loadItem, saveItem } from '@/lib/storage'
 import { STORAGE_KEYS } from '@/lib/constants'
+import CryptoJS from 'crypto-js'
 
 export type FileSortBy = 'name' | 'size' | 'modified'
 export type FileSortDir = 'asc' | 'desc'
@@ -98,8 +99,8 @@ export interface AppState {
   removeDownload: (id: number) => void
   clearDownloads: () => void
 
-  importConfig: (json: string) => Promise<void>
-  exportConfig: () => Promise<string>
+  importConfig: (json: string, key?: string) => Promise<{ ok: boolean; error?: string }>
+  exportConfig: (key: string) => Promise<string>
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -169,8 +170,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeDownload: (id) => set((state) => ({ downloads: state.downloads.filter((item) => item.id !== id) })),
   clearDownloads: () => set({ downloads: [] }),
 
-  importConfig: async (json: string) => {
-    const cfg = JSON.parse(json)
+  importConfig: async (json: string, key?: string) => {
+    let cfg: any
+    try {
+      cfg = JSON.parse(json)
+    } catch {
+      return { ok: false, error: '配置格式错误，无法解析' }
+    }
+
+    // v2 加密格式：必须用密钥解密
+    if (cfg && cfg.v === 2 && cfg.format === 'enc-aes') {
+      if (!key || !key.trim()) return { ok: false, error: '该配置已加密，请输入密钥' }
+      let plain: string | null = null
+      try {
+        plain = CryptoJS.AES.decrypt(cfg.cipher, key.trim()).toString(CryptoJS.enc.Utf8)
+      } catch {
+        plain = null
+      }
+      if (!plain || !plain.startsWith('{')) return { ok: false, error: '密钥错误，无法解密导入' }
+      try {
+        cfg = JSON.parse(plain)
+      } catch {
+        return { ok: false, error: '解密成功但配置内容损坏' }
+      }
+    }
+
     const servers = cfg.servers ?? []
     const services = normalizeServices(cfg.services ?? [])
     const theme = cfg.theme ?? 'light'
@@ -179,18 +203,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     const fileSort = cfg.fileSort ?? { by: 'name', dir: 'asc' }
     set({ servers, services, theme, hideNasManagement, hideTabLabels, fileSort })
     await persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort })
+    return { ok: true }
   },
 
-  exportConfig: async () => {
+  exportConfig: async (key: string) => {
     const s = get()
-    return JSON.stringify({
+    const cfg = JSON.stringify({
       servers: s.servers,
       services: s.services,
       theme: s.theme,
       hideNasManagement: s.hideNasManagement,
       hideTabLabels: s.hideTabLabels,
       fileSort: s.fileSort,
-    }, null, 2)
+    })
+    // v2 加密格式：密钥（默认 "0"）AES 加密，导出含密码也行，但不含明文
+    const cipher = CryptoJS.AES.encrypt(cfg, key || '0').toString()
+    const payload: ExportPayloadV2 = { v: 2, format: 'enc-aes', cipher }
+    return JSON.stringify(payload, null, 2)
   },
 }))
 

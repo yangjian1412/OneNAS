@@ -10,6 +10,8 @@ import { useTheme } from '@/lib/theme'
 import ConfigModal from '@/components/ConfigModal'
 import Icon from '@/components/Icon'
 import * as Clipboard from 'expo-clipboard'
+import * as Sharing from 'expo-sharing'
+import { File, Paths } from 'expo-file-system'
 
 const SERVICE_TYPES: ServiceType[] = ['jellyfin', 'navidrome', 'audiobookshelf', 'immich', 'aria2', 'qbittorrent', 'openlist', 'talebook']
 
@@ -25,6 +27,20 @@ function serverByType(servers: ServerConfig[], type: string) {
 
 function serviceByType(services: ServiceConfig[], type: ServiceType) {
   return services.find((service) => service.type === type)
+}
+
+async function saveExportFile(text: string) {
+  try {
+    const file = new File(Paths.cache, `one-nas-config-${Date.now()}.json`)
+    file.write(text)
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: '导出配置' })
+    } else {
+      Alert.alert('提示', '当前设备不支持分享，可复制后手动保存')
+    }
+  } catch (error: any) {
+    Alert.alert('保存失败', error?.message ?? '导出文件失败')
+  }
 }
 
 export default function SettingsScreen() {
@@ -53,7 +69,9 @@ export default function SettingsScreen() {
   const [modalService, setModalService] = useState<ServiceConfig | null>(null)
   const [tagPickerSlot, setTagPickerSlot] = useState<'tab2' | 'tab3' | null>(null)
   const [exportText, setExportText] = useState<string | null>(null)
+  const [exportKey, setExportKey] = useState('0')
   const [importText, setImportText] = useState('')
+  const [importKey, setImportKey] = useState('0')
   const [importOpen, setImportOpen] = useState(false)
   const [sortMode, setSortMode] = useState(false)
   const lastBackPressRef = useRef(0)
@@ -332,7 +350,7 @@ export default function SettingsScreen() {
       <Text style={[styles.sectionLabel, { color: t.text }]}>导入/导出</Text>
       <View style={[styles.card, { backgroundColor: t.card }]}>
         <View style={styles.importExportRow}>
-          <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={async () => { setExportText(await exportConfig()) }}>
+          <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={async () => { const text = await exportConfig(exportKey); setExportText(text) }}>
             <Text style={styles.ioButtonText}>导出</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={() => { setImportText(''); setImportOpen(true) }}>
@@ -367,9 +385,21 @@ export default function SettingsScreen() {
         <View style={styles.pickerOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setExportText(null)} activeOpacity={1} />
           <View style={[styles.sheet, { backgroundColor: t.card }]}>
-            <Text style={[styles.pickerTitle, { color: t.text }]}>已导出配置</Text>
+            <Text style={[styles.pickerTitle, { color: t.text }]}>已导出配置（AES 加密）</Text>
+            <TextInput
+              style={[styles.keyInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={exportKey}
+              onChangeText={setExportKey}
+              placeholder="加密密钥（默认 0）"
+              placeholderTextColor={t.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
             <TextInput multiline editable={false} style={[styles.exportBox, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]} value={exportText ?? ''} />
             <View style={styles.sheetActions}>
+              <TouchableOpacity onPress={async () => { if (exportText) { await saveExportFile(exportText); setExportText(null) } }}>
+                <Text style={[styles.clearText, { color: t.primary }]}>保存文件</Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={async () => { if (exportText) { await Clipboard.setStringAsync(exportText); Alert.alert('已复制', '配置已复制到剪贴板') } }}>
                 <Text style={[styles.clearText, { color: t.primary }]}>一键复制</Text>
               </TouchableOpacity>
@@ -383,12 +413,22 @@ export default function SettingsScreen() {
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setImportOpen(false)} activeOpacity={1} />
           <View style={[styles.sheet, { backgroundColor: t.card }]}>
             <Text style={[styles.pickerTitle, { color: t.text }]}>导入配置</Text>
+            <TextInput
+              style={[styles.keyInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={importKey}
+              onChangeText={setImportKey}
+              placeholder="加密密钥（默认 0）"
+              placeholderTextColor={t.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
             <TextInput multiline autoFocus style={[styles.exportBox, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text, minHeight: 180 }]} placeholder="粘贴 JSON 配置" placeholderTextColor={t.textMuted} value={importText} onChangeText={setImportText} />
             <View style={styles.sheetActions}>
               <TouchableOpacity onPress={() => setImportOpen(false)}><Text style={[styles.clearText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
               <TouchableOpacity onPress={async () => {
-                try { await importConfig(importText); setImportOpen(false); Alert.alert('完成', '配置已导入') }
-                catch (error: any) { Alert.alert('错误', error.message ?? 'JSON 解析失败') }
+                const res = await importConfig(importText, importKey)
+                if (res.ok) { setImportOpen(false); Alert.alert('完成', '配置已导入') }
+                else { Alert.alert('错误', res.error ?? '导入失败') }
               }}><Text style={[styles.clearText, { color: t.primary }]}>确定导入</Text></TouchableOpacity>
             </View>
           </View>
@@ -464,4 +504,5 @@ const styles = StyleSheet.create({
   sheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 32 },
   sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 24, paddingTop: 16 },
   exportBox: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 12, minHeight: 220, textAlignVertical: 'top', fontFamily: 'monospace' },
+  keyInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 10 },
 })
