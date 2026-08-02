@@ -128,9 +128,6 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     timer: ReturnType<typeof setInterval> | null
   } | null>(null)
   const unseekableHintShownRef = useRef(false)
-  // resumeExisting 进入 raw ADTS 章节时，标记要在 player loaded 后自动 fast-forward 到这里存的绝对秒数。
-  // 触发后清零（只跑一次）。
-  const pendingRawAutoFFRef = useRef<number>(0)
 
   const getStreamUri = useCallback((track: AudiobookshelfTrack): string | null => {
     if (!session) return null
@@ -210,19 +207,10 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
         if (st.playing) setPlaying(true)
       }
       resumeMountRef.current = true
-      // raw ADTS 章节不走 seekTo（无法精确 seek），让 replace effect 正常加载音频，
-      // 然后由 isLoaded 触发的 auto-FF effect 在 player 真正有 currentTime 后跳到 st.currentTime。
-      // 非 raw 章节保持旧行为：isLoaded effect 走 seekTo(startPos) 精确跳。
-      const stTracks = st.session?.audioTracks ?? []
-      const stTrk = stTracks[st.currentTrackIdx]
-      const isStRaw = !!(stTrk && typeof stTrk.format === 'string' && stTrk.format.toLowerCase().includes('raw adts'))
-      const savedTrackTime = st.currentTime
-      if (isStRaw && savedTrackTime > 1) {
-        // raw 章节：需要 replace 加载音频，不能阻 replace effect
-        resumeMountRef.current = false
-        // 标记需要自动快进；具体触发由下面的 auto-FF effect 在 player loaded + currentTime 有效时执行
-        pendingRawAutoFFRef.current = savedTrackTime
-      }
+      // 跟非 raw 章节一致：resumeExisting 不重新加载音频、不重 seek。
+      // 这样迷你播放器 → raw 章节回到全屏时音频保持、位置保持，不"重新定位"。
+      // raw 上不做自动跳保存位置——raw 不可精确 seek，跳到 3.5s 跟跳到 0 在体验上差不多，
+      // 而且会触发一次"快进中"覆盖层，没必要。
       return
     }
     let cancelled = false
@@ -311,21 +299,6 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     activateLockScreen()
   }, [player, status?.isLoaded, streamUri])
 
-  // raw ADTS 章节 + resumeExisting：等 player loaded 且 currentTime 真的有效（>0）后，
-  // 自动 fast-forward 到保存位置（绝对目标秒数）。只触发一次，触发后清零标记。
-  useEffect(() => {
-    if (!isCurrentUnseekable) return
-    const target = pendingRawAutoFFRef.current
-    if (target <= 0) return
-    const loaded = !!status?.isLoaded
-    if (!loaded) return
-    const cur = player?.currentTime ?? 0
-    if (cur <= 0) return
-    pendingRawAutoFFRef.current = 0
-    // 用 setTimeout 让 isLoaded effect 的 setPlaying / activateLockScreen 先跑
-    setTimeout(() => fastForward(target), 0)
-  }, [isCurrentUnseekable, status?.isLoaded, player])
-
   useEffect(() => {
     if (status?.didJustFinish) {
       if (finishHandledRef.current) return
@@ -356,30 +329,14 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     }).catch(() => {})
   }, [currentTime, playing, session, server, item.id, currentTrack, totalDuration, isCurrentUnseekable])
 
-  // raw ADTS 专用：每秒 1 次写一次进度（普通章节用上面那个 effect 10s 间隔即可）
-  useEffect(() => {
-    if (!session || !playing || !player || !isCurrentUnseekable) return
-    const interval = setInterval(() => {
-      const t = player.currentTime
-      // currentTime 瞬时为 0 时跳过，避免 replace/跨章/未 loaded 时把进度写回起点
-      if (t <= 0.1) return
-      const offset = (currentTrack?.startOffset ?? 0) + t
-      audiobookshelfUpdateProgress(server, item.id, undefined, {
-        currentTime: offset,
-        duration: totalDuration,
-        isFinished: false,
-      }).catch(() => {})
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [session, playing, player, server, item.id, currentTrack, totalDuration, isCurrentUnseekable])
-
   useEffect(() => {
     if (!session || !playing || !player) return
+    // raw ADTS 上不做任何进度回写（不 1Hz PATCH、不 AppState 切后台 PATCH）——
+    // raw 不可精确 seek，服务器端进度没有意义；唯一一次写是退出/关闭时的 flushProgress
+    if (isCurrentUnseekable) return
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') return
       const t = player.currentTime
-      // raw ADTS 同上，currentTime 瞬时为 0 时不要写回起点
-      if (t <= 0.1) return
       const offset = (currentTrack?.startOffset ?? 0) + t
       audiobookshelfUpdateProgress(server, item.id, undefined, {
         currentTime: offset,
@@ -388,7 +345,7 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
       }).catch(() => {})
     })
     return () => sub.remove()
-  }, [session, playing, player, server, item.id, currentTrack, totalDuration])
+  }, [session, playing, player, server, item.id, currentTrack, totalDuration, isCurrentUnseekable])
 
   useEffect(() => {
     if (!prefs.sleepEnabled || prefs.sleepMinutes <= 0) {
@@ -565,9 +522,6 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
   const flushProgress = async (finished: boolean) => {
     if (!session || !player) return
     const t = player.currentTime
-    // raw ADTS 上 currentTime 可能瞬时为 0（replace/loaded/刚跨章），若此时写回就会
-    // 把进度覆盖成"当前章节起点"。直接跳过，让服务器保留上次有效进度。
-    if (!finished && t <= 0.1) return
     const offset = (currentTrack?.startOffset ?? 0) + t
     await audiobookshelfUpdateProgress(server, item.id, undefined, {
       currentTime: offset,
