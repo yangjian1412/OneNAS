@@ -511,6 +511,10 @@ export interface AudiobookshelfTrack {
   title: string
   contentUrl: string
   mimeType: string
+  format?: string
+  codec?: string
+  bitRate?: number
+  channels?: number
   metadata?: AudiobookshelfFileMetadata
 }
 

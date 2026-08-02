@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, ActivityIndicator, Modal, PanResponder, ScrollView, Alert, StyleSheet, Dimensions, PermissionsAndroid, Platform, AppState } from 'react-native'
 import { useTheme } from '@/lib/theme'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -101,6 +101,34 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
   const currentTrack = tracks[currentTrackIdx] ?? null
   const bookPosition = (currentTrack?.startOffset ?? 0) + currentTime
 
+  // raw ADTS AAC 没有容器索引，expo-audio/ExoPlayer 无法精确 seek。本 App 用"静音 + 高速播放"
+  // 模拟跳转（前进 N 秒 → 静音 + 64x 播放 N/64 真实秒 → 恢复 1x + 取消静音）。
+  const unseekableTrackIdxs = useMemo(() => {
+    const set = new Set<number>()
+    tracks.forEach((tr, i) => {
+      if (typeof tr.format === 'string' && tr.format.toLowerCase().includes('raw adts')) {
+        set.add(i)
+      }
+    })
+    return set
+  }, [tracks])
+  const isCurrentUnseekable = unseekableTrackIdxs.has(currentTrackIdx)
+
+  // 快进状态：目标文件时间（秒）+ 起始文件时间 + 起始 wall-clock。
+  // UI 用 setState 实时刷新；actualStopwatch 决定什么时候停。
+  const FF_RATE = 64
+  const [fastForwardActive, setFastForwardActive] = useState(false)
+  const [fastForwardTargetSec, setFastForwardTargetSec] = useState(0)
+  const fastForwardStateRef = useRef<{
+    startTime: number
+    startPlayerTime: number
+    targetPlayerTime: number
+    origVolume: number
+    origRate: number
+    timer: ReturnType<typeof setInterval> | null
+  } | null>(null)
+  const unseekableHintShownRef = useRef(false)
+
   const getStreamUri = useCallback((track: AudiobookshelfTrack): string | null => {
     if (!session) return null
     if (track.contentUrl.startsWith('http')) return track.contentUrl
@@ -165,6 +193,10 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
 
   useEffect(() => {
     if (!visible) return
+    // 进入播放器时（不论 resumeExisting 还是新开 session）先复位单例 player 的音量/速率
+    // 兜底，避免上一本书残留导致这一本没声音
+    try { if (player) player.volume = 1 } catch {}
+    try { if (player) player.setPlaybackRate(prefs.defaultSpeed) } catch {}
     if (resumeExisting) {
       const st = useAudiobookshelfPlayerStore.getState()
       if (st.session) setSession(st.session)
@@ -175,6 +207,16 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
         if (st.playing) setPlaying(true)
       }
       resumeMountRef.current = true
+      // raw ADTS 章节 + 有保存进度 → 等 player loaded 后自动静音高速快进到保存位置
+      const stTracks = st.session?.audioTracks ?? []
+      const stTrk = stTracks[st.currentTrackIdx]
+      if (stTrk && typeof stTrk.format === 'string' && stTrk.format.toLowerCase().includes('raw adts') && st.currentTime > 1) {
+        setTimeout(() => {
+          if (player && currentTrackIdx === st.currentTrackIdx) {
+            fastForward(st.currentTime)
+          }
+        }, 250)
+      }
       return
     }
     let cancelled = false
@@ -191,6 +233,10 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
       setLoading(false)
       if (result.ok && result.session) {
         setSession(result.session)
+        // 单例 player 来自上一本书；replace 之前显式复位一次音量/速率，
+        // 兜底防止上一本残留状态导致本本没声音。
+        try { player && (player.volume = 1) } catch {}
+        try { player && player.setPlaybackRate(prefs.defaultSpeed) } catch {}
         const sessionTracks = result.session.audioTracks ?? []
         const resumeAt = startAt != null && startAt > 0 ? startAt : (result.session.currentTime ?? 0)
         if (resumeAt > 0 && sessionTracks.length > 0) {
@@ -255,7 +301,7 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     }
     try { player.play() } catch {}
     setPlaying(true)
-    try { player.playbackRate = prefs.defaultSpeed } catch {}
+    try { player.setPlaybackRate(prefs.defaultSpeed) } catch {}
     activateLockScreen()
   }, [player, status?.isLoaded, streamUri])
 
@@ -263,6 +309,8 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     if (status?.didJustFinish) {
       if (finishHandledRef.current) return
       finishHandledRef.current = true
+      // raw ADTS 跨章时取消任何进行中的快进，避免状态残留
+      if (isCurrentUnseekable) cancelFastForward()
       const next = currentTrackIdx + 1
       if (next < tracks.length) {
         setCurrentTrackIdx(next)
@@ -271,10 +319,11 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     } else {
       finishHandledRef.current = false
     }
-  }, [status?.didJustFinish, currentTrackIdx, tracks.length])
+  }, [status?.didJustFinish, currentTrackIdx, tracks.length, isCurrentUnseekable, cancelFastForward])
 
   useEffect(() => {
     if (!session || !playing || !player) return
+    if (isCurrentUnseekable) return  // raw ADTS：避免快进/拖动把 currentTime 污染回 0
     const playerTime = player.currentTime
     if (Math.abs(playerTime - lastReportRef.current) < 10) return
     lastReportRef.current = playerTime
@@ -284,13 +333,32 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
       duration: totalDuration,
       isFinished: false,
     }).catch(() => {})
-  }, [currentTime, playing, session, server, item.id, currentTrack, totalDuration])
+  }, [currentTime, playing, session, server, item.id, currentTrack, totalDuration, isCurrentUnseekable])
+
+  // raw ADTS 专用：每秒 1 次写一次进度（普通章节用上面那个 effect 10s 间隔即可）
+  useEffect(() => {
+    if (!session || !playing || !player || !isCurrentUnseekable) return
+    const interval = setInterval(() => {
+      const t = player.currentTime
+      // currentTime 瞬时为 0 时跳过，避免 replace/跨章/未 loaded 时把进度写回起点
+      if (t <= 0.1) return
+      const offset = (currentTrack?.startOffset ?? 0) + t
+      audiobookshelfUpdateProgress(server, item.id, undefined, {
+        currentTime: offset,
+        duration: totalDuration,
+        isFinished: false,
+      }).catch(() => {})
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [session, playing, player, server, item.id, currentTrack, totalDuration, isCurrentUnseekable])
 
   useEffect(() => {
     if (!session || !playing || !player) return
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') return
       const t = player.currentTime
+      // raw ADTS 同上，currentTime 瞬时为 0 时不要写回起点
+      if (t <= 0.1) return
       const offset = (currentTrack?.startOffset ?? 0) + t
       audiobookshelfUpdateProgress(server, item.id, undefined, {
         currentTime: offset,
@@ -360,6 +428,11 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
 
   const skipBy = (sec: number) => {
     if (!player || !currentTrack) return
+    // raw ADTS 章节："前进 N 秒" → 静音高速快进；"后退 N 秒" → 无效（raw 不可后退）
+    if (isCurrentUnseekable) {
+      if (sec > 0) fastForward(sec)
+      return
+    }
     let target = currentTime + sec
     let idx = currentTrackIdx
     while (target < 0 && idx > 0) {
@@ -376,6 +449,71 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
       setCurrentTrackIdx(idx)
     } else {
       seekTo(target)
+    }
+  }
+
+  function cancelFastForward() {
+    const s = fastForwardStateRef.current
+    if (!s) return
+    if (s.timer) clearInterval(s.timer)
+    // 原生 Property("volume") 有 .set，直接赋值即可（走到 mainQueue.launch 异步设 ExoPlayer.volume）。
+    // 不要用 "volume !== undefined && ..." 这种把读 getter 放在 && 链里的写法——
+    // 万一 getter 抛错，&& 链整条短路、catch 吞掉，音量永远卡在 0。
+    const p = playerRef.current
+    if (p) {
+      try { p.volume = s.origVolume } catch (e) { console.warn('[ff] restore volume', e) }
+      try { p.setPlaybackRate(s.origRate) } catch (e) { console.warn('[ff] restore rate', e) }
+    }
+    fastForwardStateRef.current = null
+    setFastForwardActive(false)
+  }
+
+  function fastForward(targetSecondsInTrack: number) {
+    if (!player || !currentTrack) return
+    // 取消上一次（如果有）
+    cancelFastForward()
+    const startPlayerTime = player.currentTime
+    const trackDur = currentTrack.duration ?? 0
+    const targetPlayerTime = trackDur > 0
+      ? Math.min(trackDur - 0.5, startPlayerTime + targetSecondsInTrack)
+      : startPlayerTime + targetSecondsInTrack
+    if (targetPlayerTime <= startPlayerTime + 0.05) return
+    const origVolume = (player as any).volume ?? 1
+    const origRate = prefs.defaultSpeed
+    // 1) 静音
+    try { (player as any).volume = 0 } catch {}
+    // 2) 64x（必须用 Function 路径：native Property("playbackRate") 没 .set，
+    //    直接 player.playbackRate = X 在 Android 上是只读无效的）
+    try { player.setPlaybackRate(FF_RATE) } catch {}
+    setFastForwardTargetSec(targetPlayerTime)
+    setFastForwardActive(true)
+    // 3) 轮询检查 currentTime，到目标值就停
+    const timer = setInterval(() => {
+      const p = playerRef.current
+      if (!p) {
+        cancelFastForward()
+        return
+      }
+      const cur = p.currentTime
+      setCurrentTime(cur)
+      const dur = p.duration ?? 0
+      if (dur > 0) setProgress(cur / dur)
+      if (cur >= targetPlayerTime) {
+        cancelFastForward()
+        return
+      }
+      // 兜底：30 秒超时（防止 currentTime 漂移或 buffer 卡住）
+      if (Date.now() - fastForwardStateRef.current!.startTime > 30000) {
+        cancelFastForward()
+      }
+    }, 100)
+    fastForwardStateRef.current = {
+      startTime: Date.now(),
+      startPlayerTime,
+      targetPlayerTime,
+      origVolume,
+      origRate,
+      timer,
     }
   }
 
@@ -404,6 +542,9 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
   const flushProgress = async (finished: boolean) => {
     if (!session || !player) return
     const t = player.currentTime
+    // raw ADTS 上 currentTime 可能瞬时为 0（replace/loaded/刚跨章），若此时写回就会
+    // 把进度覆盖成"当前章节起点"。直接跳过，让服务器保留上次有效进度。
+    if (!finished && t <= 0.1) return
     const offset = (currentTrack?.startOffset ?? 0) + t
     await audiobookshelfUpdateProgress(server, item.id, undefined, {
       currentTime: offset,
@@ -413,8 +554,13 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
   }
 
   const reallyStop = async () => {
+    cancelFastForward()
     await flushProgress(false)
     try { player?.pause() } catch {}
+    // absPlayer 是模块级单例，会被下一本书复用。这里显式复位音量和速率，
+    // 避免上一本 FF 失败把音量卡在 0 导致下一本 replace 后没声音。
+    try { if (player) player.volume = 1 } catch {}
+    try { if (player) player.setPlaybackRate(prefs.defaultSpeed) } catch {}
     deactivateLockScreen()
     setAudioModeAsync({ shouldPlayInBackground: false, interruptionMode: 'mixWithOthers' }).catch(() => {})
     if (mountedRef.current) setPlaying(false)
@@ -537,6 +683,17 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     setProgress(ratio)
     setCurrentTime(target)
     if (doSeek) {
+      if (isCurrentUnseekable) {
+        // raw ADTS 章节不支持精确拖动；首次弹提示，后续静默 no-op
+        if (!unseekableHintShownRef.current) {
+          unseekableHintShownRef.current = true
+          Alert.alert(
+            '本章不可拖动',
+            '当前章节为无索引的裸 AAC 格式，无法精确拖动进度。\n请使用"前进 N 秒"按钮（高速静音快进）或"上/下一段"按钮跳章。\n建议在 ABS 服务端用 ffmpeg 重封装为 M4A 以彻底解决。',
+          )
+        }
+        return
+      }
       seekingRef.current = true
       player.seekTo(target)
       setTimeout(() => { seekingRef.current = false }, 1000)
@@ -588,6 +745,17 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
           </View>
         ) : (
           <View style={styles.body}>
+            {fastForwardActive && (
+              <View style={styles.ffOverlay} pointerEvents="none">
+                <View style={[styles.ffBox, { backgroundColor: t.card, borderColor: t.border }]}>
+                  <Icon name="fastForward" size={28} color={t.primary} />
+                  <Text style={[styles.ffText, { color: t.text }]}>快进中…</Text>
+                  <Text style={[styles.ffHint, { color: t.textMuted }]}>
+                    目标 {formatTime(fastForwardTargetSec)}
+                  </Text>
+                </View>
+              </View>
+            )}
             <View style={styles.topSection}>
               <View style={styles.coverWrap}>
                 <CoverImage uri={coverUrl} />
@@ -643,7 +811,12 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
                 <TouchableOpacity onPress={skipPrev} style={styles.ctrlBtn}>
                   <Icon name="skipPrev" size={30} color={t.text} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => skipBy(-prefs.skipBackSec)} style={styles.ctrlBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity
+                  onPress={() => skipBy(-prefs.skipBackSec)}
+                  disabled={isCurrentUnseekable}
+                  style={[styles.ctrlBtn, isCurrentUnseekable && { opacity: 0.35 }]}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
                   <View style={styles.skipLabelWrap}>
                     <Icon name="fastRewind" size={30} color={t.text} />
                     <Text style={[styles.skipSec, { color: t.textMuted }]}>{prefs.skipBackSec}</Text>
@@ -710,7 +883,7 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
               style={[styles.sheetRow, { borderBottomColor: t.border }]}
               activeOpacity={0.7}
               onPress={() => {
-                try { if (player) player.playbackRate = s } catch {}
+                try { if (player) player.setPlaybackRate(s) } catch {}
                 prefs.setDefaultSpeed(s)
                 setSpeedSheetVisible(false)
               }}
@@ -869,6 +1042,19 @@ const styles = StyleSheet.create({
   closeBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   errorText: { fontSize: 14, marginTop: 12, textAlign: 'center' },
+  ffOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center', alignItems: 'center',
+    zIndex: 100,
+  },
+  ffBox: {
+    paddingHorizontal: 24, paddingVertical: 16, borderRadius: 12,
+    borderWidth: 1, alignItems: 'center', gap: 6,
+    elevation: 8,
+    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
+  },
+  ffText: { fontSize: 16, fontWeight: '600' as any, marginTop: 4 },
+  ffHint: { fontSize: 12 },
   retry: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, marginTop: 16 },
   retryText: { color: '#fff', fontWeight: '600' },
   body: { flex: 1, justifyContent: 'space-between' },
