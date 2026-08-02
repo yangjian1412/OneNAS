@@ -128,6 +128,9 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     timer: ReturnType<typeof setInterval> | null
   } | null>(null)
   const unseekableHintShownRef = useRef(false)
+  // resumeExisting 进入 raw ADTS 章节时，标记要在 player loaded 后自动 fast-forward 到这里存的绝对秒数。
+  // 触发后清零（只跑一次）。
+  const pendingRawAutoFFRef = useRef<number>(0)
 
   const getStreamUri = useCallback((track: AudiobookshelfTrack): string | null => {
     if (!session) return null
@@ -207,15 +210,18 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
         if (st.playing) setPlaying(true)
       }
       resumeMountRef.current = true
-      // raw ADTS 章节 + 有保存进度 → 等 player loaded 后自动静音高速快进到保存位置
+      // raw ADTS 章节不走 seekTo（无法精确 seek），让 replace effect 正常加载音频，
+      // 然后由 isLoaded 触发的 auto-FF effect 在 player 真正有 currentTime 后跳到 st.currentTime。
+      // 非 raw 章节保持旧行为：isLoaded effect 走 seekTo(startPos) 精确跳。
       const stTracks = st.session?.audioTracks ?? []
       const stTrk = stTracks[st.currentTrackIdx]
-      if (stTrk && typeof stTrk.format === 'string' && stTrk.format.toLowerCase().includes('raw adts') && st.currentTime > 1) {
-        setTimeout(() => {
-          if (player && currentTrackIdx === st.currentTrackIdx) {
-            fastForward(st.currentTime)
-          }
-        }, 250)
+      const isStRaw = !!(stTrk && typeof stTrk.format === 'string' && stTrk.format.toLowerCase().includes('raw adts'))
+      const savedTrackTime = st.currentTime
+      if (isStRaw && savedTrackTime > 1) {
+        // raw 章节：需要 replace 加载音频，不能阻 replace effect
+        resumeMountRef.current = false
+        // 标记需要自动快进；具体触发由下面的 auto-FF effect 在 player loaded + currentTime 有效时执行
+        pendingRawAutoFFRef.current = savedTrackTime
       }
       return
     }
@@ -304,6 +310,21 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     try { player.setPlaybackRate(prefs.defaultSpeed) } catch {}
     activateLockScreen()
   }, [player, status?.isLoaded, streamUri])
+
+  // raw ADTS 章节 + resumeExisting：等 player loaded 且 currentTime 真的有效（>0）后，
+  // 自动 fast-forward 到保存位置（绝对目标秒数）。只触发一次，触发后清零标记。
+  useEffect(() => {
+    if (!isCurrentUnseekable) return
+    const target = pendingRawAutoFFRef.current
+    if (target <= 0) return
+    const loaded = !!status?.isLoaded
+    if (!loaded) return
+    const cur = player?.currentTime ?? 0
+    if (cur <= 0) return
+    pendingRawAutoFFRef.current = 0
+    // 用 setTimeout 让 isLoaded effect 的 setPlaying / activateLockScreen 先跑
+    setTimeout(() => fastForward(target), 0)
+  }, [isCurrentUnseekable, status?.isLoaded, player])
 
   useEffect(() => {
     if (status?.didJustFinish) {
@@ -428,9 +449,9 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
 
   const skipBy = (sec: number) => {
     if (!player || !currentTrack) return
-    // raw ADTS 章节："前进 N 秒" → 静音高速快进；"后退 N 秒" → 无效（raw 不可后退）
+    // raw ADTS 章节："前进 N 秒" → 静音高速快进到 player.currentTime + sec；"后退 N 秒" → 无效（raw 不可后退）
     if (isCurrentUnseekable) {
-      if (sec > 0) fastForward(sec)
+      if (sec > 0) fastForward(player.currentTime + sec)
       return
     }
     let target = currentTime + sec
@@ -468,16 +489,18 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     setFastForwardActive(false)
   }
 
-  function fastForward(targetSecondsInTrack: number) {
+  // fastForward 入参 = 绝对目标位置（track 内秒数）。从 player.currentTime 走到该目标，
+  // 静音 64x 播放。调用方负责把"前进 N 秒"换成 player.currentTime + N 再传进来。
+  function fastForward(targetPlayerTime: number) {
     if (!player || !currentTrack) return
     // 取消上一次（如果有）
     cancelFastForward()
-    const startPlayerTime = player.currentTime
     const trackDur = currentTrack.duration ?? 0
-    const targetPlayerTime = trackDur > 0
-      ? Math.min(trackDur - 0.5, startPlayerTime + targetSecondsInTrack)
-      : startPlayerTime + targetSecondsInTrack
-    if (targetPlayerTime <= startPlayerTime + 0.05) return
+    const clamped = trackDur > 0
+      ? Math.min(trackDur - 0.5, targetPlayerTime)
+      : targetPlayerTime
+    const startPlayerTime = player.currentTime
+    if (clamped <= startPlayerTime + 0.05) return
     const origVolume = (player as any).volume ?? 1
     const origRate = prefs.defaultSpeed
     // 1) 静音
@@ -485,7 +508,7 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     // 2) 64x（必须用 Function 路径：native Property("playbackRate") 没 .set，
     //    直接 player.playbackRate = X 在 Android 上是只读无效的）
     try { player.setPlaybackRate(FF_RATE) } catch {}
-    setFastForwardTargetSec(targetPlayerTime)
+    setFastForwardTargetSec(clamped)
     setFastForwardActive(true)
     // 3) 轮询检查 currentTime，到目标值就停
     const timer = setInterval(() => {
@@ -498,7 +521,7 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
       setCurrentTime(cur)
       const dur = p.duration ?? 0
       if (dur > 0) setProgress(cur / dur)
-      if (cur >= targetPlayerTime) {
+      if (cur >= clamped) {
         cancelFastForward()
         return
       }
@@ -510,7 +533,7 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
     fastForwardStateRef.current = {
       startTime: Date.now(),
       startPlayerTime,
-      targetPlayerTime,
+      targetPlayerTime: clamped,
       origVolume,
       origRate,
       timer,
