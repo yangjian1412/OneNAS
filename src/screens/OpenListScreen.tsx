@@ -6,7 +6,9 @@ import { useAppStore } from '@/stores/appStore'
 import type { OpenListFile, ServiceConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
+import ServiceHeader from '@/components/ServiceHeader'
 import ServiceDrawer, { DrawerItem } from '@/components/ServiceDrawer'
+import FullScreenModal from '@/components/FullScreenModal'
 
 interface Props {
   service: ServiceConfig
@@ -32,7 +34,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
   const [mkdirOpen, setMkdirOpen] = useState(false)
   const [mkdirName, setMkdirName] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
-  // 下载工具设置抽屉
+  // 下载工具设置（全屏）
   const [dlOpen, setDlOpen] = useState(false)
   const [dlUrl, setDlUrl] = useState('')
   const [dlSecret, setDlSecret] = useState('')
@@ -99,24 +101,18 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
 
   const drawerItems: DrawerItem[] = [
     { key: 'downloader', label: '下载工具设置', icon: 'downloadRounded', onPress: () => setDlOpen(true) },
-    { key: 'refresh', label: '刷新', icon: 'refresh', onPress: () => { void refresh() } },
     { key: 'mkdir', label: '新建文件夹', icon: 'plus', onPress: () => setMkdirOpen(true) },
   ]
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <View style={[styles.header, { backgroundColor: t.card, borderBottomColor: t.border }]}>
-        <TouchableOpacity onPress={() => setDrawerOpen(true)} style={styles.iconBtn}>
-          <Icon name="menu" size={24} />
-        </TouchableOpacity>
-        <View style={{ flex: 1, paddingHorizontal: 8, alignItems: 'center' }}>
-          <Text style={[styles.headerTitle, { color: t.text }]} numberOfLines={1}>{server.name}</Text>
-          <Text style={[styles.headerSub, { color: t.textMuted }]} numberOfLines={1}>{server.token ? '已登录（admin）' : '未配置 Token（访客/只读）'}</Text>
-        </View>
-        <TouchableOpacity onPress={() => { void refresh() }} style={styles.iconBtn}>
-          <Icon name="refresh" size={22} />
-        </TouchableOpacity>
-      </View>
+      <ServiceHeader
+        mode="filebrowser"
+        t={t}
+        title={server.name}
+        onMenuPress={() => setDrawerOpen(true)}
+        onRefresh={() => { void refresh() }}
+      />
 
       <Breadcrumbs path={path} onJump={(p) => void cd(p)} t={t} />
 
@@ -135,10 +131,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
           files.map((f) => (
             <Row key={f.path} file={f} t={t}
               onPress={() => {
-                if (f.is_dir) {
-                  console.log('[OpenList] cd ->', f.path)
-                  void cd(f.path)
-                }
+                if (f.is_dir) { void cd(f.path) }
               }}
               onDelete={() => {
                 Alert.alert('删除', `确定要删除 "${f.name}" 吗？`, [
@@ -158,12 +151,13 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       <ServiceDrawer
         visible={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        title="OpenList"
-        subtitle="网盘管理"
+        userInfo={{ name: server.name, url: server.url, avatar: server.name }}
+        versionInfo={{ type: 'OpenList' }}
         items={drawerItems}
         t={t}
       />
 
+      {/* 操作类（新建文件夹）—— 保持底部 sheet */}
       <Modal visible={mkdirOpen} transparent animationType="slide" onRequestClose={() => setMkdirOpen(false)}>
         <View style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setMkdirOpen(false)} activeOpacity={1} />
@@ -185,47 +179,40 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
         </View>
       </Modal>
 
-      <Modal visible={dlOpen} transparent animationType="slide" onRequestClose={() => setDlOpen(false)}>
-        <View style={styles.modalRoot}>
-          <TouchableOpacity style={styles.backdrop} onPress={() => setDlOpen(false)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text style={[styles.sheetTitle, { color: t.text }]}>下载工具设置</Text>
-              <TouchableOpacity onPress={() => setDlOpen(false)} style={{ padding: 4 }}>
-                <Icon name="x" size={20} />
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.dlHint, { color: t.textMuted }]}>配置 OpenList 后台的下载工具（aria2），以便向 OpenList 推送下载任务。</Text>
+      {/* 设置类（下载工具）—— 全屏 + X 关闭 */}
+      <FullScreenModal visible={dlOpen} onClose={() => setDlOpen(false)} title="下载工具设置" t={t}>
+        <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }}>
+          <Text style={[styles.dlHint, { color: t.textMuted }]}>配置 OpenList 后台的下载工具（aria2），以便向 OpenList 推送下载任务。</Text>
 
-            <Aria2ImportButton t={t} onImported={(url, secret) => { setDlUrl(url); setDlSecret(secret) }} />
+          <Aria2ImportButton t={t} onImported={(url, secret) => { setDlUrl(url); setDlSecret(secret) }} />
 
-            <Text style={[styles.dlLabel, { color: t.text }]}>RPC 地址（JSON-RPC）</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-              value={dlUrl}
-              onChangeText={setDlUrl}
-              placeholder="http://host:6800/jsonrpc"
-              placeholderTextColor={t.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+          <Text style={[styles.dlLabel, { color: t.text }]}>RPC 地址（JSON-RPC）</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+            value={dlUrl}
+            onChangeText={setDlUrl}
+            placeholder="http://host:6800/jsonrpc"
+            placeholderTextColor={t.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
 
-            <Text style={[styles.dlLabel, { color: t.text }]}>RPC 密钥（rpc-secret，可选）</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-              value={dlSecret}
-              onChangeText={setDlSecret}
-              placeholder="请输入 aria2 rpc-secret"
-              placeholderTextColor={t.textMuted}
-              secureTextEntry
-            />
+          <Text style={[styles.dlLabel, { color: t.text }]}>RPC 密钥（rpc-secret，可选）</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+            value={dlSecret}
+            onChangeText={setDlSecret}
+            placeholder="请输入 aria2 rpc-secret"
+            placeholderTextColor={t.textMuted}
+            secureTextEntry
+          />
 
-            <View style={styles.sheetActions}>
-              <TouchableOpacity onPress={onDlSave}><Text style={[styles.actionText, { color: t.primary }]}>保存</Text></TouchableOpacity>
-            </View>
+          <View style={styles.sheetActions}>
+            <TouchableOpacity onPress={() => setDlOpen(false)}><Text style={[styles.actionText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onDlSave}><Text style={[styles.actionText, { color: t.primary }]}>保存</Text></TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </ScrollView>
+      </FullScreenModal>
     </View>
   )
 }
@@ -262,7 +249,6 @@ function Aria2ImportButton({ t, onImported }: { t: any; onImported: (url: string
 
 function Breadcrumbs({ path, onJump, t }: { path: string; onJump: (p: string) => void; t: any }) {
   const segs = path.split('/').filter(Boolean)
-  // 首段：根
   const items: { label: string; full: string }[] = [{ label: '根', full: '/' }]
   let acc = ''
   for (const s of segs) { acc += '/' + s; items.push({ label: s, full: acc }) }
@@ -289,12 +275,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   title: { fontSize: 16, fontWeight: '600' },
   sub: { fontSize: 13, marginTop: 4, textAlign: 'center' },
-
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  iconBtn: { padding: 8, borderRadius: 8 },
-  headerTitle: { fontSize: 17, fontWeight: '700' },
-  headerSub: { fontSize: 11, marginTop: 2 },
-  headerPath: { fontSize: 11, marginTop: 2 },
 
   errorBanner: { padding: 8, marginHorizontal: 12, marginTop: 8, borderRadius: 8 },
 

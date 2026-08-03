@@ -1,18 +1,19 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal, Animated, Switch } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal, Animated } from 'react-native'
 import { useIsFocused } from '@react-navigation/native'
 import { useQBitStore } from '@/stores/qbittorrentStore'
 import { qbitGetPreferences, qbitSetPreferences } from '@/lib/api/qbittorrent'
 import type { QBitTorrentTask, ServiceConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
+import ServiceHeader from '@/components/ServiceHeader'
+import ServiceDrawer, { DrawerItem } from '@/components/ServiceDrawer'
+import FullScreenModal from '@/components/FullScreenModal'
 
 interface Props {
   service: ServiceConfig
   onRequestClose?: () => void
 }
-
-const AUTO_REFRESH_MS = 1000
 
 function formatBytes(n: number): string {
   if (!n || n < 0) return '0 B'
@@ -52,8 +53,8 @@ function bytesToHuman(n: number): string {
   if (n < 0 || n === 0) return '不限'
   if (n < 1024) return `${n}`
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)}K`
-  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)}M`
-  return `${(n / 1024 ** 3).toFixed(2)}G`
+  if (n < 1024 ** 3) return `${(n / 1024 / 1024).toFixed(1)}M`
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)}G`
 }
 
 const STATE_LABELS: Record<string, string> = {
@@ -124,29 +125,21 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
     )
   }
 
+  const drawerItems: DrawerItem[] = [
+    { key: 'settings', label: '基本设置', icon: 'settings', onPress: () => setSettingsOpen(true) },
+  ]
+
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <View style={[styles.header, { backgroundColor: t.card, borderBottomColor: t.border }]}>
-        <TouchableOpacity onPress={() => setDrawerOpen(true)} style={styles.iconBtn}>
-          <Icon name="menu" size={24} />
-        </TouchableOpacity>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={[styles.headerTitle, { color: t.text }]} numberOfLines={1}>{server.name}</Text>
-        </View>
-        <View style={styles.autoRefreshBox}>
-          <Text style={[styles.autoRefreshLabel, { color: t.textMuted }]}>自动</Text>
-          <Switch
-            value={autoRefresh}
-            onValueChange={setAutoRefresh}
-            trackColor={{ false: t.border, true: t.primary + '88' }}
-            thumbColor={autoRefresh ? t.primary : '#f4f3f4'}
-            style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-          />
-          <TouchableOpacity onPress={() => { void refresh() }} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Icon name="refresh" size={20} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ServiceHeader
+        mode="download"
+        t={t}
+        title={server.name}
+        onMenuPress={() => setDrawerOpen(true)}
+        autoRefresh={autoRefresh}
+        setAutoRefresh={setAutoRefresh}
+        onRefresh={() => { void refresh() }}
+      />
 
       <View style={[styles.tabRow, { backgroundColor: t.card, borderBottomColor: t.border }]}>
         {([
@@ -217,27 +210,16 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
         </View>
       </Modal>
 
-      <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
-        <View style={styles.modalRoot}>
-          <TouchableOpacity style={styles.backdrop} onPress={() => setDrawerOpen(false)} activeOpacity={1} />
-          <View style={[styles.drawer, { backgroundColor: t.card }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={[styles.drawerTitle, { color: t.text }]}>{server.name}</Text>
-              <TouchableOpacity onPress={() => setDrawerOpen(false)} style={{ padding: 4 }}>
-                <Icon name="x" size={20} />
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.drawerSub, { color: t.textMuted }]}>{server.url}</Text>
-            {server.username ? <Text style={[styles.drawerSub, { color: t.textMuted }]}>用户：{server.username}</Text> : null}
-            <TouchableOpacity style={[styles.drawerItem, { borderColor: t.border }]} onPress={() => { setDrawerOpen(false); setSettingsOpen(true) }}>
-              <Icon name="settings" size={20} />
-              <Text style={[styles.drawerItemText, { color: t.text }]}>基本设置</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <ServiceDrawer
+        visible={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        userInfo={{ name: server.name, url: server.url, avatar: server.username || server.name }}
+        versionInfo={{ type: 'qBittorrent' }}
+        items={drawerItems}
+        t={t}
+      />
 
-      <SettingsModal
+      <SettingsScreen
         visible={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         server={server}
@@ -247,14 +229,14 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
   )
 }
 
-interface SettingsModalProps {
+interface SettingsScreenProps {
   visible: boolean
   onClose: () => void
   server: { url: string; username: string; password: string }
   t: any
 }
 
-function SettingsModal({ visible, onClose, server, t }: SettingsModalProps) {
+function SettingsScreen({ visible, onClose, server, t }: SettingsScreenProps) {
   const [prefs, setPrefs] = useState<Record<string, any> | null>(null)
   const [maxDl, setMaxDl] = useState('')
   const [maxUp, setMaxUp] = useState('')
@@ -287,32 +269,28 @@ function SettingsModal({ visible, onClose, server, t }: SettingsModalProps) {
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalRoot}>
-        <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
-        <View style={[styles.sheet, { backgroundColor: t.card }]}>
-          <Text style={[styles.sheetTitle, { color: t.text }]}>基本设置</Text>
-          <Text style={[styles.fieldHint, { color: t.textMuted }]}>单位：K=KB/s · M=MB/s · G=GB/s（留空 = 不限）</Text>
+    <FullScreenModal visible={visible} onClose={onClose} title="基本设置" t={t}>
+      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }}>
+        <Text style={[styles.fieldHint, { color: t.textMuted }]}>单位：K=KB/s · M=MB/s · G=GB/s（留空 = 不限）</Text>
 
-          <Text style={[styles.fieldLabel, { color: t.textSecondary, marginTop: 6 }]}>全局下载限速</Text>
-          <TextInput style={[styles.settingInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-            value={maxDl} onChangeText={setMaxDl}
-            placeholder={prefs?.max_dl_rate ? bytesToHuman(prefs.max_dl_rate) : '不限'}
-            placeholderTextColor={t.textMuted} autoCapitalize="none" />
+        <Text style={[styles.fieldLabel, { color: t.textSecondary, marginTop: 6 }]}>全局下载限速</Text>
+        <TextInput style={[styles.settingInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+          value={maxDl} onChangeText={setMaxDl}
+          placeholder={prefs?.max_dl_rate ? bytesToHuman(prefs.max_dl_rate) : '不限'}
+          placeholderTextColor={t.textMuted} autoCapitalize="none" />
 
-          <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>全局上传限速</Text>
-          <TextInput style={[styles.settingInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-            value={maxUp} onChangeText={setMaxUp}
-            placeholder={prefs?.max_up_rate ? bytesToHuman(prefs.max_up_rate) : '不限'}
-            placeholderTextColor={t.textMuted} autoCapitalize="none" />
+        <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>全局上传限速</Text>
+        <TextInput style={[styles.settingInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+          value={maxUp} onChangeText={setMaxUp}
+          placeholder={prefs?.max_up_rate ? bytesToHuman(prefs.max_up_rate) : '不限'}
+          placeholderTextColor={t.textMuted} autoCapitalize="none" />
 
-          <View style={styles.sheetActions}>
-            <TouchableOpacity onPress={onClose}><Text style={[styles.actionText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
-            <TouchableOpacity onPress={handleSave} disabled={saving}><Text style={[styles.actionText, { color: t.primary }]}>{saving ? '保存中…' : '保存'}</Text></TouchableOpacity>
-          </View>
+        <View style={styles.sheetActions}>
+          <TouchableOpacity onPress={onClose}><Text style={[styles.actionText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
+          <TouchableOpacity onPress={handleSave} disabled={saving}><Text style={[styles.actionText, { color: t.primary }]}>{saving ? '保存中…' : '保存'}</Text></TouchableOpacity>
         </View>
-      </View>
-    </Modal>
+      </ScrollView>
+    </FullScreenModal>
   )
 }
 
@@ -360,12 +338,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, fontWeight: '600' },
   sub: { fontSize: 13, marginTop: 4, textAlign: 'center' },
 
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  iconBtn: { padding: 8, borderRadius: 8 },
-  headerTitle: { fontSize: 17, fontWeight: '700' },
-  autoRefreshBox: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 4 },
-  autoRefreshLabel: { fontSize: 11 },
-
   tabRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabText: { fontSize: 13, fontWeight: '600' },
@@ -397,10 +369,4 @@ const styles = StyleSheet.create({
   fieldHint: { fontSize: 11, marginBottom: 10 },
   sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 24, paddingTop: 16 },
   actionText: { fontSize: 14, fontWeight: '600' },
-
-  drawer: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 280, padding: 18, paddingTop: 48 },
-  drawerTitle: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
-  drawerSub: { fontSize: 12, marginBottom: 4 },
-  drawerItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  drawerItemText: { fontSize: 15, fontWeight: '500' },
 })

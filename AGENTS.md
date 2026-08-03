@@ -175,28 +175,78 @@ Export a `loadXxxAutoRefreshPersisted(): Promise<boolean>` helper. Call it from 
 
 ### Screen header layout
 
-Three-column header, exactly this layout (used by aria2, qbittorrent, openlist; jellyfin/emby/navidrome can keep their own header but should expose `onRequestClose` for the top-bar inline mount):
-
-```
-[☰ menu]      [service.name + status]      [⟳ refresh]
-   └─ opens ServiceDrawer                  └─ calls store.refresh()
-```
-
-### ServiceDrawer
-
-Use the generic component at `src/components/ServiceDrawer.tsx`. Items shape:
+Three-column header. Use the generic component at `src/components/ServiceHeader.tsx`. Three modes:
 
 ```ts
-const items: DrawerItem[] = [
-  { key: 'settings', label: '设置', icon: 'settings', onPress: () => setXOpen(true) },
-  { key: 'about',    label: '关于', icon: 'info',      onPress: () => {} },
-  { key: 'clear',    label: '清除', icon: 'trash', destructive: true, onPress: () => {} },
-]
-<ServiceDrawer visible={open} onClose={() => setOpen(false)} title="X" subtitle="..." items={items} t={t} />
+// download (aria2 / qbittorrent) — 标题 + 自动开关 + 刷新
+<ServiceHeader
+  mode="download"
+  t={t}
+  title={server.name}
+  onMenuPress={() => setDrawerOpen(true)}
+  autoRefresh={autoRefresh}
+  setAutoRefresh={setAutoRefresh}
+  onRefresh={() => { void refresh() }}
+/>
+
+// filebrowser (openlist) — 标题 + 副标题 + 刷新，无自动开关
+<ServiceHeader
+  mode="filebrowser"
+  t={t}
+  title={server.name}
+  subtitle="已登录（admin）"   // optional status sub-line
+  onMenuPress={() => setDrawerOpen(true)}
+  onRefresh={() => { void refresh() }}
+/>
+```
+
+**Reference**: navidrome / talebook are the canonical searchable layouts (search box in the center, menu/back on the left, no auto-refresh switch). They keep their own `NavidromeHeader` / `TalebookHeader` components. New searchable services should follow the same pattern; new download / filebrowser services must use `<ServiceHeader>`.
+
+### ServiceDrawer (side drawer)
+
+Use the generic component at `src/components/ServiceDrawer.tsx`. It slides in from the **left** (75% width), with:
+
+- **Header (top)**: X close button (top-right corner)
+- **User section**: circular avatar (first letter of `userInfo.avatar` or `name`) + display name + server URL
+- **Menu items**: list of `DrawerItem` rows (icon + label + chevron-right), `destructive` flag tints text/border red
+- **Footer (bottom)**: divider + `版本号: {version}` (optional) + `类型: {type}`
+
+Props:
+
+```ts
+<ServiceDrawer
+  visible={open}
+  onClose={() => setOpen(false)}
+  userInfo={{ name: server.name, url: server.url, avatar: server.username }}
+  versionInfo={{ type: 'qBittorrent', version: '...' }}  // optional
+  items={drawerItems}
+  t={t}
+/>
 ```
 
 The drawer must handle its own back-button (use `BackHandler.addEventListener` inside the component, ignore when not visible).
 
+### Settings pages (full-screen modal with X close)
+
+All **settings pages** (configured per-service: download settings, basic settings, download-tool settings, common settings, server settings, etc.) must use the generic full-screen modal at `src/components/FullScreenModal.tsx`:
+
+```tsx
+<FullScreenModal visible={open} onClose={() => setOpen(false)} title="下载设置" t={t}>
+  <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }}>
+    {/* form fields */}
+  </ScrollView>
+</FullScreenModal>
+```
+
+`FullScreenModal` is a real RN `<Modal>` (full-screen, slide animation) with:
+- Top header: **X close icon top-right** (NOT a "关闭" text button)
+- Title centered
+- Children scrollable
+
+For the **settings class** (download settings, basic settings, etc.) → **use FullScreenModal**. For the **action class** (add task, add URL, mkdir, add server, config) → keep the bottom-sheet Modal (slides up from bottom with rounded top corners, "取消" / "确认" buttons at the bottom). The two are visually and semantically distinct: settings pages are persistent configuration, action sheets are ephemeral tasks.
+
 ### Top-bar mount
 
 Service screens are mounted in TWO places: the dedicated tab (`ServiceScreen`) and the top-bar overlay (`ActiveServiceView` in `FileScreen.tsx`). Both must use the **same** store singleton — that's why the polling lives in the store, not in the screen.
+
+When mounted in `ActiveServiceView`, the elevation of the overlay (`styles.activeServiceRoot` in `FileScreen.tsx`) must be greater than `ServiceBar`'s elevation (currently 30 vs 20) so the overlay receives touch events on Android.
