@@ -10,9 +10,9 @@ const DASHBOARD_QUERY = `{
 }`
 
 const DOCKER_LIST = `{ docker { containers { id names image state status autoStart } } }`
-const START = `mutation($id: String!) { docker { startContainer(id: $id) { state } } }`
-const STOP = `mutation($id: String!) { docker { stopContainer(id: $id) { state } } }`
-const RESTART = `mutation($id: String!) { docker { restartContainer(id: $id) { state } } }`
+const START = `mutation($id: PrefixedID!) { docker { startContainer(id: $id) { state } } }`
+const STOP = `mutation($id: PrefixedID!) { docker { stopContainer(id: $id) { state } } }`
+const RESTART = `mutation($id: PrefixedID!) { docker { restartContainer(id: $id) { state } } }`
 const VM_START = `mutation($id: String!) { vm { start(id: $id) } }`
 const VM_STOP = `mutation($id: String!) { vm { stop(id: $id) } }`
 const VM_RESTART = `mutation($id: String!) { vm { reboot(id: $id) } }`

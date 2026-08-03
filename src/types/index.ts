@@ -3,6 +3,7 @@ export type ServiceType =
   | 'immich' | 'filebrowser' | 'unraid' | 'custom'
   | 'aria2' | 'qbittorrent' | 'openlist'
   | 'talebook' | 'calibre'
+  | 'emby'
 
 type TabAssignment = 'none' | 'tab2' | 'tab3'
 
@@ -32,6 +33,8 @@ export interface ServerConfig {
   username?: string
   password?: string
   apiKey?: string
+  // 当 type 为 'filebrowser' 时：'filebrowser'（默认）或 'webdav'（WebDAV 协议）
+  fileBackend?: 'filebrowser' | 'webdav'
 }
 
 // 导出配置格式
@@ -795,5 +798,102 @@ export interface TalebookUserInfo {
   serverVersion: string
   bookCount: number
   title: string
+}
+
+// ===== Aria2 =====
+export interface Aria2ServerConfig {
+  id: string
+  name: string
+  url: string         // e.g. http://host:6800/jsonrpc
+  secret: string      // rpc-secret; empty for none
+}
+
+export type Aria2TaskStatus = 'active' | 'waiting' | 'paused' | 'complete' | 'error' | 'removed'
+
+export interface Aria2Task {
+  gid: string
+  status: Aria2TaskStatus
+  totalLength: string
+  completedLength: string
+  downloadSpeed: string
+  uploadSpeed: string
+  files: Array<{
+    path: string
+    length: string
+    completedLength: string
+    selected: string
+    uris: Array<{ uri: string; status: string }>
+  }>
+  dir: string
+  errorCode?: string
+  errorMessage?: string
+}
+
+export interface Aria2GlobalStat {
+  downloadSpeed: string
+  uploadSpeed: string
+  numActive: string
+  numWaiting: string
+  numStopped: string
+}
+
+export interface Aria2Version {
+  version: string
+  enabledFeatures: string[]
+}
+
+// ===== qBittorrent =====
+export interface QBittorrentServerConfig {
+  id: string
+  name: string
+  url: string         // e.g. http://host:8080
+  username: string
+  password: string
+  cookie?: string     // SID session cookie
+}
+
+export type QBitTorrentState = 'downloading' | 'uploading' | 'paused' | 'completed' | 'error' | 'missingFiles'
+
+export interface QBitTorrentTask {
+  hash: string
+  name: string
+  size: number
+  progress: number      // 0-1
+  dlspeed: number       // bytes/s
+  upspeed: number       // bytes/s
+  state: QBitTorrentState
+  category?: string
+  tags?: string
+  added_on?: number
+  completion_on?: number
+  eta?: number
+  save_path?: string
+}
+
+// ===== OpenList =====
+export interface OpenListServerConfig {
+  id: string
+  name: string
+  url: string         // e.g. http://host:5244
+  token?: string      // admin jwt token (optional)
+}
+
+export interface OpenListFile {
+  name: string
+  path: string
+  size: number
+  is_dir: boolean
+  modified?: string
+  sign?: string
+  thumb?: string
+}
+
+// ===== WebDAV =====
+export interface WebDavServerConfig {
+  id: string
+  name: string
+  url: string         // e.g. https://host:port/dav
+  username: string
+  password: string
 }
 

@@ -45,7 +45,7 @@ export default function ConfigModal({
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const isServerType = type === 'filebrowser' || type === 'unraid'
-  const isAppType = type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'immich' || type === 'talebook'
+  const isAppType = type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'immich' || type === 'talebook' || type === 'aria2' || type === 'qbittorrent' || type === 'openlist' || type === 'emby'
   const [testing, setTesting] = useState(false)
 
   const [name, setName] = useState('')
@@ -58,6 +58,7 @@ export default function ConfigModal({
   const [url, setUrl] = useState('')
   const [authType, setAuthType] = useState<'none' | 'basic' | 'token' | 'apikey'>('none')
   const [talebookLoginMode, setTalebookLoginMode] = useState<'code' | 'password' | 'guest'>('password')
+  const [fileBackend, setFileBackend] = useState<'filebrowser' | 'webdav'>('filebrowser')
 
   useEffect(() => {
     if (isServerType && server) {
@@ -72,6 +73,7 @@ export default function ConfigModal({
       setUsername(server.username ?? '')
       setPassword(server.password ?? '')
       setApiKey(server.apiKey ?? '')
+      setFileBackend(server.fileBackend ?? 'filebrowser')
     } else if (!isServerType && service) {
       setName(service.name)
       setUrl(service.url)
@@ -95,6 +97,7 @@ export default function ConfigModal({
       setUrl('')
       setAuthType('none')
       setTalebookLoginMode('password')
+      setFileBackend('filebrowser')
     }
   }, [visible, type, server, service])
 
@@ -172,6 +175,7 @@ export default function ConfigModal({
           protocol: parsed.protocol,
           username: username || undefined,
           password: password || undefined,
+          fileBackend,
         })
         return
       }
@@ -247,6 +251,18 @@ export default function ConfigModal({
                   <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
                     placeholder="http://..." placeholderTextColor={t.textMuted}
                     value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} />
+
+                  <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>文件管理协议</Text>
+                  <View style={styles.authRow}>
+                    {(['filebrowser', 'webdav'] as const).map((b) => (
+                      <TouchableOpacity key={b} style={[styles.authBtn, { borderColor: t.border },
+                        fileBackend === b && { backgroundColor: t.primary, borderColor: t.primary }]}
+                        onPress={() => setFileBackend(b)}>
+                        <Text style={[styles.authBtnText, { color: t.textSecondary },
+                          fileBackend === b && { color: '#fff' }]}>{b === 'filebrowser' ? 'FileBrowser' : 'WebDAV'}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
 
                   <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Username</Text>
                   <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
@@ -363,7 +379,7 @@ export default function ConfigModal({
                       提示：保存后到 Talebook 首页抽屉里点「登录」完成登录会话。
                     </Text>
                   </>
-                ) : (type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf') ? (
+                ) : (type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'emby') ? (
                   <>
                     <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
@@ -379,6 +395,47 @@ export default function ConfigModal({
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
                       placeholder="Password" secureTextEntry placeholderTextColor={t.textMuted}
                       value={password} onChangeText={setPassword} />
+                  </>
+                ) : type === 'aria2' ? (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="http://host:6800/jsonrpc" placeholderTextColor={t.textMuted}
+                      value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} />
+
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>RPC Secret（可选）</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="aria2.conf 的 rpc-secret" secureTextEntry placeholderTextColor={t.textMuted}
+                      value={apiKey} onChangeText={setApiKey} />
+                  </>
+                ) : type === 'qbittorrent' ? (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="http://host:8080" placeholderTextColor={t.textMuted}
+                      value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} />
+
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Username</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="Username" placeholderTextColor={t.textMuted}
+                      value={username} onChangeText={setUsername} />
+
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Password</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="Password" secureTextEntry placeholderTextColor={t.textMuted}
+                      value={password} onChangeText={setPassword} />
+                  </>
+                ) : type === 'openlist' ? (
+                  <>
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="http://host:5244" placeholderTextColor={t.textMuted}
+                      value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} />
+
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Admin Token（可选）</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="管理后台生成的 JWT token" secureTextEntry placeholderTextColor={t.textMuted}
+                      value={apiKey} onChangeText={setApiKey} />
                   </>
                 ) : (
                   <>

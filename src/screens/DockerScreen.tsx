@@ -139,7 +139,11 @@ export default function DockerScreen() {
     if (action === 'start') result = await startContainer(selectedServer, id)
     else if (action === 'stop') result = await stopContainer(selectedServer, id)
     else result = await restartContainer(selectedServer, id)
-    if (result.ok) { load(selectedServer) }
+    if (result.ok) {
+      // Unraid GraphQL 状态切换需要 1 秒才能稳定，再 reload 避免「操作失败 400」误报
+      await new Promise((r) => setTimeout(r, 1000))
+      await load(selectedServer, true)
+    }
     else { Alert.alert('操作失败', result.error ?? '未知错误') }
     setActionLoading(null)
   }
@@ -153,7 +157,10 @@ export default function DockerScreen() {
     else if (action === 'restart') result = await restartVM(selectedServer, id)
     else if (action === 'pause') result = await pauseVM(selectedServer, id)
     else result = await resumeVM(selectedServer, id)
-    if (result.ok) { load(selectedServer) }
+    if (result.ok) {
+      await new Promise((r) => setTimeout(r, 1000))
+      await load(selectedServer, true)
+    }
     else { Alert.alert('操作失败', result.error ?? '未知错误') }
     setActionLoading(null)
   }

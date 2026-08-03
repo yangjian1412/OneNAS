@@ -7,6 +7,9 @@ import JellyfinScreen from './JellyfinScreen'
 import NavidromeScreen from './NavidromeScreen'
 import AudiobookshelfScreen from './AudiobookshelfScreen'
 import TalebookScreen from './TalebookScreen'
+import Aria2Screen from './Aria2Screen'
+import QBitTorrentScreen from './QBitTorrentScreen'
+import OpenListScreen from './OpenListScreen'
 import Icon from '@/components/Icon'
 import { SERVICE_TYPE_ICONS, isAudiobookshelfService } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
@@ -66,7 +69,7 @@ export default function ServiceScreen({ serviceId }: Props) {
     )
   }
 
-  if (service.type === 'jellyfin') {
+  if (service.type === 'jellyfin' || service.type === 'emby') {
     return (
       <>
         <JellyfinScreen service={service} />
@@ -110,6 +113,45 @@ export default function ServiceScreen({ serviceId }: Props) {
     return (
       <>
         <TalebookScreen service={service} />
+        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+          <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
+            <Text style={styles.toastText}>再按一次退出</Text>
+          </View>
+        </Animated.View>
+      </>
+    )
+  }
+
+  if (service.type === 'aria2') {
+    return (
+      <>
+        <Aria2Screen service={service} />
+        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+          <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
+            <Text style={styles.toastText}>再按一次退出</Text>
+          </View>
+        </Animated.View>
+      </>
+    )
+  }
+
+  if (service.type === 'qbittorrent') {
+    return (
+      <>
+        <QBitTorrentScreen service={service} />
+        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+          <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
+            <Text style={styles.toastText}>再按一次退出</Text>
+          </View>
+        </Animated.View>
+      </>
+    )
+  }
+
+  if (service.type === 'openlist') {
+    return (
+      <>
+        <OpenListScreen service={service} />
         <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>

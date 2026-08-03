@@ -31,6 +31,7 @@ import ShareManageSvg from '@/icos/jam--share.svg'
 
 import FilebrowserLogo from '@/icos/filebrowser.svg'
 import JellyfinLogo from '@/icos/selfhst--jellyfin.svg'
+import EmbyLogo from '@/icos/selfhst--emby.svg'
 import NavidromeLogo from '@/icos/selfhst--navidrome.svg'
 import AudiobookshelfLogo from '@/icos/selfhst--audiobookshelf.svg'
 import ImmichLogo from '@/icos/selfhst--immich.svg'
@@ -132,6 +133,7 @@ const SVG_COMPONENTS = {
 
   filebrowser: FilebrowserLogo,
   jellyfin: JellyfinLogo,
+  emby: EmbyLogo,
   navidrome: NavidromeLogo,
   audiobookshelf: AudiobookshelfLogo,
   immich: ImmichLogo,

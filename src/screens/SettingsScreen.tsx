@@ -11,9 +11,10 @@ import ConfigModal from '@/components/ConfigModal'
 import Icon from '@/components/Icon'
 import * as Clipboard from 'expo-clipboard'
 import * as Sharing from 'expo-sharing'
+import * as DocumentPicker from 'expo-document-picker'
 import { File, Paths } from 'expo-file-system'
 
-const SERVICE_TYPES: ServiceType[] = ['jellyfin', 'navidrome', 'audiobookshelf', 'immich', 'aria2', 'qbittorrent', 'openlist', 'talebook']
+const SERVICE_TYPES: ServiceType[] = ['jellyfin', 'emby', 'navidrome', 'audiobookshelf', 'immich', 'aria2', 'qbittorrent', 'openlist', 'talebook']
 
 interface ServiceRow {
   key: string
@@ -69,8 +70,8 @@ export default function SettingsScreen() {
   const [modalService, setModalService] = useState<ServiceConfig | null>(null)
   const [tagPickerSlot, setTagPickerSlot] = useState<'tab2' | 'tab3' | null>(null)
   const [exportText, setExportText] = useState<string | null>(null)
+  const [exportKeyOpen, setExportKeyOpen] = useState(false)
   const [exportKey, setExportKey] = useState('0')
-  const [importText, setImportText] = useState('')
   const [importKey, setImportKey] = useState('0')
   const [importOpen, setImportOpen] = useState(false)
   const [sortMode, setSortMode] = useState(false)
@@ -87,6 +88,38 @@ export default function SettingsScreen() {
     toastTimer.current = setTimeout(() => {
       Animated.timing(toastAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start()
     }, 1500)
+  }
+
+  const handleExportConfirm = async () => {
+    const text = await exportConfig(exportKey)
+    setExportKeyOpen(false)
+    setExportText(text)
+  }
+
+  const handleImportClipboard = async () => {
+    try {
+      const text = await Clipboard.getStringAsync()
+      if (!text) { Alert.alert('提示', '剪贴板为空'); return }
+      const res = await importConfig(text, importKey)
+      if (res.ok) { setImportOpen(false); Alert.alert('完成', '配置已导入') }
+      else Alert.alert('错误', res.error ?? '导入失败')
+    } catch (error: any) {
+      Alert.alert('错误', error?.message ?? '导入失败')
+    }
+  }
+
+  const handleImportFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true })
+      if (result.canceled || !result.assets || result.assets.length === 0) return
+      const file = new File(result.assets[0].uri)
+      const text = file.textSync()
+      const res = await importConfig(text, importKey)
+      if (res.ok) { setImportOpen(false); Alert.alert('完成', '配置已导入') }
+      else Alert.alert('错误', res.error ?? '导入失败')
+    } catch (error: any) {
+      Alert.alert('错误', error?.message ?? '读取文件失败')
+    }
   }
 
   useEffect(() => {
@@ -350,10 +383,10 @@ export default function SettingsScreen() {
       <Text style={[styles.sectionLabel, { color: t.text }]}>导入/导出</Text>
       <View style={[styles.card, { backgroundColor: t.card }]}>
         <View style={styles.importExportRow}>
-          <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={async () => { const text = await exportConfig(exportKey); setExportText(text) }}>
+          <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={() => setExportKeyOpen(true)}>
             <Text style={styles.ioButtonText}>导出</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={() => { setImportText(''); setImportOpen(true) }}>
+          <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={() => { setImportKey('0'); setImportOpen(true) }}>
             <Text style={styles.ioButtonText}>导入</Text>
           </TouchableOpacity>
         </View>
@@ -381,11 +414,12 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
-      <Modal visible={exportText !== null} transparent animationType="slide" onRequestClose={() => setExportText(null)}>
+      <Modal visible={exportKeyOpen} transparent animationType="slide" onRequestClose={() => setExportKeyOpen(false)}>
         <View style={styles.pickerOverlay}>
-          <TouchableOpacity style={styles.modalBackdrop} onPress={() => setExportText(null)} activeOpacity={1} />
+          <TouchableOpacity style={styles.modalBackdrop} onPress={() => setExportKeyOpen(false)} activeOpacity={1} />
           <View style={[styles.sheet, { backgroundColor: t.card }]}>
-            <Text style={[styles.pickerTitle, { color: t.text }]}>已导出配置（AES 加密）</Text>
+            <Text style={[styles.pickerTitle, { color: t.text }]}>导出配置</Text>
+            <Text style={[styles.ioHint, { color: t.textMuted }]}>输入加密密钥，配置将 AES 加密后导出（默认 0）</Text>
             <TextInput
               style={[styles.keyInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
               value={exportKey}
@@ -395,13 +429,25 @@ export default function SettingsScreen() {
               autoCapitalize="none"
               autoCorrect={false}
             />
+            <View style={styles.sheetActions}>
+              <TouchableOpacity onPress={() => setExportKeyOpen(false)}><Text style={[styles.clearText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
+              <TouchableOpacity onPress={handleExportConfirm}><Text style={[styles.clearText, { color: t.primary }]}>确定导出</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={exportText !== null} transparent animationType="slide" onRequestClose={() => setExportText(null)}>
+        <View style={styles.pickerOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} onPress={() => setExportText(null)} activeOpacity={1} />
+          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+            <Text style={[styles.pickerTitle, { color: t.text }]}>已导出配置（AES 加密）</Text>
             <TextInput multiline editable={false} style={[styles.exportBox, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]} value={exportText ?? ''} />
             <View style={styles.sheetActions}>
-              <TouchableOpacity onPress={async () => { if (exportText) { await saveExportFile(exportText); setExportText(null) } }}>
-                <Text style={[styles.clearText, { color: t.primary }]}>保存文件</Text>
-              </TouchableOpacity>
               <TouchableOpacity onPress={async () => { if (exportText) { await Clipboard.setStringAsync(exportText); Alert.alert('已复制', '配置已复制到剪贴板') } }}>
                 <Text style={[styles.clearText, { color: t.primary }]}>一键复制</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={async () => { if (exportText) { await saveExportFile(exportText); setExportText(null) } }}>
+                <Text style={[styles.clearText, { color: t.primary }]}>下载JSON</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setExportText(null)}><Text style={[styles.clearText, { color: t.textMuted }]}>关闭</Text></TouchableOpacity>
             </View>
@@ -422,14 +468,16 @@ export default function SettingsScreen() {
               autoCapitalize="none"
               autoCorrect={false}
             />
-            <TextInput multiline autoFocus style={[styles.exportBox, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text, minHeight: 180 }]} placeholder="粘贴 JSON 配置" placeholderTextColor={t.textMuted} value={importText} onChangeText={setImportText} />
+            <View style={styles.importPickRow}>
+              <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={handleImportClipboard}>
+                <Text style={styles.ioButtonText}>从剪贴板导入</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={handleImportFile}>
+                <Text style={styles.ioButtonText}>从文件导入</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.sheetActions}>
               <TouchableOpacity onPress={() => setImportOpen(false)}><Text style={[styles.clearText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
-              <TouchableOpacity onPress={async () => {
-                const res = await importConfig(importText, importKey)
-                if (res.ok) { setImportOpen(false); Alert.alert('完成', '配置已导入') }
-                else { Alert.alert('错误', res.error ?? '导入失败') }
-              }}><Text style={[styles.clearText, { color: t.primary }]}>确定导入</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -505,4 +553,6 @@ const styles = StyleSheet.create({
   sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 24, paddingTop: 16 },
   exportBox: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 12, minHeight: 220, textAlignVertical: 'top', fontFamily: 'monospace' },
   keyInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 10 },
+  ioHint: { fontSize: 13, marginBottom: 12 },
+  importPickRow: { flexDirection: 'row', gap: 12 },
 })

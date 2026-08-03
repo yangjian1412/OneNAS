@@ -5,6 +5,7 @@ import { useIsFocused, useNavigation } from '@react-navigation/native'
 import { useAppStore, FileSortBy, FileSortDir } from '@/stores/appStore'
 import { ServerConfig, FileItem, ServiceConfig, ShareInfo } from '@/types'
 import { login, listFiles, searchFilesStream, createFolder, deleteResource, renameResource, copyResource, uploadResource, getShares, createShare, deleteShare, getResourceInfo, getFileChecksum, ResourceInfo } from '@/lib/api/filebrowser'
+import { connectFileManager, listDir as fmListDir } from '@/lib/api/fileManager'
 import { getFileIcon } from '@/lib/fileTypes'
 import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '@/lib/theme'
@@ -23,6 +24,9 @@ import JellyfinScreen from '@/screens/JellyfinScreen'
 import NavidromeScreen from '@/screens/NavidromeScreen'
 import AudiobookshelfScreen from '@/screens/AudiobookshelfScreen'
 import TalebookScreen from '@/screens/TalebookScreen'
+import Aria2Screen from '@/screens/Aria2Screen'
+import QBitTorrentScreen from '@/screens/QBitTorrentScreen'
+import OpenListScreen from '@/screens/OpenListScreen'
 
 type EditMode = 'folder' | 'rename' | 'copy' | 'move' | null
 type ViewMode = 'list' | 'grid'
@@ -173,8 +177,8 @@ export default function FileScreen() {
 
   const connect = useCallback(async (server: ServerConfig) => {
     setLoading(true); setError(null)
-    const result = await login(server)
-    if (result.ok) { setToken(result.data); setSelectedServer(server) }
+    const result = await connectFileManager(server)
+    if (result.ok) { setToken(result.token ?? ''); setSelectedServer(server) }
     else setError(result.error ?? '登录失败')
     setLoading(false)
   }, [])
@@ -182,6 +186,13 @@ export default function FileScreen() {
   const loadDir = useCallback(async (path: string) => {
     if (!selectedServer || !token) return
     setLoading(true); setError(null); setIsSearchResults(false)
+    if (selectedServer.fileBackend === 'webdav') {
+      const result = await fmListDir(selectedServer, token, path)
+      if (result.ok) { setFiles(sortFiles(result.files ?? [], fileSort)); setCurrentPath(path) }
+      else setError(result.error ?? '加载失败')
+      setLoading(false)
+      return
+    }
     const result = await listFiles(selectedServer, token, path)
     if (result.ok) { setFiles(sortFiles(result.data, fileSort)); setCurrentPath(path) }
     else setError(result.error ?? '加载失败')
@@ -1183,7 +1194,7 @@ function ActiveServiceView({ service, onClose }: ActiveServiceViewProps) {
             <Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text>
           </TouchableOpacity>
         </View>
-        {service.type === 'jellyfin' ? (
+        {service.type === 'jellyfin' || service.type === 'emby' ? (
           <JellyfinScreen service={service} onRequestClose={handleClose} />
         ) : service.type === 'navidrome' ? (
           <NavidromeScreen service={service} onRequestClose={handleClose} />
@@ -1191,6 +1202,12 @@ function ActiveServiceView({ service, onClose }: ActiveServiceViewProps) {
           <AudiobookshelfScreen service={service} />
         ) : isTalebookService(service) ? (
           <TalebookScreen service={service} onRequestClose={handleClose} />
+        ) : service.type === 'aria2' ? (
+          <Aria2Screen service={service} onRequestClose={handleClose} />
+        ) : service.type === 'qbittorrent' ? (
+          <QBitTorrentScreen service={service} onRequestClose={handleClose} />
+        ) : service.type === 'openlist' ? (
+          <OpenListScreen service={service} onRequestClose={handleClose} />
         ) : (
           <ServiceCard service={service} />
         )}

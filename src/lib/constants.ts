@@ -29,6 +29,7 @@ export function isTalebookService(service: ServiceConfig): boolean {
 
 export const SERVICE_TYPE_LABELS: Record<string, string> = {
   jellyfin: 'Jellyfin',
+  emby: 'Emby',
   navidrome: 'Navidrome',
   audiobookshelf: 'Audiobookshelf',
   immich: 'Immich',
@@ -44,6 +45,7 @@ export const SERVICE_TYPE_LABELS: Record<string, string> = {
 
 export const SERVICE_TYPE_ICONS: Record<string, IconName> = {
   jellyfin: 'jellyfin',
+  emby: 'emby',
   navidrome: 'navidrome',
   audiobookshelf: 'audiobookshelf',
   immich: 'immich',

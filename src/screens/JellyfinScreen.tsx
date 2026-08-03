@@ -83,7 +83,7 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
 
   const loadServer = useCallback(async () => {
     if (!service.url || !service.username || !service.password) {
-      setError('请先在设置中配置 Jellyfin 服务器地址和账号密码')
+      setError(`请先在设置中配置 ${service.type === 'emby' ? 'Emby' : 'Jellyfin'} 服务器地址和账号密码`)
       return
     }
     setError(null)
