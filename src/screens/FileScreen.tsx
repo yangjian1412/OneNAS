@@ -4,8 +4,8 @@ import * as DocumentPicker from 'expo-document-picker'
 import { useIsFocused, useNavigation } from '@react-navigation/native'
 import { useAppStore, FileSortBy, FileSortDir } from '@/stores/appStore'
 import { ServerConfig, FileItem, ServiceConfig, ShareInfo } from '@/types'
-import { login, listFiles, searchFilesStream, createFolder, deleteResource, renameResource, copyResource, uploadResource, getShares, createShare, deleteShare, getResourceInfo, getFileChecksum, ResourceInfo } from '@/lib/api/filebrowser'
-import { connectFileManager, listDir as fmListDir } from '@/lib/api/fileManager'
+import { login, listFiles, createFolder, deleteResource, renameResource, copyResource, uploadResource, getShares, createShare, deleteShare, getResourceInfo, getFileChecksum, ResourceInfo } from '@/lib/api/filebrowser'
+import { connectFileManager, listDir as fmListDir, mkdir as fmMkdir, removeFiles as fmRemoveFiles, renameFile as fmRename, copyFile as fmCopy, uploadFile as fmUpload, searchFilesStream as fmSearchStream, getShares as fmGetShares, createShare as fmCreateShare, deleteShare as fmDeleteShare, getResourceInfo as fmGetResourceInfo, getFileChecksum as fmGetChecksum } from '@/lib/api/fileManager'
 import { getFileIcon } from '@/lib/fileTypes'
 import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '@/lib/theme'
@@ -42,6 +42,8 @@ const encodeRemotePath = (path: string) => path.replace(/^\/+/, '').split('/').m
 export default function FileScreen() {
   const servers = useAppStore((s) => s.servers)
   const fbServers = servers.filter((s) => s.type === 'filebrowser')
+  const fileBackend = useAppStore((s) => s.fileBackend)
+  const webdavServer = useAppStore((s) => s.webdavServer)
   const t = useTheme()
   const insets = useSafeAreaInsets()
 
@@ -175,29 +177,22 @@ export default function FileScreen() {
     else setActiveService(service)
   }
 
-  const connect = useCallback(async (server: ServerConfig) => {
+  const connect = useCallback(async (server: ServerConfig | null) => {
     setLoading(true); setError(null)
-    const result = await connectFileManager(server)
+    const result = await connectFileManager(server, fileBackend, webdavServer)
     if (result.ok) { setToken(result.token ?? ''); setSelectedServer(server) }
     else setError(result.error ?? '登录失败')
     setLoading(false)
-  }, [])
+  }, [fileBackend, webdavServer])
 
   const loadDir = useCallback(async (path: string) => {
     if (!selectedServer || !token) return
     setLoading(true); setError(null); setIsSearchResults(false)
-    if (selectedServer.fileBackend === 'webdav') {
-      const result = await fmListDir(selectedServer, token, path)
-      if (result.ok) { setFiles(sortFiles(result.files ?? [], fileSort)); setCurrentPath(path) }
-      else setError(result.error ?? '加载失败')
-      setLoading(false)
-      return
-    }
-    const result = await listFiles(selectedServer, token, path)
-    if (result.ok) { setFiles(sortFiles(result.data, fileSort)); setCurrentPath(path) }
+    const result = await fmListDir(selectedServer, token, path, fileBackend, webdavServer)
+    if (result.ok) { setFiles(sortFiles(result.files ?? [], fileSort)); setCurrentPath(path) }
     else setError(result.error ?? '加载失败')
     setLoading(false)
-  }, [selectedServer, token, fileSort])
+  }, [selectedServer, token, fileSort, fileBackend, webdavServer])
 
   const doSearch = useCallback(async (query: string, category: SearchCategory) => {
     if (!selectedServer || !token || !query.trim()) return
@@ -211,7 +206,7 @@ export default function FileScreen() {
     setSearchLoading(true); setSearchError(null)
     try {
       const typeSuffix = category === 'all' ? '' : ` type:${category}`
-      const result = await searchFilesStream(
+      const result = await fmSearchStream(
         selectedServer, token, query.trim() + typeSuffix, currentPath, controller.signal,
         (item) => {
           if (searchGenerationRef.current !== gen) return
@@ -255,9 +250,26 @@ export default function FileScreen() {
   }, [searchModalOpen])
 
   const autoLoaded = useRef(false)
+  const prevBackend = useRef(fileBackend)
+  const prevWebdavUrl = useRef(webdavServer?.url)
+
   useEffect(() => {
-    if (fbServers.length === 1 && !selectedServer && !token) connect(fbServers[0])
-  }, [fbServers, selectedServer, token, connect])
+    if (prevBackend.current !== fileBackend || prevWebdavUrl.current !== webdavServer?.url) {
+      prevBackend.current = fileBackend
+      prevWebdavUrl.current = webdavServer?.url
+      setSelectedServer(null)
+      setToken(null)
+      setFiles([])
+      setCurrentPath('/')
+      setIsSearchResults(false)
+      autoLoaded.current = false
+    }
+  }, [fileBackend, webdavServer])
+
+  useEffect(() => {
+    if (fileBackend === 'filebrowser' && fbServers.length === 1 && !selectedServer && !token) connect(fbServers[0])
+    else if (fileBackend === 'webdav' && webdavServer && !selectedServer && !token) connect(null)
+  }, [fileBackend, fbServers, webdavServer, selectedServer, token, connect])
   useEffect(() => {
     if (selectedServer && token && !autoLoaded.current) {
       autoLoaded.current = true
@@ -385,21 +397,21 @@ export default function FileScreen() {
     if (!selectedServer || !token || !editMode || !editText.trim()) return
     setActionLoading(true)
     let result: { ok: boolean; error?: string }
-    if (editMode === 'folder') result = await createFolder(selectedServer, token, remotePath(editText.trim()))
+    if (editMode === 'folder') result = await fmMkdir(selectedServer, token, remotePath(editText.trim()), fileBackend, webdavServer)
     else if (editMode === 'rename') {
       const target = selectedItems()[0]
       if (!target) result = { ok: false, error: '未选择文件' }
       else {
         const parent = target.path.split('/').filter(Boolean).slice(0, -1).join('/')
-        result = await renameResource(selectedServer, token, target.path, `/${parent ? `${parent}/` : ''}${editText.trim()}`)
+        result = await fmRename(selectedServer, token, target.path, `/${parent ? `${parent}/` : ''}${editText.trim()}`, fileBackend, webdavServer)
       }
     } else {
       const targets = selectedItems()
       if (!targets.length) result = { ok: false, error: '未选择文件' }
       else {
         const results = await Promise.all(targets.map((target) => editMode === 'copy'
-          ? copyResource(selectedServer!, token!, target.path, editText.trim())
-          : renameResource(selectedServer!, token!, target.path, editText.trim())))
+          ? fmCopy(selectedServer!, token!, target.path, editText.trim(), fileBackend, webdavServer)
+          : fmRename(selectedServer!, token!, target.path, editText.trim(), fileBackend, webdavServer)))
         result = results.find((item) => !item.ok) ?? { ok: true }
       }
     }
@@ -414,7 +426,7 @@ export default function FileScreen() {
     const asset = picked.assets?.[0]
     if (!asset) return
     setLoading(true)
-    const result = await uploadResource(selectedServer, token, asset.uri, remotePath(asset.name))
+    const result = await fmUpload(selectedServer, token, asset.uri, remotePath(asset.name), fileBackend, webdavServer)
     if (!result.ok) Alert.alert('上传失败', result.error ?? 'Upload failed')
     else await loadDir(currentPath)
     setLoading(false)
@@ -497,9 +509,8 @@ export default function FileScreen() {
       { text: '取消', style: 'cancel' },
       { text: '删除', style: 'destructive', onPress: async () => {
         setLoading(true)
-        const results = await Promise.all(paths.map((path) => deleteResource(selectedServer!, token!, path)))
-        const failed = results.find((item) => !item.ok)
-        if (failed) Alert.alert('删除失败', failed.error ?? 'Delete failed')
+        const r = await fmRemoveFiles(selectedServer!, token!, paths, fileBackend, webdavServer)
+        if (!r.ok) Alert.alert('删除失败', r.error ?? 'Delete failed')
         cancelSelection(); await loadDir(currentPath); setLoading(false)
       } },
     ])
@@ -508,8 +519,8 @@ export default function FileScreen() {
   const loadShares = async () => {
     if (!selectedServer || !token) return
     setShareLoading(true)
-    const result = await getShares(selectedServer, token)
-    if (result.ok) setShares(result.data)
+    const result = await fmGetShares(selectedServer, token, fileBackend)
+    if (result.ok) setShares(result.data ?? [])
     setShareLoading(false)
   }
 
@@ -518,15 +529,15 @@ export default function FileScreen() {
     setDetailsItem(item)
     setDetailsLoading(true)
     setDetailsInfo(null)
-    const result = await getResourceInfo(selectedServer!, token!, item.path)
-    if (result.ok) setDetailsInfo(result.data)
+    const result = await fmGetResourceInfo(selectedServer!, token!, item.path, fileBackend)
+    if (result.ok) setDetailsInfo(result.data ?? null)
     setDetailsLoading(false)
   }
 
   const handleCreateShare = async () => {
     if (!selectedServer || !token || !shareCreateItem) return
     setShareCreating(true)
-    const result = await createShare(selectedServer, token, shareCreateItem.path, shareCreatePassword || undefined, shareCreateExpiry || undefined)
+    const result = await fmCreateShare(selectedServer, token, shareCreateItem.path, shareCreatePassword || undefined, shareCreateExpiry || undefined, fileBackend)
     setShareCreating(false)
     if (!result.ok) { Alert.alert('创建分享失败', result.error); return }
     const link = `${buildUrl(selectedServer.protocol, selectedServer.host, selectedServer.port)}/share/${result.data.hash}`
@@ -575,7 +586,31 @@ export default function FileScreen() {
     )
   }
 
-  if (fbServers.length === 0) return <View style={[styles.container, styles.withServiceBar, { backgroundColor: t.bg }]}><ServiceBar onServicePress={handleTopServicePress} /><View style={styles.center}><Icon name="filebrowser" size={56} /><Text style={[styles.emptyTitle, { color: t.text }]}>尚未配置 FileBrowser</Text><Text style={[styles.emptySub, { color: t.textMuted }]}>到设置 → 服务器添加</Text></View></View>
+  // 未配置提示：FileBrowser/WebDAV 各自独立提示
+  if (fileBackend === 'webdav' && !webdavServer) {
+    return (
+      <View style={[styles.container, styles.withServiceBar, { backgroundColor: t.bg }]}>
+        <ServiceBar onServicePress={handleTopServicePress} />
+        <View style={styles.center}>
+          <Icon name="filebrowser" size={56} />
+          <Text style={[styles.emptyTitle, { color: t.text }]}>尚未配置 WebDAV</Text>
+          <Text style={[styles.emptySub, { color: t.textMuted }]}>到设置 → 服务设置 → 文件管理 切换并配置 WebDAV</Text>
+        </View>
+      </View>
+    )
+  }
+  if (fileBackend === 'filebrowser' && fbServers.length === 0) {
+    return (
+      <View style={[styles.container, styles.withServiceBar, { backgroundColor: t.bg }]}>
+        <ServiceBar onServicePress={handleTopServicePress} />
+        <View style={styles.center}>
+          <Icon name="filebrowser" size={56} />
+          <Text style={[styles.emptyTitle, { color: t.text }]}>尚未配置 FileBrowser</Text>
+          <Text style={[styles.emptySub, { color: t.textMuted }]}>到设置 → 服务设置 → 文件管理 配置 FileBrowser 服务</Text>
+        </View>
+      </View>
+    )
+  }
 
   const hasSelection = selectedPaths.length > 0
   const showBottomBar = multiSelect && hasSelection

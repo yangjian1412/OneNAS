@@ -17,15 +17,17 @@ interface QBitState {
   filter: 'all' | 'downloading' | 'completed' | 'paused'
   isLoading: boolean
   error: string | null
+  autoRefresh: boolean
 
   setServer: (server: QBittorrentServerConfig | null) => void
   setFilter: (f: QBitState['filter']) => void
   setError: (e: string | null) => void
+  setAutoRefresh: (v: boolean) => void
   logout: () => void
 
   loadHome: () => Promise<void>
   refresh: () => Promise<void>
-  addUrl: (urls: string[], savePath?: string) => Promise<boolean>
+  addUrl: (urls: string[]) => Promise<boolean>
   pause: (hashes: string[]) => Promise<void>
   resume: (hashes: string[]) => Promise<void>
   remove: (hashes: string[], deleteFiles?: boolean) => Promise<void>
@@ -49,6 +51,7 @@ export const useQBitStore = create<QBitState>((set, get) => ({
   filter: 'all',
   isLoading: false,
   error: null,
+  autoRefresh: true,
 
   setServer: (server) => set({ server }),
   setFilter: (filter) => {
@@ -56,6 +59,7 @@ export const useQBitStore = create<QBitState>((set, get) => ({
     void get().loadHome()
   },
   setError: (error) => set({ error }),
+  setAutoRefresh: (autoRefresh) => set({ autoRefresh }),
   logout: () => set({ server: null, tasks: [], error: null }),
 
   initWithService: async (service) => {
@@ -83,10 +87,10 @@ export const useQBitStore = create<QBitState>((set, get) => ({
 
   refresh: async () => { await get().loadHome() },
 
-  addUrl: async (urls, savePath) => {
+  addUrl: async (urls) => {
     const server = get().server
     if (!server) return false
-    const ok = await qbitAddUrl(server, urls, savePath)
+    const ok = await qbitAddUrl(server, urls)
     if (ok) await get().loadHome()
     return ok
   },

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { ServerConfig, ServiceConfig, Container, SystemInfo, ThemeMode, DownloadTask, ExportPayloadV2 } from '@/types'
+import { ServerConfig, ServiceConfig, Container, SystemInfo, ThemeMode, DownloadTask, ExportPayloadV2, WebDavConfig, FileBackend } from '@/types'
 import { loadItem, saveItem } from '@/lib/storage'
 import { STORAGE_KEYS } from '@/lib/constants'
 import CryptoJS from 'crypto-js'
@@ -18,6 +18,8 @@ interface PersistPayload {
   hideNasManagement: boolean
   hideTabLabels: boolean
   fileSort: FileSort
+  fileBackend: FileBackend
+  webdavServer: WebDavConfig | null
   downloads: DownloadTask[]
 }
 
@@ -29,6 +31,8 @@ async function persist(s: AppState, extra?: Partial<PersistPayload>) {
     hideNasManagement: extra?.hideNasManagement ?? s.hideNasManagement,
     hideTabLabels: extra?.hideTabLabels ?? s.hideTabLabels,
     fileSort: extra?.fileSort ?? s.fileSort,
+    fileBackend: extra?.fileBackend ?? s.fileBackend,
+    webdavServer: extra?.webdavServer !== undefined ? extra.webdavServer : s.webdavServer,
   }
   await saveItem(STORAGE_KEYS.CONFIG, JSON.stringify(payload))
 }
@@ -75,6 +79,8 @@ export interface AppState {
   hideNasManagement: boolean
   hideTabLabels: boolean
   fileSort: FileSort
+  fileBackend: FileBackend
+  webdavServer: WebDavConfig | null
 
   init: () => Promise<void>
 
@@ -94,6 +100,8 @@ export interface AppState {
   setHideNasManagement: (hidden: boolean) => void
   setHideTabLabels: (hidden: boolean) => void
   setFileSort: (sort: FileSort) => void
+  setFileBackend: (b: FileBackend) => void
+  setWebDavServer: (cfg: WebDavConfig | null) => void
   addDownload: (task: DownloadTask) => void
   updateDownload: (task: DownloadTask) => void
   removeDownload: (id: number) => void
@@ -113,6 +121,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   hideNasManagement: false,
   hideTabLabels: true,
   fileSort: { by: 'name', dir: 'asc' },
+  fileBackend: 'filebrowser',
+  webdavServer: null,
   downloads: [],
 
   init: async () => {
@@ -130,6 +140,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const hideNasManagement = cfg.hideNasManagement ?? false
       const hideTabLabels = cfg.hideTabLabels ?? true
       const fileSort = cfg.fileSort ?? { by: 'name', dir: 'asc' }
+      const fileBackend = cfg.fileBackend ?? 'filebrowser'
+      const webdavServer = cfg.webdavServer ?? null
       set({
         loaded: true,
         servers,
@@ -138,9 +150,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         hideNasManagement,
         hideTabLabels,
         fileSort,
+        fileBackend,
+        webdavServer,
       })
       // 落盘：真正把残留（如空 url 的 calibre 占位）从磁盘清除
-      void persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort })
+      void persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer })
     } catch {
       set({ loaded: true })
     }
@@ -164,6 +178,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setTheme: (theme) => { set({ theme }); persist(get(), { theme }) },
   setHideNasManagement: (hideNasManagement) => { set({ hideNasManagement }); persist(get(), { hideNasManagement }) },
   setHideTabLabels: (hideTabLabels) => { set({ hideTabLabels }); persist(get(), { hideTabLabels }) },
+  setFileSort: (fileSort) => { set({ fileSort }); persist(get(), { fileSort }) },
+  setFileBackend: (fileBackend) => { set({ fileBackend }); persist(get(), { fileBackend }) },
+  setWebDavServer: (webdavServer) => { set({ webdavServer }); persist(get(), { webdavServer }) },
   setFileSort: (fileSort) => { set({ fileSort }); persist(get(), { fileSort }) },
   addDownload: (task) => set((state) => ({ downloads: [...state.downloads, task] })),
   updateDownload: (task) => set((state) => ({ downloads: state.downloads.map((item) => item.id === task.id ? task : item) })),
@@ -201,8 +218,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const hideNasManagement = cfg.hideNasManagement ?? false
     const hideTabLabels = cfg.hideTabLabels ?? true
     const fileSort = cfg.fileSort ?? { by: 'name', dir: 'asc' }
-    set({ servers, services, theme, hideNasManagement, hideTabLabels, fileSort })
-    await persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort })
+    const fileBackend = cfg.fileBackend ?? 'filebrowser'
+    const webdavServer = cfg.webdavServer ?? null
+    set({ servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer })
+    await persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer })
     return { ok: true }
   },
 
@@ -215,6 +234,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       hideNasManagement: s.hideNasManagement,
       hideTabLabels: s.hideTabLabels,
       fileSort: s.fileSort,
+      fileBackend: s.fileBackend,
+      webdavServer: s.webdavServer,
     })
     // v2 加密格式：密钥（默认 "0"）AES 加密，导出含密码也行，但不含明文
     const cipher = CryptoJS.AES.encrypt(cfg, key || '0').toString()

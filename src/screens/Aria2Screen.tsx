@@ -67,7 +67,7 @@ export default function Aria2Screen({ service, onRequestClose }: Props) {
     loadHome, refresh,
     pause, unpause, remove, forceRemove, addUri,
     loadGlobalOption, saveGlobalOption,
-    initWithService,
+    initWithService, autoRefresh, setAutoRefresh,
   } = useAria2Store()
 
   const [tab, setTab] = useState<Tab>('active')
@@ -75,7 +75,8 @@ export default function Aria2Screen({ service, onRequestClose }: Props) {
   const [addOpen, setAddOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [addUrls, setAddUrls] = useState('')
-  const [autoRefresh, setAutoRefresh] = useState(true)
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
   const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
   const isFocused = useIsFocused()
@@ -86,9 +87,9 @@ export default function Aria2Screen({ service, onRequestClose }: Props) {
 
   useEffect(() => {
     if (!isFocused || !autoRefresh || !server) return
-    const t = setInterval(() => { void refresh() }, AUTO_REFRESH_MS)
+    const t = setInterval(() => { void refreshRef.current() }, AUTO_REFRESH_MS)
     return () => clearInterval(t)
-  }, [isFocused, autoRefresh, server, refresh])
+  }, [isFocused, autoRefresh, server])
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -149,6 +150,9 @@ export default function Aria2Screen({ service, onRequestClose }: Props) {
             thumbColor={autoRefresh ? t.primary : '#f4f3f4'}
             style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
           />
+          <TouchableOpacity onPress={() => { void refresh() }} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Icon name="refresh" size={20} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -237,15 +241,17 @@ export default function Aria2Screen({ service, onRequestClose }: Props) {
         <View style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setDrawerOpen(false)} activeOpacity={1} />
           <View style={[styles.drawer, { backgroundColor: t.card }]}>
-            <Text style={[styles.drawerTitle, { color: t.text }]}>{server.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={[styles.drawerTitle, { color: t.text }]}>{server.name}</Text>
+              <TouchableOpacity onPress={() => setDrawerOpen(false)} style={{ padding: 4 }}>
+                <Icon name="x" size={20} />
+              </TouchableOpacity>
+            </View>
             <Text style={[styles.drawerSub, { color: t.textMuted }]}>{server.url}</Text>
             {version ? <Text style={[styles.drawerSub, { color: t.textMuted }]}>aria2 v{version}</Text> : null}
             <TouchableOpacity style={[styles.drawerItem, { borderColor: t.border }]} onPress={() => { setDrawerOpen(false); void loadGlobalOption().then(() => setSettingsOpen(true)) }}>
               <Icon name="settings" size={20} />
               <Text style={[styles.drawerItemText, { color: t.text }]}>下载设置</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.drawerItem, { borderColor: t.border }]} onPress={() => setDrawerOpen(false)}>
-              <Text style={[styles.drawerItemText, { color: t.textMuted }]}>关闭</Text>
             </TouchableOpacity>
           </View>
         </View>

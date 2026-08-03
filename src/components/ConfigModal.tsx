@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { login } from '@/lib/api/filebrowser'
 import { fetchContainers } from '@/lib/api/unraid'
 import { navidromeLogin } from '@/lib/api/navidrome'
+import { useAppStore } from '@/stores/appStore'
 
 function parseServerUrl(url: string): { protocol: 'http' | 'https'; host: string; port: number } {
   try {
@@ -44,6 +45,7 @@ export default function ConfigModal({
 }: Props) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
+  const services = useAppStore((s) => s.services)
   const isServerType = type === 'filebrowser' || type === 'unraid'
   const isAppType = type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'immich' || type === 'talebook' || type === 'aria2' || type === 'qbittorrent' || type === 'openlist' || type === 'emby'
   const [testing, setTesting] = useState(false)
@@ -58,7 +60,6 @@ export default function ConfigModal({
   const [url, setUrl] = useState('')
   const [authType, setAuthType] = useState<'none' | 'basic' | 'token' | 'apikey'>('none')
   const [talebookLoginMode, setTalebookLoginMode] = useState<'code' | 'password' | 'guest'>('password')
-  const [fileBackend, setFileBackend] = useState<'filebrowser' | 'webdav'>('filebrowser')
 
   useEffect(() => {
     if (isServerType && server) {
@@ -73,7 +74,6 @@ export default function ConfigModal({
       setUsername(server.username ?? '')
       setPassword(server.password ?? '')
       setApiKey(server.apiKey ?? '')
-      setFileBackend(server.fileBackend ?? 'filebrowser')
     } else if (!isServerType && service) {
       setName(service.name)
       setUrl(service.url)
@@ -97,7 +97,6 @@ export default function ConfigModal({
       setUrl('')
       setAuthType('none')
       setTalebookLoginMode('password')
-      setFileBackend('filebrowser')
     }
   }, [visible, type, server, service])
 
@@ -175,7 +174,6 @@ export default function ConfigModal({
           protocol: parsed.protocol,
           username: username || undefined,
           password: password || undefined,
-          fileBackend,
         })
         return
       }
@@ -251,18 +249,6 @@ export default function ConfigModal({
                   <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
                     placeholder="http://..." placeholderTextColor={t.textMuted}
                     value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} />
-
-                  <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>文件管理协议</Text>
-                  <View style={styles.authRow}>
-                    {(['filebrowser', 'webdav'] as const).map((b) => (
-                      <TouchableOpacity key={b} style={[styles.authBtn, { borderColor: t.border },
-                        fileBackend === b && { backgroundColor: t.primary, borderColor: t.primary }]}
-                        onPress={() => setFileBackend(b)}>
-                        <Text style={[styles.authBtnText, { color: t.textSecondary },
-                          fileBackend === b && { color: '#fff' }]}>{b === 'filebrowser' ? 'FileBrowser' : 'WebDAV'}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
 
                   <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Username</Text>
                   <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
@@ -431,6 +417,16 @@ export default function ConfigModal({
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
                       placeholder="http://host:5244" placeholderTextColor={t.textMuted}
                       value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} />
+
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>用户名（可选）</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="登录用户名" placeholderTextColor={t.textMuted}
+                      value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
+
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>密码（可选）</Text>
+                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                      placeholder="登录密码" secureTextEntry placeholderTextColor={t.textMuted}
+                      value={password} onChangeText={setPassword} />
 
                     <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Admin Token（可选）</Text>
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}

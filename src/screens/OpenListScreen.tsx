@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal, Animated } from 'react-native'
 import { useIsFocused } from '@react-navigation/native'
 import { useOpenListStore } from '@/stores/openlistStore'
+import { useAppStore } from '@/stores/appStore'
 import type { OpenListFile, ServiceConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
@@ -24,10 +25,15 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
   const {
     server, path, files, loading, error,
     cd, up, refresh, mkdir, remove, initWithService,
+    getDownloader, setDownloader,
   } = useOpenListStore()
 
   const [mkdirOpen, setMkdirOpen] = useState(false)
   const [mkdirName, setMkdirName] = useState('')
+  // 下载工具设置抽屉
+  const [dlOpen, setDlOpen] = useState(false)
+  const [dlUrl, setDlUrl] = useState('')
+  const [dlSecret, setDlSecret] = useState('')
   const lastBackPressRef = useRef(0)
   const isFocused = useIsFocused()
 
@@ -36,9 +42,19 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
   }, [isFocused, initWithService, service])
 
   useEffect(() => {
+    if (dlOpen) {
+      void getDownloader().then((dl) => {
+        setDlUrl(dl?.url ?? '')
+        setDlSecret(dl?.secret ?? '')
+      })
+    }
+  }, [dlOpen, getDownloader])
+
+  useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!isFocused) return false
       if (mkdirOpen) { setMkdirOpen(false); return true }
+      if (dlOpen) { setDlOpen(false); return true }
       if (path !== '/') { void up(); return true }
       const now = Date.now()
       if (now - lastBackPressRef.current < 2000) return false
@@ -46,7 +62,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       return true
     })
     return () => sub.remove()
-  }, [isFocused, mkdirOpen, path])
+  }, [isFocused, mkdirOpen, dlOpen, path])
 
   const onMkdirSubmit = useCallback(async () => {
     if (!mkdirName.trim()) return
@@ -54,6 +70,19 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
     if (ok) { setMkdirName(''); setMkdirOpen(false) }
     else Alert.alert('错误', '创建失败')
   }, [mkdirName, mkdir])
+
+  const onDlSave = useCallback(async () => {
+    const url = dlUrl.trim().replace(/\/+$/, '')
+    const secret = dlSecret.trim()
+    if (!url) {
+      await setDownloader(null)
+      setDlOpen(false)
+      Alert.alert('提示', '已清空下载工具配置')
+      return
+    }
+    await setDownloader({ type: 'aria2', url, secret })
+    setDlOpen(false)
+  }, [dlUrl, dlSecret, setDownloader])
 
   if (!server) {
     return (
@@ -78,6 +107,9 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
         </View>
         <TouchableOpacity onPress={() => { void refresh() }} style={styles.iconBtn}>
           <Icon name="refresh" size={22} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setDlOpen(true)} style={styles.iconBtn}>
+          <Icon name="settings" size={22} />
         </TouchableOpacity>
       </View>
 
@@ -133,6 +165,48 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={dlOpen} transparent animationType="slide" onRequestClose={() => setDlOpen(false)}>
+        <View style={styles.modalRoot}>
+          <TouchableOpacity style={styles.backdrop} onPress={() => setDlOpen(false)} activeOpacity={1} />
+          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={[styles.sheetTitle, { color: t.text }]}>下载工具设置</Text>
+              <TouchableOpacity onPress={() => setDlOpen(false)} style={{ padding: 4 }}>
+                <Icon name="x" size={20} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.dlHint, { color: t.textMuted }]}>配置 OpenList 后台的下载工具（aria2），以便向 OpenList 推送下载任务。</Text>
+
+            <Aria2ImportButton t={t} onImported={(url, secret) => { setDlUrl(url); setDlSecret(secret) }} />
+
+            <Text style={[styles.dlLabel, { color: t.text }]}>RPC 地址（JSON-RPC）</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={dlUrl}
+              onChangeText={setDlUrl}
+              placeholder="http://host:6800/jsonrpc"
+              placeholderTextColor={t.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Text style={[styles.dlLabel, { color: t.text }]}>RPC 密钥（rpc-secret，可选）</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={dlSecret}
+              onChangeText={setDlSecret}
+              placeholder="请输入 aria2 rpc-secret"
+              placeholderTextColor={t.textMuted}
+              secureTextEntry
+            />
+
+            <View style={styles.sheetActions}>
+              <TouchableOpacity onPress={onDlSave}><Text style={[styles.actionText, { color: t.primary }]}>保存</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -146,6 +220,23 @@ function Row({ file, t, onPress, onDelete }: { file: OpenListFile; t: any; onPre
         {!file.is_dir ? <Text style={[styles.fileMeta, { color: t.textMuted }]}>{formatSize(file.size)}{file.modified ? `  ·  ${file.modified}` : ''}</Text> : null}
       </View>
       {file.is_dir ? <Icon name="chevronRight" size={18} /> : null}
+    </TouchableOpacity>
+  )
+}
+
+function Aria2ImportButton({ t, onImported }: { t: any; onImported: (url: string, secret: string) => void }) {
+  const services = useAppStore(s => s.services)
+  const aria2 = services.find(s => s.type === 'aria2')
+  if (!aria2) return null
+  const rpcUrl = (aria2.url || '').replace(/\/+$/, '')
+  const secret = aria2.apiKey || aria2.password || ''
+  return (
+    <TouchableOpacity
+      style={[styles.importBtn, { backgroundColor: (t.primary || '#2196f3') + '18', borderColor: t.primary || '#2196f3' }]}
+      onPress={() => onImported(rpcUrl, secret)}
+    >
+      <Icon name="downloadRounded" size={16} style={{ marginRight: 6 }} />
+      <Text style={[styles.importBtnText, { color: t.primary || '#2196f3' }]}>一键导入 aria2 配置</Text>
     </TouchableOpacity>
   )
 }
@@ -176,6 +267,10 @@ const styles = StyleSheet.create({
   sheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 32 },
   sheetTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
   input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14 },
+  dlHint: { fontSize: 12, marginBottom: 14, lineHeight: 17 },
+  dlLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 4 },
   sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 24, paddingTop: 16 },
   actionText: { fontSize: 14, fontWeight: '600' },
+  importBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10, borderRadius: 8, borderWidth: 1, marginBottom: 12 },
+  importBtnText: { fontSize: 13, fontWeight: '600' },
 })

@@ -1,38 +1,49 @@
-import type { WebDavServerConfig, ServerConfig } from '@/types'
+import type { WebDavConfig } from '@/types'
 
-export { type WebDavServerConfig }
-
-// 把 ServerConfig 转成 WebDavServerConfig
-export function serverToWebDav(server: ServerConfig): WebDavServerConfig {
-  const proto = server.protocol === 'https' ? 'https' : 'http'
-  const port = server.port ? `:${server.port}` : ''
-  let path = ''
-  if (server.apiKey) path = server.apiKey // 把 "API Key" 字段当作额外 path 后缀使用（可选）
-  const url = `${proto}://${server.host}${port}${path}`.replace(/\/+$/, '')
-  return {
-    id: server.id,
-    name: server.name,
-    url,
-    username: server.username || '',
-    password: server.password || '',
-  }
-}
+export type { WebDavConfig }
 
 export interface WebDavFile {
-  path: string        // 完整 URL 或相对路径
-  href: string
+  path: string        // 完整 URL 或相对路�?  href: string
   name: string
   isDir: boolean
   size: number
   modified?: string
 }
 
-function authHeader(server: WebDavServerConfig): string {
-  // RN 没有 global Buffer；用 btoa（latin1 安全编码，Basic Auth 通用即可）
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+function utf8Encode(str: string): number[] {
+  const bytes: number[] = []
+  for (let i = 0; i < str.length; i++) {
+    let code = str.codePointAt(i)!
+    if (code > 0xffff) i++
+    if (code < 0x80) bytes.push(code)
+    else if (code < 0x800) bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f))
+    else if (code < 0x10000) bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
+    else bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
+  }
+  return bytes
+}
+
+function toBase64(bytes: number[]): string {
+  let out = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i]
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : undefined
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : undefined
+    const n = (b0 << 16) | ((b1 ?? 0) << 8) | (b2 ?? 0)
+    out += B64[(n >> 18) & 63]
+    out += B64[(n >> 12) & 63]
+    out += b1 === undefined ? '=' : B64[(n >> 6) & 63]
+    out += b2 === undefined ? '=' : B64[n & 63]
+  }
+  return out
+}
+
+function authHeader(server: WebDavConfig): string {
+  // RN 的 Hermes 引擎没有 unescape/btoa（直接抛错），这里用自实现 UTF-8 → Base64
   const raw = `${server.username}:${server.password}`
-  let b64 = ''
-  try { b64 = globalThis.btoa(unescape(encodeURIComponent(raw))) } catch { b64 = '' }
-  return 'Basic ' + b64
+  return 'Basic ' + toBase64(utf8Encode(raw))
 }
 
 function joinPath(base: string, sub: string): string {
@@ -46,7 +57,7 @@ export interface WebDavPingResult {
   error?: string
 }
 
-export async function webDavPing(server: WebDavServerConfig): Promise<WebDavPingResult> {
+export async function webDavPing(server: WebDavConfig): Promise<WebDavPingResult> {
   try {
     const res = await fetch(server.url, {
       method: 'PROPFIND',
@@ -60,7 +71,7 @@ export async function webDavPing(server: WebDavServerConfig): Promise<WebDavPing
   }
 }
 
-export async function webDavList(server: WebDavServerConfig, path = ''): Promise<WebDavFile[]> {
+export async function webDavList(server: WebDavConfig, path = ''): Promise<WebDavFile[]> {
   const url = joinPath(server.url, path)
   const res = await fetch(url, {
     method: 'PROPFIND',
@@ -93,7 +104,7 @@ function parsePropfindResponse(xml: string, base: string): WebDavFile[] {
   return files
 }
 
-export async function webDavMkdir(server: WebDavServerConfig, path: string): Promise<boolean> {
+export async function webDavMkdir(server: WebDavConfig, path: string): Promise<boolean> {
   try {
     const url = joinPath(server.url, path).replace(/\/+$/, '')
     const res = await fetch(url, {
@@ -106,7 +117,7 @@ export async function webDavMkdir(server: WebDavServerConfig, path: string): Pro
   }
 }
 
-export async function webDavDelete(server: WebDavServerConfig, path: string): Promise<boolean> {
+export async function webDavDelete(server: WebDavConfig, path: string): Promise<boolean> {
   try {
     const url = joinPath(server.url, path)
     const res = await fetch(url, {
@@ -119,7 +130,7 @@ export async function webDavDelete(server: WebDavServerConfig, path: string): Pr
   }
 }
 
-export async function webDavMove(server: WebDavServerConfig, from: string, to: string): Promise<boolean> {
+export async function webDavMove(server: WebDavConfig, from: string, to: string): Promise<boolean> {
   try {
     const fromUrl = joinPath(server.url, from)
     const toUrl = joinPath(server.url, to)
@@ -133,7 +144,7 @@ export async function webDavMove(server: WebDavServerConfig, from: string, to: s
   }
 }
 
-export async function webDavCopy(server: WebDavServerConfig, from: string, to: string): Promise<boolean> {
+export async function webDavCopy(server: WebDavConfig, from: string, to: string): Promise<boolean> {
   try {
     const fromUrl = joinPath(server.url, from)
     const toUrl = joinPath(server.url, to)
@@ -147,7 +158,7 @@ export async function webDavCopy(server: WebDavServerConfig, from: string, to: s
   }
 }
 
-export async function webDavUpload(server: WebDavServerConfig, remotePath: string, data: Blob | string, contentType = 'application/octet-stream'): Promise<boolean> {
+export async function webDavUpload(server: WebDavConfig, remotePath: string, data: Blob | string, contentType = 'application/octet-stream'): Promise<boolean> {
   try {
     const url = joinPath(server.url, remotePath)
     const res = await fetch(url, {

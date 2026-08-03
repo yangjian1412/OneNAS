@@ -1,15 +1,19 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
 import type {
   OpenListServerConfig,
   OpenListFile,
   ServiceConfig,
 } from '@/types'
+
+const DOWNLOADER_PREFIX = 'openlist:downloader:'
 import {
   openListPing,
   openListList,
   openListMkdir,
   openListRemove,
   openListRename,
+  openListLogin,
 } from '@/lib/api/openlist'
 
 interface OpenListState {
@@ -30,6 +34,10 @@ interface OpenListState {
   remove: (names: string[], dir?: boolean) => Promise<boolean>
   rename: (path: string, newName: string) => Promise<boolean>
   initWithService: (service: ServiceConfig) => Promise<void>
+
+  /*** 下载工具（aria2）配置：独立缓存 + 立即写入当前 server ***/
+  getDownloader: () => Promise<NonNullable<OpenListServerConfig['downloader']> | null>
+  setDownloader: (dl: NonNullable<OpenListServerConfig['downloader']> | null) => Promise<void>
 }
 
 function normalizeFromService(svc: ServiceConfig): OpenListServerConfig {
@@ -37,6 +45,8 @@ function normalizeFromService(svc: ServiceConfig): OpenListServerConfig {
     id: svc.id,
     name: svc.name || 'OpenList',
     url: (svc.url || '').replace(/\/+$/, ''),
+    username: svc.username || undefined,
+    password: svc.password || undefined,
     token: svc.apiKey || undefined,
   }
 }
@@ -53,11 +63,22 @@ export const useOpenListStore = create<OpenListState>((set, get) => ({
   logout: () => set({ server: null, files: [], path: '/', error: null }),
 
   initWithService: async (service) => {
-    const cfg = normalizeFromService(service)
-    if (!cfg.url) {
+    const base = normalizeFromService(service)
+    if (!base.url) {
       set({ error: 'OpenList 未配置 URL' })
       return
     }
+    const dl = await getDownloaderCached(base.id)
+    const cfg: OpenListServerConfig = dl ? { ...base, downloader: dl } : base
+
+    // 无 token 但有用户名密码 → 自动登录获取 token
+    if (!cfg.token && cfg.username && cfg.password) {
+      const login = await openListLogin(cfg)
+      if (login.ok && login.token) {
+        cfg.token = login.token
+      }
+    }
+
     set({ server: cfg, error: null })
     const ping = await openListPing(cfg)
     if (!ping.ok) {
@@ -111,4 +132,41 @@ export const useOpenListStore = create<OpenListState>((set, get) => ({
     if (ok) await get().refresh()
     return ok
   },
+
+  getDownloader: async () => {
+    const id = get().server?.id
+    if (!id) return null
+    const cached = await getDownloaderCached(id)
+    if (cached) return cached
+    const cur = get().server?.downloader ?? null
+    if (cur && cur.url) {
+      await saveDownloaderCached(id, cur)
+      return cur
+    }
+    return null
+  },
+
+  setDownloader: async (dl) => {
+    const id = get().server?.id
+    set({ server: get().server ? { ...get().server!, downloader: dl ?? undefined } : null })
+    if (id) {
+      if (dl) await saveDownloaderCached(id, dl)
+      else await clearDownloaderCached(id)
+    }
+  },
 }))
+
+async function saveDownloaderCached(id: string, dl: NonNullable<OpenListServerConfig['downloader']>): Promise<void> {
+  try { await AsyncStorage.setItem(DOWNLOADER_PREFIX + id, JSON.stringify(dl)) } catch {}
+}
+
+async function getDownloaderCached(id: string): Promise<NonNullable<OpenListServerConfig['downloader']> | null> {
+  try {
+    const raw = await AsyncStorage.getItem(DOWNLOADER_PREFIX + id)
+    return raw ? (JSON.parse(raw) as NonNullable<OpenListServerConfig['downloader']>) : null
+  } catch { return null }
+}
+
+async function clearDownloaderCached(id: string): Promise<void> {
+  try { await AsyncStorage.removeItem(DOWNLOADER_PREFIX + id) } catch {}
+}

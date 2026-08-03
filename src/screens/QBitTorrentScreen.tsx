@@ -70,15 +70,15 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
   const {
     server, tasks, filter, isLoading, error,
     loadHome, refresh, addUrl, pause, resume, remove, recheck,
-    setFilter, initWithService,
+    setFilter, initWithService, autoRefresh, setAutoRefresh,
   } = useQBitStore()
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [addUrls, setAddUrls] = useState('')
-  const [savePath, setSavePath] = useState('')
-  const [autoRefresh, setAutoRefresh] = useState(true)
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
   const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
   const isFocused = useIsFocused()
@@ -89,9 +89,9 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
 
   useEffect(() => {
     if (!isFocused || !autoRefresh || !server) return
-    const t = setInterval(() => { void refresh() }, AUTO_REFRESH_MS)
+    const t = setInterval(() => { void refreshRef.current() }, AUTO_REFRESH_MS)
     return () => clearInterval(t)
-  }, [isFocused, autoRefresh, server, refresh])
+  }, [isFocused, autoRefresh, server])
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -113,15 +113,14 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
       Alert.alert('提示', '请输入至少一个 magnet 或 URL')
       return
     }
-    const ok = await addUrl(urls, savePath || undefined)
+    const ok = await addUrl(urls)
     if (ok) {
       setAddUrls('')
-      setSavePath('')
       setAddOpen(false)
     } else {
       Alert.alert('错误', '添加失败，请检查配置或网络')
     }
-  }, [addUrls, savePath, addUrl])
+  }, [addUrls, addUrl])
 
   if (!server) {
     return (
@@ -151,6 +150,9 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
             thumbColor={autoRefresh ? t.primary : '#f4f3f4'}
             style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
           />
+          <TouchableOpacity onPress={() => { void refresh() }} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Icon name="refresh" size={20} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -215,15 +217,6 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
               placeholder="magnet:?xt=urn:btih:..."
               placeholderTextColor={t.textMuted}
             />
-            <Text style={[styles.fieldLabel, { color: t.textSecondary, marginTop: 8 }]}>保存路径（可选）</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-              value={savePath}
-              onChangeText={setSavePath}
-              placeholder="/downloads/incoming"
-              placeholderTextColor={t.textMuted}
-              autoCapitalize="none" autoCorrect={false}
-            />
             <View style={styles.sheetActions}>
               <TouchableOpacity onPress={() => setAddOpen(false)}><Text style={[styles.actionText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
               <TouchableOpacity onPress={onAddSubmit}><Text style={[styles.actionText, { color: t.primary }]}>添加</Text></TouchableOpacity>
@@ -236,15 +229,17 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
         <View style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setDrawerOpen(false)} activeOpacity={1} />
           <View style={[styles.drawer, { backgroundColor: t.card }]}>
-            <Text style={[styles.drawerTitle, { color: t.text }]}>{server.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={[styles.drawerTitle, { color: t.text }]}>{server.name}</Text>
+              <TouchableOpacity onPress={() => setDrawerOpen(false)} style={{ padding: 4 }}>
+                <Icon name="x" size={20} />
+              </TouchableOpacity>
+            </View>
             <Text style={[styles.drawerSub, { color: t.textMuted }]}>{server.url}</Text>
             {server.username ? <Text style={[styles.drawerSub, { color: t.textMuted }]}>用户：{server.username}</Text> : null}
             <TouchableOpacity style={[styles.drawerItem, { borderColor: t.border }]} onPress={() => { setDrawerOpen(false); setSettingsOpen(true) }}>
               <Icon name="settings" size={20} />
               <Text style={[styles.drawerItemText, { color: t.text }]}>基本设置</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.drawerItem, { borderColor: t.border }]} onPress={() => setDrawerOpen(false)}>
-              <Text style={[styles.drawerItemText, { color: t.textMuted }]}>关闭</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -271,7 +266,6 @@ function SettingsModal({ visible, onClose, server, t }: SettingsModalProps) {
   const [prefs, setPrefs] = useState<Record<string, any> | null>(null)
   const [maxDl, setMaxDl] = useState('')
   const [maxUp, setMaxUp] = useState('')
-  const [savePath, setSavePath] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -284,7 +278,6 @@ function SettingsModal({ visible, onClose, server, t }: SettingsModalProps) {
         setPrefs(p)
         setMaxDl(p.max_dl_rate != null && p.max_dl_rate > 0 ? bytesToHuman(p.max_dl_rate) : '')
         setMaxUp(p.max_up_rate != null && p.max_up_rate > 0 ? bytesToHuman(p.max_up_rate) : '')
-        setSavePath(p.save_path ?? '')
       }
     })()
     return () => { active = false }
@@ -295,7 +288,6 @@ function SettingsModal({ visible, onClose, server, t }: SettingsModalProps) {
     const next: Record<string, any> = { ...(prefs ?? {}) }
     if (maxDl.trim()) next.max_dl_rate = parseSpeedToBytes(maxDl)
     if (maxUp.trim()) next.max_up_rate = parseSpeedToBytes(maxUp)
-    if (savePath.trim()) next.save_path = savePath.trim()
     const ok = await qbitSetPreferences(server as any, next)
     setSaving(false)
     if (ok) { Alert.alert('完成', '设置已保存'); onClose() }
@@ -321,12 +313,6 @@ function SettingsModal({ visible, onClose, server, t }: SettingsModalProps) {
             value={maxUp} onChangeText={setMaxUp}
             placeholder={prefs?.max_up_rate ? bytesToHuman(prefs.max_up_rate) : '不限'}
             placeholderTextColor={t.textMuted} autoCapitalize="none" />
-
-          <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>默认保存路径</Text>
-          <TextInput style={[styles.settingInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-            value={savePath} onChangeText={setSavePath}
-            placeholder={prefs?.save_path ?? '/downloads'}
-            placeholderTextColor={t.textMuted} autoCapitalize="none" autoCorrect={false} />
 
           <View style={styles.sheetActions}>
             <TouchableOpacity onPress={onClose}><Text style={[styles.actionText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>

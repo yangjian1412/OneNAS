@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { View, Text, TextInput, TouchableOpacity, Alert, Modal, StyleSheet, Switch, Animated, BackHandler } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, Alert, Modal, StyleSheet, Switch, Animated, BackHandler, ScrollView, KeyboardAvoidingView } from 'react-native'
 import { useIsFocused } from '@react-navigation/native'
 import { NestableScrollContainer, NestableDraggableFlatList, RenderItemParams } from 'react-native-draggable-flatlist'
 import { useAppStore } from '@/stores/appStore'
-import { ServerConfig, ServiceConfig, ServiceType } from '@/types'
+import { ServerConfig, ServiceConfig, ServiceType, WebDavConfig } from '@/types'
 import { generateId } from '@/lib/crypto'
 import { SERVICE_TYPE_LABELS, SERVICE_TYPE_ICONS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
@@ -68,6 +68,7 @@ export default function SettingsScreen() {
   const [modalType, setModalType] = useState<ServiceType>('immich')
   const [modalServer, setModalServer] = useState<ServerConfig | null>(null)
   const [modalService, setModalService] = useState<ServiceConfig | null>(null)
+  const [webdavModalVisible, setWebDavModalVisible] = useState(false)
   const [tagPickerSlot, setTagPickerSlot] = useState<'tab2' | 'tab3' | null>(null)
   const [exportText, setExportText] = useState<string | null>(null)
   const [exportKeyOpen, setExportKeyOpen] = useState(false)
@@ -148,6 +149,10 @@ export default function SettingsScreen() {
 
   const fileServer = serverByType(servers, 'filebrowser')
   const unraidServer = serverByType(servers, 'unraid')
+  const fileBackend = useAppStore((s) => s.fileBackend)
+  const setFileBackend = useAppStore((s) => s.setFileBackend)
+  const webdavServer = useAppStore((s) => s.webdavServer)
+  const setWebDavServer = useAppStore((s) => s.setWebDavServer)
 
   const openServerModal = (type: 'filebrowser' | 'unraid') => {
     setModalType(type)
@@ -279,11 +284,24 @@ export default function SettingsScreen() {
           <Icon name="filebrowser" size={32} style={styles.serviceIcon} />
           <View style={styles.serviceInfo}>
             <Text style={[styles.serviceName, { color: t.text }]}>文件管理</Text>
-            <Text style={[styles.serviceHint, { color: fileServer ? t.success : t.textMuted }]} numberOfLines={1}>
-              {fileServer ? '已配置' : '请配置 FileBrowser 服务'}
+            <View style={styles.fileBackendRow}>
+              {(['filebrowser', 'webdav'] as const).map((b) => (
+                <TouchableOpacity key={b} style={[styles.backendBtn, { borderColor: t.border },
+                  fileBackend === b && { backgroundColor: t.primary, borderColor: t.primary }]}
+                  onPress={() => setFileBackend(b)}>
+                  <Text style={[styles.backendBtnText, { color: fileBackend === b ? '#fff' : t.textSecondary }]}>
+                    {b === 'filebrowser' ? 'FileBrowser' : 'WebDAV'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={[styles.serviceHint, { color: (fileBackend === 'webdav' ? webdavServer : fileServer) ? t.success : t.textMuted }]} numberOfLines={1}>
+              {fileBackend === 'webdav'
+                ? (webdavServer ? '已配置' : '请配置 WebDAV 服务')
+                : (fileServer ? '已配置' : '请配置 FileBrowser 服务')}
             </Text>
           </View>
-          <TouchableOpacity style={[styles.configButton, { borderColor: t.border }]} onPress={() => openServerModal('filebrowser')}>
+          <TouchableOpacity style={[styles.configButton, { borderColor: t.border }]} onPress={() => fileBackend === 'webdav' ? setWebDavModalVisible(true) : openServerModal('filebrowser')}>
             <Text style={[styles.configText, { color: t.primary }]}>配置</Text>
           </TouchableOpacity>
         </View>
@@ -496,12 +514,118 @@ export default function SettingsScreen() {
         {header}
       </NestableScrollContainer>
       <ConfigModal visible={modalVisible} onClose={() => setModalVisible(false)} type={modalType} server={modalServer} service={modalService} onSaveServer={handleSaveServer} onSaveService={handleSaveService} onDelete={handleDelete} />
+      <WebDavConfigModal
+        visible={webdavModalVisible}
+        onClose={() => setWebDavModalVisible(false)}
+        initial={webdavServer}
+        onSave={(cfg) => { setWebDavServer(cfg); setWebDavModalVisible(false) }}
+        onClear={() => { setWebDavServer(null); setWebDavModalVisible(false) }}
+        t={t}
+      />
       <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
         <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
           <Text style={styles.toastText}>再按一次退出</Text>
         </View>
       </Animated.View>
     </View>
+  )
+}
+
+interface WebDavConfigModalProps {
+  visible: boolean
+  onClose: () => void
+  initial: WebDavConfig | null
+  onSave: (cfg: WebDavConfig) => void
+  onClear: () => void
+  t: any
+}
+
+function WebDavConfigModal({ visible, onClose, initial, onSave, onClear, t }: WebDavConfigModalProps) {
+  const [name, setName] = useState('')
+  const [url, setUrl] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (visible) {
+      setName(initial?.name ?? 'WebDAV')
+      setUrl(initial?.url ?? '')
+      setUsername(initial?.username ?? '')
+      setPassword(initial?.password ?? '')
+    }
+  }, [visible, initial])
+
+  const handleSave = async () => {
+    if (!url.trim()) {
+      Alert.alert('提示', '请输入 WebDAV 地址')
+      return
+    }
+    setSaving(true)
+    const cfg: WebDavConfig = {
+      id: initial?.id ?? generateId(),
+      name: name.trim() || 'WebDAV',
+      url: url.trim().replace(/\/+$/, ''),
+      username: username.trim(),
+      password,
+    }
+    setSaving(false)
+    onSave(cfg)
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+        <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={styles.sheetHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sheetTitle, { color: t.text }]}>WebDAV 配置</Text>
+              <Text style={[styles.sheetSubtitle, { color: t.textMuted }]}>用于文件浏览</Text>
+            </View>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={[styles.clearText, { color: t.primary }]}>关闭</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ maxHeight: 480 }} contentContainerStyle={{ paddingBottom: 12 }}>
+            <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>名称</Text>
+            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={name} onChangeText={setName} placeholder="WebDAV" placeholderTextColor={t.textMuted} />
+
+            <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL（含路径）</Text>
+            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false}
+              placeholder="https://host:port/dav" placeholderTextColor={t.textMuted} />
+
+            <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Username</Text>
+            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={username} onChangeText={setUsername} autoCapitalize="none" placeholder="Username" placeholderTextColor={t.textMuted} />
+
+            <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Password</Text>
+            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={password} onChangeText={setPassword} secureTextEntry placeholder="Password" placeholderTextColor={t.textMuted} />
+          </ScrollView>
+
+          <View style={styles.sheetActions}>
+            {initial ? (
+              <TouchableOpacity onPress={onClear}>
+                <Text style={[styles.clearText, { color: '#c0392b' }]}>清除配置</Text>
+              </TouchableOpacity>
+            ) : <View />}
+            <View style={{ flexDirection: 'row', gap: 24 }}>
+              <TouchableOpacity onPress={onClose}>
+                <Text style={[styles.clearText, { color: t.textMuted }]}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSave} disabled={saving}>
+                <Text style={[styles.clearText, { color: t.primary }]}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+      </KeyboardAvoidingView>
+    </Modal>
   )
 }
 
@@ -553,6 +677,13 @@ const styles = StyleSheet.create({
   sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 24, paddingTop: 16 },
   exportBox: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 12, minHeight: 220, textAlignVertical: 'top', fontFamily: 'monospace' },
   keyInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 10 },
+  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14, marginBottom: 8 },
+  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 4, marginTop: 6 },
+  fileBackendRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  backendBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1 },
+  backendBtnText: { fontSize: 12, fontWeight: '600' },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  sheetSubtitle: { fontSize: 12, marginTop: 2 },
   ioHint: { fontSize: 13, marginBottom: 12 },
   importPickRow: { flexDirection: 'row', gap: 12 },
 })

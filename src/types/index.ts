@@ -33,8 +33,18 @@ export interface ServerConfig {
   username?: string
   password?: string
   apiKey?: string
-  // 当 type 为 'filebrowser' 时：'filebrowser'（默认）或 'webdav'（WebDAV 协议）
-  fileBackend?: 'filebrowser' | 'webdav'
+}
+
+// 文件管理后端：filebrowser（FileBrowser API）或 webdav（WebDAV 协议）
+export type FileBackend = 'filebrowser' | 'webdav'
+
+// WebDAV 独立配置（与 FileBrowser 配置并列，不共享字段）
+export interface WebDavConfig {
+  id: string
+  name: string
+  url: string         // e.g. https://host:port/dav
+  username: string
+  password: string
 }
 
 // 导出配置格式
@@ -875,7 +885,15 @@ export interface OpenListServerConfig {
   id: string
   name: string
   url: string         // e.g. http://host:5244
-  token?: string      // admin jwt token (optional)
+  username?: string   // 登录用户名（与 token 二选一）
+  password?: string   // 登录密码
+  token?: string      // admin jwt token (优先使用；若为空且有 username/password，会自动登录获取)
+  // 下载工具（aria2）配置：保存到 OpenList 自己的 server 缓存，独立于全局服务配置
+  downloader?: {
+    type: 'aria2'   // 目前仅支持 aria2
+    url: string     // aria2 RPC 地址（含 /jsonrpc）
+    secret: string  // rpc-secret；空表示无密码
+  }
 }
 
 export interface OpenListFile {
@@ -889,11 +907,5 @@ export interface OpenListFile {
 }
 
 // ===== WebDAV =====
-export interface WebDavServerConfig {
-  id: string
-  name: string
-  url: string         // e.g. https://host:port/dav
-  username: string
-  password: string
-}
+// (WebDavConfig 已在文件顶部定义)
 

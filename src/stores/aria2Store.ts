@@ -31,9 +31,11 @@ interface Aria2State {
   globalOption: Record<string, string>
   isLoading: boolean
   error: string | null
+  autoRefresh: boolean
 
   setServer: (server: Aria2ServerConfig | null) => void
   setError: (e: string | null) => void
+  setAutoRefresh: (v: boolean) => void
   logout: () => void
 
   loadHome: () => Promise<void>
@@ -69,9 +71,11 @@ export const useAria2Store = create<Aria2State>((set, get) => ({
   globalOption: {},
   isLoading: false,
   error: null,
+  autoRefresh: true,
 
   setServer: (server) => set({ server }),
   setError: (error) => set({ error }),
+  setAutoRefresh: (autoRefresh) => set({ autoRefresh }),
   logout: () => set({
     server: null,
     version: '',
@@ -104,12 +108,13 @@ export const useAria2Store = create<Aria2State>((set, get) => ({
     const server = get().server
     if (!server) return
     set({ isLoading: true, error: null })
+    // aria2 单次查询限制 1024（API 上限），拉满等待/已完成
     const [v, stat, active, waiting, stopped] = await Promise.all([
       aria2GetVersion(server),
       aria2GetGlobalStat(server),
       aria2TellActive(server),
-      aria2TellWaiting(server, 0, 100),
-      aria2TellStopped(server, 0, 100),
+      aria2TellWaiting(server, 0, 1024),
+      aria2TellStopped(server, 0, 1024),
     ])
     set({
       version: v?.version ?? get().version,

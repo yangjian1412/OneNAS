@@ -34,6 +34,26 @@ export async function openListPing(server: OpenListServerConfig): Promise<OpenLi
   }
 }
 
+export interface OpenListLoginResult {
+  ok: boolean
+  token?: string
+  error?: string
+}
+
+export async function openListLogin(server: OpenListServerConfig): Promise<OpenListLoginResult> {
+  if (!server.username || !server.password) return { ok: false, error: '未配置用户名或密码' }
+  try {
+    const data = await call<{ token: string }>(server, 'auth/login', {
+      username: server.username,
+      password: server.password,
+    })
+    if (data.token) return { ok: true, token: data.token }
+    return { ok: false, error: '登录失败：未返回 token' }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? '登录失败' }
+  }
+}
+
 export async function openListList(server: OpenListServerConfig, path: string, password = ''): Promise<OpenListFile[]> {
   try {
     const data = await call<{ content: OpenListFile[] }>(server, 'fs/list', { path, password })
