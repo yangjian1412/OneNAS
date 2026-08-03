@@ -39,7 +39,17 @@ export function apiFetch<T>(
         })
         if (xhr.status < 200 || xhr.status >= 300) {
           const st = xhr.statusText || ''
-          resolve({ ok: false, error: `${xhr.status}${st ? ` ${st}` : ''} ${url}`, headers })
+          // 尝试解析 body，可能含 GraphQL errors
+          let bodyDetail = ''
+          try {
+            if (text) {
+              const parsed = JSON.parse(text)
+              if (parsed && Array.isArray(parsed.errors) && parsed.errors.length) {
+                bodyDetail = ' (' + parsed.errors.map((e: any) => e?.message ?? JSON.stringify(e)).join('; ') + ')'
+              }
+            }
+          } catch {}
+          resolve({ ok: false, error: `${xhr.status}${st ? ` ${st}` : ''} ${url}${bodyDetail}`, headers })
           return
         }
         try {

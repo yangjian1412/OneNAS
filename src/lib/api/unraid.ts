@@ -10,8 +10,9 @@ const DASHBOARD_QUERY = `{
 }`
 
 const DOCKER_LIST = `{ docker { containers { id names image state status autoStart } } }`
-const START = `mutation($id: PrefixedID!) { docker { startContainer(id: $id) { state } } }`
-const STOP = `mutation($id: PrefixedID!) { docker { stopContainer(id: $id) { state } } }`
+// Unraid 7.x: startContainer / stopContainer 需要 wait 参数；restartContainer 不需要
+const START = `mutation($id: PrefixedID!, $wait: Boolean!) { docker { startContainer(id: $id, wait: $wait) { state } } }`
+const STOP = `mutation($id: PrefixedID!, $wait: Boolean!) { docker { stopContainer(id: $id, wait: $wait) { state } } }`
 const RESTART = `mutation($id: PrefixedID!) { docker { restartContainer(id: $id) { state } } }`
 const VM_START = `mutation($id: String!) { vm { start(id: $id) } }`
 const VM_STOP = `mutation($id: String!) { vm { stop(id: $id) } }`
@@ -121,12 +122,14 @@ export async function fetchContainers(server: ServerConfig): Promise<ApiResult<C
   return { ok: true, data: (result.data?.docker?.containers ?? []).map(mapContainer) }
 }
 
-async function containerMutation(server: ServerConfig, query: string, id: string): Promise<ApiResult<any>> {
-  return apiGraphQL(buildUnraidUrl(server), query, { id }, server.apiKey)
+async function containerMutation(server: ServerConfig, query: string, id: string, wait?: boolean): Promise<ApiResult<any>> {
+  const variables: Record<string, unknown> = { id }
+  if (wait !== undefined) variables.wait = wait
+  return apiGraphQL(buildUnraidUrl(server), query, variables, server.apiKey)
 }
 
-export function startContainer(server: ServerConfig, id: string) { return containerMutation(server, START, id) }
-export function stopContainer(server: ServerConfig, id: string) { return containerMutation(server, STOP, id) }
+export function startContainer(server: ServerConfig, id: string) { return containerMutation(server, START, id, false) }
+export function stopContainer(server: ServerConfig, id: string) { return containerMutation(server, STOP, id, false) }
 export function restartContainer(server: ServerConfig, id: string) { return containerMutation(server, RESTART, id) }
 
 async function vmMutation(server: ServerConfig, query: string, id: string): Promise<ApiResult<any>> {

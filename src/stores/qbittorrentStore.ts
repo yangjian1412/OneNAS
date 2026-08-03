@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
 import type {
   QBittorrentServerConfig,
@@ -10,6 +11,9 @@ import {
   qbitAddUrl,
   qbitAction,
 } from '@/lib/api/qbittorrent'
+
+const AUTO_REFRESH_MS = 1000
+const AUTOREFRESH_KEY = 'qbittorrent:autorefresh'
 
 interface QBitState {
   server: QBittorrentServerConfig | null
@@ -45,81 +49,110 @@ function normalizeFromService(svc: ServiceConfig): QBittorrentServerConfig {
   }
 }
 
-export const useQBitStore = create<QBitState>((set, get) => ({
-  server: null,
-  tasks: [],
-  filter: 'all',
-  isLoading: false,
-  error: null,
-  autoRefresh: true,
+// 单例轮询器：所有 screen 实例共享一份 setInterval
+let pollTimer: ReturnType<typeof setInterval> | null = null
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
 
-  setServer: (server) => set({ server }),
-  setFilter: (filter) => {
-    set({ filter })
-    void get().loadHome()
-  },
-  setError: (error) => set({ error }),
-  setAutoRefresh: (autoRefresh) => set({ autoRefresh }),
-  logout: () => set({ server: null, tasks: [], error: null }),
+export const useQBitStore = create<QBitState>((set, get) => {
+  const startPolling = () => {
+    stopPolling()
+    const s = get()
+    if (!s.autoRefresh || !s.server) return
+    pollTimer = setInterval(() => { void get().refresh() }, AUTO_REFRESH_MS)
+  }
 
-  initWithService: async (service) => {
-    const cfg = normalizeFromService(service)
-    if (!cfg.url || !cfg.username) {
-      set({ error: 'qBittorrent 未配置 URL 或用户名' })
-      return
-    }
-    set({ server: cfg, error: null })
-    const ping = await qbitPing(cfg)
-    if (!ping.ok) {
-      set({ error: ping.error ?? 'qBittorrent 登录失败' })
-      return
-    }
-    void get().loadHome()
-  },
+  return {
+    server: null,
+    tasks: [],
+    filter: 'all',
+    isLoading: false,
+    error: null,
+    autoRefresh: true,
 
-  loadHome: async () => {
-    const server = get().server
-    if (!server) return
-    set({ isLoading: true, error: null })
-    const tasks = await qbitList(server, get().filter)
-    set({ tasks, isLoading: false })
-  },
+    setServer: (server) => { set({ server }); startPolling() },
+    setFilter: (filter) => {
+      set({ filter })
+      void get().loadHome()
+    },
+    setError: (error) => set({ error }),
+    setAutoRefresh: (v) => {
+      set({ autoRefresh: v })
+      AsyncStorage.setItem(AUTOREFRESH_KEY, v ? '1' : '0').catch(() => {})
+      if (v) startPolling(); else stopPolling()
+    },
+    logout: () => { stopPolling(); set({ server: null, tasks: [], error: null }) },
 
-  refresh: async () => { await get().loadHome() },
+    initWithService: async (service) => {
+      const cfg = normalizeFromService(service)
+      if (!cfg.url || !cfg.username) {
+        set({ error: 'qBittorrent 未配置 URL 或用户名' })
+        return
+      }
+      set({ server: cfg, error: null })
+      const ping = await qbitPing(cfg)
+      if (!ping.ok) {
+        set({ error: ping.error ?? 'qBittorrent 登录失败' })
+        return
+      }
+      void get().loadHome()
+      startPolling()
+    },
 
-  addUrl: async (urls) => {
-    const server = get().server
-    if (!server) return false
-    const ok = await qbitAddUrl(server, urls)
-    if (ok) await get().loadHome()
-    return ok
-  },
+    loadHome: async () => {
+      const server = get().server
+      if (!server) return
+      set({ isLoading: true, error: null })
+      const tasks = await qbitList(server, get().filter)
+      set({ tasks, isLoading: false })
+    },
 
-  pause: async (hashes) => {
-    const server = get().server
-    if (!server) return
-    await qbitAction(server, 'pause', hashes)
-    await get().loadHome()
-  },
+    refresh: async () => { await get().loadHome() },
 
-  resume: async (hashes) => {
-    const server = get().server
-    if (!server) return
-    await qbitAction(server, 'resume', hashes)
-    await get().loadHome()
-  },
+    addUrl: async (urls) => {
+      const server = get().server
+      if (!server) return false
+      const ok = await qbitAddUrl(server, urls)
+      if (ok) await get().loadHome()
+      return ok
+    },
 
-  remove: async (hashes, deleteFiles = false) => {
-    const server = get().server
-    if (!server) return
-    await qbitAction(server, 'delete', hashes, deleteFiles)
-    await get().loadHome()
-  },
+    pause: async (hashes) => {
+      const server = get().server
+      if (!server) return
+      await qbitAction(server, 'pause', hashes)
+      await get().loadHome()
+    },
 
-  recheck: async (hashes) => {
-    const server = get().server
-    if (!server) return
-    await qbitAction(server, 'recheck', hashes)
-    await get().loadHome()
-  },
-}))
+    resume: async (hashes) => {
+      const server = get().server
+      if (!server) return
+      await qbitAction(server, 'resume', hashes)
+      await get().loadHome()
+    },
+
+    remove: async (hashes, deleteFiles = false) => {
+      const server = get().server
+      if (!server) return
+      await qbitAction(server, 'delete', hashes, deleteFiles)
+      await get().loadHome()
+    },
+
+    recheck: async (hashes) => {
+      const server = get().server
+      if (!server) return
+      await qbitAction(server, 'recheck', hashes)
+      await get().loadHome()
+    },
+  }
+})
+
+export async function loadQBitAutoRefreshPersisted(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(AUTOREFRESH_KEY)
+    if (raw === '0') return false
+    if (raw === '1') return true
+    return true
+  } catch { return true }
+}

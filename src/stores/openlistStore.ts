@@ -51,6 +51,17 @@ function normalizeFromService(svc: ServiceConfig): OpenListServerConfig {
   }
 }
 
+// 规范化 OpenList 路径：保证以 / 开头、去掉 URL 前缀、去掉末尾斜杠
+export function normalizeOpenListPath(p: string): string {
+  let out = p
+  if (/^https?:\/\//i.test(out)) {
+    try { out = new URL(out).pathname } catch {}
+  }
+  if (!out.startsWith('/')) out = '/' + out
+  out = out.replace(/\/+$/, '')
+  return out || '/'
+}
+
 export const useOpenListStore = create<OpenListState>((set, get) => ({
   server: null,
   path: '/',
@@ -91,8 +102,9 @@ export const useOpenListStore = create<OpenListState>((set, get) => ({
   cd: async (path) => {
     const server = get().server
     if (!server) return
-    set({ loading: true, error: null, path })
-    const files = await openListList(server, path)
+    const normalized = normalizeOpenListPath(path)
+    set({ loading: true, error: null, path: normalized })
+    const files = await openListList(server, normalized)
     set({ files, loading: false })
   },
 

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { View, Text, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, StatusBar, StyleSheet, Image, Pressable, PanResponder } from 'react-native'
 import * as FileSystem from 'expo-file-system/legacy'
 import { startActivityAsync } from 'expo-intent-launcher'
-import { WebView } from 'react-native-webview'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { useAudioPlayer } from 'expo-audio'
 import { useTheme } from '@/lib/theme'
@@ -12,9 +11,27 @@ import { getFileCategory, getFileIcon } from '@/lib/fileTypes'
 import { buildUrl } from '@/lib/api/client'
 import { useImmersive } from '@/lib/immersive'
 import Icon from '@/components/Icon'
-import type { FileItem, ServerConfig } from '@/types'
+import { getRawFileUrl } from '@/lib/api/fileManager'
+import { webDavDownloadUrl, webDavAuthHeader, webDavGetResourceInfo, webDavUpload } from '@/lib/api/webdav'
+import type { FileItem, ServerConfig, WebDavConfig, FileBackend } from '@/types'
 
 const encodeRemotePath = (path: string) => path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')
+
+// 与 fileScreen 同样的 GBK 回退解码
+function decodeTextBuffer(buf: ArrayBuffer): string {
+  const u8 = new Uint8Array(buf)
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(u8)
+  } catch {}
+  try {
+    return new TextDecoder('gbk').decode(u8)
+  } catch {}
+  try {
+    return new TextDecoder('utf-8').decode(u8)
+  } catch {
+    return ''
+  }
+}
 
 const MIME_MAP: Record<string, string> = {
   pdf: 'application/pdf',
@@ -31,11 +48,13 @@ interface Props {
   file: FileItem | null
   server: ServerConfig
   token: string
+  backend: FileBackend
+  webdavServer: WebDavConfig | null
   onClose: () => void
   onRefresh?: () => void
 }
 
-export default function FilePreviewModal({ visible, file, server, token, onClose, onRefresh }: Props) {
+export default function FilePreviewModal({ visible, file, server, token, backend, webdavServer, onClose, onRefresh }: Props) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const [content, setContent] = useState('')
@@ -49,7 +68,10 @@ export default function FilePreviewModal({ visible, file, server, token, onClose
   const category = file ? getFileCategory(file.name) : 'other'
   const isTextLike = category === 'text' || category === 'html'
 
-  const rawUrl = file ? `${buildUrl(server.protocol, server.host, server.port)}/api/raw/${encodeRemotePath(file.path)}?inline=true` : ''
+  const rawUrl = file ? getRawFileUrl(server, token, file.path, backend, webdavServer) : ''
+  const authHeaders: Record<string, string> = backend === 'webdav' && webdavServer
+    ? { Authorization: webDavAuthHeader(webdavServer) }
+    : { 'X-Auth': token }
 
   useEffect(() => {
     if (!visible || !file || !isTextLike) return
@@ -57,6 +79,23 @@ export default function FilePreviewModal({ visible, file, server, token, onClose
     setEditing(false)
     setContent('')
     setEditContent('')
+    if (backend === 'webdav') {
+      if (!webdavServer) { setLoading(false); return }
+      ;(async () => {
+        try {
+          const res = await fetch(rawUrl, { headers: authHeaders })
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const buf = await res.arrayBuffer()
+          const text = decodeTextBuffer(buf)
+          setContent(text)
+          setEditContent(text)
+          initialContentRef.current = text
+        } catch (e: any) {
+          Alert.alert('加载失败', e?.message ?? '')
+        } finally { setLoading(false) }
+      })()
+      return
+    }
     getFileContent(server, token, file.path).then((res) => {
       if (res.ok) {
         setContent(res.data)
@@ -65,13 +104,26 @@ export default function FilePreviewModal({ visible, file, server, token, onClose
       }
       setLoading(false)
     })
-  }, [visible, file?.path])
+  }, [visible, file?.path, backend, webdavServer?.url])
 
   const hasChanges = editContent !== initialContentRef.current
 
   const handleSave = async () => {
     if (!file) return
     setSaving(true)
+    if (backend === 'webdav' && webdavServer) {
+      const ok = await webDavUpload(webdavServer, file.path, editContent, 'text/plain;charset=utf-8')
+      setSaving(false)
+      if (ok) {
+        setContent(editContent)
+        initialContentRef.current = editContent
+        setEditing(false)
+        onRefresh?.()
+      } else {
+        Alert.alert('保存失败', 'WebDAV 上传失败')
+      }
+      return
+    }
     const result = await saveFileContent(server, token, file.path, editContent)
     setSaving(false)
     if (result.ok) {
@@ -130,13 +182,13 @@ export default function FilePreviewModal({ visible, file, server, token, onClose
             <ActivityIndicator size="large" color={t.primary} />
           </View>
         ) : category === 'image' ? (
-          <ImageFromUrl url={rawUrl} token={token} fileName={file.name} />
+          <ImageFromUrl url={rawUrl} headers={authHeaders} fileName={file.name} />
         ) : category === 'video' ? (
-          <VideoViewer url={rawUrl} token={token} />
+          <VideoViewer url={rawUrl} headers={authHeaders} />
         ) : category === 'audio' ? (
-          <AudioPlayer url={rawUrl} token={token} />
+          <AudioPlayer url={rawUrl} headers={authHeaders} />
         ) : category === 'html' && !editing ? (
-          <WebView source={{ uri: rawUrl }} style={{ flex: 1, backgroundColor: t.bg }} />
+          <HtmlSourceView url={rawUrl} headers={authHeaders} />
         ) : category === 'pdf' || category === 'system' ? (
           file.size > 20 * 1024 * 1024 ? (
             <View style={styles.center}>
@@ -146,7 +198,7 @@ export default function FilePreviewModal({ visible, file, server, token, onClose
               </Text>
             </View>
           ) : (
-            <SystemViewer url={rawUrl} token={token} fileName={file.name} onOpened={handleClose} />
+            <SystemViewer url={rawUrl} headers={authHeaders} fileName={file.name} onOpened={handleClose} />
           )
         ) : editing ? (
           <TextInput
@@ -167,7 +219,7 @@ export default function FilePreviewModal({ visible, file, server, token, onClose
   )
 }
 
-function ImageFromUrl({ url, token, fileName }: { url: string; token: string; fileName: string }) {
+function ImageFromUrl({ url, headers, fileName }: { url: string; headers: Record<string, string>; fileName: string }) {
   const [dataUri, setDataUri] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -178,7 +230,7 @@ function ImageFromUrl({ url, token, fileName }: { url: string; token: string; fi
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch(url, { headers: { 'X-Auth': token } })
+        const res = await fetch(url, { headers })
         if (!res.ok) throw new Error(`${res.status}`)
         const blob = await res.blob()
         const reader = new FileReader()
@@ -190,7 +242,7 @@ function ImageFromUrl({ url, token, fileName }: { url: string; token: string; fi
       }
     })()
     return () => { cancelled = true }
-  }, [url, token])
+  }, [url, JSON.stringify(headers)])
 
   if (ext === 'svg' || error) {
     return (
@@ -218,7 +270,7 @@ function ImageFromUrl({ url, token, fileName }: { url: string; token: string; fi
   )
 }
 
-function SystemViewer({ url, token, fileName, onOpened }: { url: string; token: string; fileName: string; onOpened: () => void }) {
+function SystemViewer({ url, headers, fileName, onOpened }: { url: string; headers: Record<string, string>; fileName: string; onOpened: () => void }) {
   const [phase, setPhase] = useState<'downloading' | 'opening' | 'error'>('downloading')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -230,9 +282,7 @@ function SystemViewer({ url, token, fileName, onOpened }: { url: string; token: 
         const mimeType = MIME_MAP[ext] ?? 'application/octet-stream'
         const safeName = fileName.replace(/[^\w.\-]/g, '_')
         const cachePath = `${FileSystem.cacheDirectory}sys-${Date.now()}-${safeName}`
-        const result = await FileSystem.downloadAsync(url, cachePath, {
-          headers: { 'X-Auth': token },
-        })
+        const result = await FileSystem.downloadAsync(url, cachePath, { headers })
         if (cancelled) return
         const contentUri = await FileSystem.getContentUriAsync(result.uri)
         if (cancelled) return
@@ -254,7 +304,7 @@ function SystemViewer({ url, token, fileName, onOpened }: { url: string; token: 
       }
     })()
     return () => { cancelled = true }
-  }, [url, token, fileName])
+  }, [url, JSON.stringify(headers), fileName])
 
   if (phase === 'error') {
     return (
@@ -274,8 +324,38 @@ function SystemViewer({ url, token, fileName, onOpened }: { url: string; token: 
   )
 }
 
-function VideoViewer({ url, token }: { url: string; token: string }) {
-  const player = useVideoPlayer({ uri: url, headers: { 'X-Auth': token } })
+function HtmlSourceView({ url, headers }: { url: string; headers: Record<string, string> }) {
+  const [text, setText] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(url, { headers })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const buf = await res.arrayBuffer()
+        const t = decodeTextBuffer(buf)
+        if (!cancelled) setText(t)
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message ?? '加载失败')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [url, JSON.stringify(headers)])
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#666" /></View>
+  if (error) return <View style={styles.center}><Text style={{ color: '#999' }}>{error}</Text></View>
+  return (
+    <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
+      <Text style={[styles.contentText, { color: t.text }]} selectable>{text}</Text>
+    </ScrollView>
+  )
+}
+
+function VideoViewer({ url, headers }: { url: string; headers: Record<string, string> }) {
+  const player = useVideoPlayer({ uri: url, headers })
 
   return (
     <View style={styles.mediaContainer}>
@@ -289,9 +369,9 @@ function VideoViewer({ url, token }: { url: string; token: string }) {
   )
 }
 
-function AudioPlayer({ url, token }: { url: string; token: string }) {
+function AudioPlayer({ url, headers }: { url: string; headers: Record<string, string> }) {
   const t = useTheme()
-  const player = useAudioPlayer({ uri: url, headers: { 'X-Auth': token } })
+  const player = useAudioPlayer({ uri: url, headers })
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)

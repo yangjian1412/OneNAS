@@ -3,6 +3,8 @@ import { ServerConfig, ServiceConfig, Container, SystemInfo, ThemeMode, Download
 import { loadItem, saveItem } from '@/lib/storage'
 import { STORAGE_KEYS } from '@/lib/constants'
 import CryptoJS from 'crypto-js'
+import { useQBitStore, loadQBitAutoRefreshPersisted } from '@/stores/qbittorrentStore'
+import { useAria2Store, loadAria2AutoRefreshPersisted } from '@/stores/aria2Store'
 
 export type FileSortBy = 'name' | 'size' | 'modified'
 export type FileSortDir = 'asc' | 'desc'
@@ -158,6 +160,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch {
       set({ loaded: true })
     }
+
+    // 加载 qb / aria2 自动刷新持久化设置
+    const qbAutoRefresh = await loadQBitAutoRefreshPersisted()
+    useQBitStore.setState({ autoRefresh: qbAutoRefresh })
+    const aria2AutoRefresh = await loadAria2AutoRefreshPersisted()
+    useAria2Store.setState({ autoRefresh: aria2AutoRefresh })
   },
 
   setServers: (servers) => { set({ servers }); persist(get(), { servers }) },

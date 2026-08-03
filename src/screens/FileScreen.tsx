@@ -17,7 +17,9 @@ import { isAudiobookshelfService, isTalebookService } from '@/lib/constants'
 import Icon from '@/components/Icon'
 import { launchAppWithFallback } from '@/lib/android-intent'
 import { buildUrl } from '@/lib/api/client'
-import { checkStoragePermission, openAllFilesSettings, enqueueDownload, cancelDownload, removeDownload, pollTaskProgress } from '@/lib/downloadManager'
+import { checkStoragePermission, openAllFilesSettings, enqueueDownload, enqueueDownloadWithHeader, cancelDownload, removeDownload, pollTaskProgress } from '@/lib/downloadManager'
+import { getRawFileUrl, getAuthHeaders } from '@/lib/api/fileManager'
+import { webDavAuthHeader } from '@/lib/api/webdav'
 import { getFileCategory } from '@/lib/fileTypes'
 import FilePreviewModal from '@/components/FilePreviewModal'
 import JellyfinScreen from '@/screens/JellyfinScreen'
@@ -434,7 +436,12 @@ export default function FileScreen() {
 
   const doDownload = async (url: string, fileName: string) => {
     try {
-      const task = await enqueueDownload(url, fileName, token!)
+      let task
+      if (fileBackend === 'webdav' && webdavServer) {
+        task = await enqueueDownloadWithHeader(url, fileName, 'Authorization', webDavAuthHeader(webdavServer))
+      } else {
+        task = await enqueueDownload(url, fileName, token!)
+      }
       addDownload(task)
       showToast('已加入下载队列')
     } catch (e: any) {
@@ -446,7 +453,7 @@ export default function FileScreen() {
     if (!selectedServer || !token) return
     if (!storageAccess) { showPermissionDialog(); return }
     closeActionSheet()
-    const url = `${buildUrl(selectedServer.protocol, selectedServer.host, selectedServer.port)}/api/raw/${encodeRemotePath(item.path)}`
+    const url = getRawFileUrl(selectedServer, token, item.path, fileBackend, webdavServer)
     doDownload(url, item.name)
   }
 
@@ -472,6 +479,17 @@ export default function FileScreen() {
   const bulkDownload = async () => {
     if (!selectedServer || !token) return
     if (!storageAccess) { showPermissionDialog(); return }
+    if (fileBackend === 'webdav') {
+      // WebDAV 不支持批量/打包，逐个下载
+      const selItems = selectedItems().filter((item) => !item.isDirectory)
+      if (selItems.length === 0) { Alert.alert('提示', 'WebDAV 暂不支持文件夹打包下载，请逐个下载文件'); return }
+      for (const item of selItems) {
+        const url = getRawFileUrl(selectedServer, token, item.path, fileBackend, webdavServer)
+        await doDownload(url, item.name)
+      }
+      cancelSelection()
+      return
+    }
     const selItems = selectedItems()
     const selFiles = selItems.filter((item) => !item.isDirectory)
     const selDirs = selItems.filter((item) => item.isDirectory)
@@ -529,7 +547,7 @@ export default function FileScreen() {
     setDetailsItem(item)
     setDetailsLoading(true)
     setDetailsInfo(null)
-    const result = await fmGetResourceInfo(selectedServer!, token!, item.path, fileBackend)
+    const result = await fmGetResourceInfo(selectedServer!, token!, item.path, fileBackend, webdavServer)
     if (result.ok) setDetailsInfo(result.data ?? null)
     setDetailsLoading(false)
   }
@@ -734,12 +752,12 @@ export default function FileScreen() {
                 <Text style={[styles.actionText, { color: t.text }]}>下载</Text>
               </TouchableOpacity>
             )}
-            {actionItem && actionItem.isDirectory && (
+            {actionItem && actionItem.isDirectory && fileBackend === 'filebrowser' && (
               <TouchableOpacity style={styles.actionButton} onPress={() => { if (!storageAccess) { showPermissionDialog(); return }; const item = actionItem; closeActionSheet(); const url = `${buildUrl(selectedServer!.protocol, selectedServer!.host, selectedServer!.port)}/api/raw/${encodeRemotePath(item.path)}?algo=zip`; doDownload(url, `${item.name}.zip`) }}>
                 <Text style={[styles.actionText, { color: t.text }]}>打包下载</Text>
               </TouchableOpacity>
             )}
-            {actionItem && (
+            {actionItem && fileBackend === 'filebrowser' && (
               <TouchableOpacity style={styles.actionButton} onPress={() => { const item = actionItem; closeActionSheet(); setShareCreateItem(item); setShareCreatePassword(''); setShareCreateExpiry(0); }}>
                 <Text style={[styles.actionText, { color: t.text }]}>分享</Text>
               </TouchableOpacity>
@@ -1091,6 +1109,8 @@ export default function FileScreen() {
         file={previewFile}
         server={selectedServer!}
         token={token!}
+        backend={fileBackend}
+        webdavServer={webdavServer}
         onClose={() => setPreviewFile(null)}
         onRefresh={() => loadDir(currentPath)}
       />

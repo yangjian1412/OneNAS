@@ -6,6 +6,7 @@ import { useAppStore } from '@/stores/appStore'
 import type { OpenListFile, ServiceConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
+import ServiceDrawer, { DrawerItem } from '@/components/ServiceDrawer'
 
 interface Props {
   service: ServiceConfig
@@ -30,6 +31,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
 
   const [mkdirOpen, setMkdirOpen] = useState(false)
   const [mkdirName, setMkdirName] = useState('')
+  const [drawerOpen, setDrawerOpen] = useState(false)
   // 下载工具设置抽屉
   const [dlOpen, setDlOpen] = useState(false)
   const [dlUrl, setDlUrl] = useState('')
@@ -55,6 +57,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       if (!isFocused) return false
       if (mkdirOpen) { setMkdirOpen(false); return true }
       if (dlOpen) { setDlOpen(false); return true }
+      if (drawerOpen) { setDrawerOpen(false); return true }
       if (path !== '/') { void up(); return true }
       const now = Date.now()
       if (now - lastBackPressRef.current < 2000) return false
@@ -62,7 +65,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       return true
     })
     return () => sub.remove()
-  }, [isFocused, mkdirOpen, dlOpen, path])
+  }, [isFocused, mkdirOpen, dlOpen, drawerOpen, path])
 
   const onMkdirSubmit = useCallback(async () => {
     if (!mkdirName.trim()) return
@@ -94,24 +97,28 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
     )
   }
 
+  const drawerItems: DrawerItem[] = [
+    { key: 'downloader', label: '下载工具设置', icon: 'downloadRounded', onPress: () => setDlOpen(true) },
+    { key: 'refresh', label: '刷新', icon: 'refresh', onPress: () => { void refresh() } },
+    { key: 'mkdir', label: '新建文件夹', icon: 'plus', onPress: () => setMkdirOpen(true) },
+  ]
+
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <View style={[styles.header, { backgroundColor: t.card, borderBottomColor: t.border }]}>
-        <TouchableOpacity onPress={() => void up()} disabled={path === '/'} style={styles.iconBtn}>
-          <Icon name="back" size={22} />
+        <TouchableOpacity onPress={() => setDrawerOpen(true)} style={styles.iconBtn}>
+          <Icon name="menu" size={24} />
         </TouchableOpacity>
-        <View style={{ flex: 1, paddingHorizontal: 8 }}>
+        <View style={{ flex: 1, paddingHorizontal: 8, alignItems: 'center' }}>
           <Text style={[styles.headerTitle, { color: t.text }]} numberOfLines={1}>{server.name}</Text>
           <Text style={[styles.headerSub, { color: t.textMuted }]} numberOfLines={1}>{server.token ? '已登录（admin）' : '未配置 Token（访客/只读）'}</Text>
-          <Text style={[styles.headerPath, { color: t.textMuted }]} numberOfLines={1}>{path}</Text>
         </View>
         <TouchableOpacity onPress={() => { void refresh() }} style={styles.iconBtn}>
           <Icon name="refresh" size={22} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setDlOpen(true)} style={styles.iconBtn}>
-          <Icon name="settings" size={22} />
-        </TouchableOpacity>
       </View>
+
+      <Breadcrumbs path={path} onJump={(p) => void cd(p)} t={t} />
 
       {error ? (
         <View style={[styles.errorBanner, { backgroundColor: (t.warning || '#f0a020') + '22' }]}>
@@ -128,7 +135,10 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
           files.map((f) => (
             <Row key={f.path} file={f} t={t}
               onPress={() => {
-                if (f.is_dir) { void cd(f.path) }
+                if (f.is_dir) {
+                  console.log('[OpenList] cd ->', f.path)
+                  void cd(f.path)
+                }
               }}
               onDelete={() => {
                 Alert.alert('删除', `确定要删除 "${f.name}" 吗？`, [
@@ -144,6 +154,15 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       <TouchableOpacity style={[styles.fab, { backgroundColor: t.primary }]} onPress={() => setMkdirOpen(true)}>
         <Icon name="plus" size={26} color="#fff" />
       </TouchableOpacity>
+
+      <ServiceDrawer
+        visible={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title="OpenList"
+        subtitle="网盘管理"
+        items={drawerItems}
+        t={t}
+      />
 
       <Modal visible={mkdirOpen} transparent animationType="slide" onRequestClose={() => setMkdirOpen(false)}>
         <View style={styles.modalRoot}>
@@ -241,6 +260,31 @@ function Aria2ImportButton({ t, onImported }: { t: any; onImported: (url: string
   )
 }
 
+function Breadcrumbs({ path, onJump, t }: { path: string; onJump: (p: string) => void; t: any }) {
+  const segs = path.split('/').filter(Boolean)
+  // 首段：根
+  const items: { label: string; full: string }[] = [{ label: '根', full: '/' }]
+  let acc = ''
+  for (const s of segs) { acc += '/' + s; items.push({ label: s, full: acc }) }
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[styles.breadcrumbBar, { backgroundColor: t.card, borderBottomColor: t.border }]}
+      contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 12 }}
+    >
+      {items.map((it, idx) => (
+        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {idx > 0 ? <Text style={[styles.breadcrumbSep, { color: t.textMuted }]}>{' / '}</Text> : null}
+          <TouchableOpacity onPress={() => onJump(it.full)}>
+            <Text style={[styles.breadcrumbText, { color: t.primary }]} numberOfLines={1}>{it.label}</Text>
+          </TouchableOpacity>
+        </View>
+      ))}
+    </ScrollView>
+  )
+}
+
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   title: { fontSize: 16, fontWeight: '600' },
@@ -273,4 +317,7 @@ const styles = StyleSheet.create({
   actionText: { fontSize: 14, fontWeight: '600' },
   importBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10, borderRadius: 8, borderWidth: 1, marginBottom: 12 },
   importBtnText: { fontSize: 13, fontWeight: '600' },
+  breadcrumbBar: { borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 6 },
+  breadcrumbText: { fontSize: 13, fontWeight: '600' },
+  breadcrumbSep: { fontSize: 13 },
 })

@@ -77,8 +77,6 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [addUrls, setAddUrls] = useState('')
-  const refreshRef = useRef(refresh)
-  refreshRef.current = refresh
   const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
   const isFocused = useIsFocused()
@@ -86,12 +84,6 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
   useEffect(() => {
     if (isFocused) void initWithService(service)
   }, [isFocused, initWithService, service])
-
-  useEffect(() => {
-    if (!isFocused || !autoRefresh || !server) return
-    const t = setInterval(() => { void refreshRef.current() }, AUTO_REFRESH_MS)
-    return () => clearInterval(t)
-  }, [isFocused, autoRefresh, server])
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {

@@ -1,6 +1,7 @@
 import type { ServerConfig, WebDavConfig, FileItem, FileBackend } from '@/types'
 import { login as fbLogin, listFiles as fbListFiles, searchFilesStream as fbSearchFilesStream, createFolder as fbCreateFolder, deleteResource as fbDeleteResource, renameResource as fbRenameResource, copyResource as fbCopyResource, uploadResource as fbUploadResource, getShares as fbGetShares, createShare as fbCreateShare, deleteShare as fbDeleteShare, getResourceInfo as fbGetResourceInfo, getFileChecksum as fbGetFileChecksum, ResourceInfo } from '@/lib/api/filebrowser'
-import { webDavPing, webDavList, webDavMkdir, webDavDelete, webDavMove, webDavCopy, webDavUpload } from '@/lib/api/webdav'
+import { webDavPing, webDavList, webDavMkdir, webDavDelete, webDavMove, webDavCopy, webDavUpload, webDavDownloadUrl, webDavAuthHeader, webDavGetResourceInfo } from '@/lib/api/webdav'
+import { buildUrl } from '@/lib/api/client'
 
 export type { FileBackend } from '@/types'
 
@@ -154,12 +155,39 @@ export async function deleteShare(server: ServerConfig, token: string, hash: str
   return r.ok ? { ok: true } : { ok: false, error: (r as any).error }
 }
 
-export async function getResourceInfo(server: ServerConfig, token: string, path: string, backend: FileBackend): Promise<{ ok: boolean; data?: ResourceInfo; error?: string }> {
+export async function getResourceInfo(server: ServerConfig, token: string, path: string, backend: FileBackend, webdavServer?: WebDavConfig | null): Promise<{ ok: boolean; data?: ResourceInfo; error?: string }> {
   if (backend === 'webdav') {
-    // WebDAV 用 getObject 直接获取文件头信息
-    return { ok: false, error: 'WebDAV 暂不支持该功能' }
+    if (!webdavServer) return { ok: false, error: 'WebDAV 未配置' }
+    const info = await webDavGetResourceInfo(webdavServer, path)
+    if (!info) return { ok: false, error: '获取详情失败' }
+    return {
+      ok: true,
+      data: {
+        path: info.path,
+        name: info.name,
+        isDir: info.isDir,
+        size: info.size,
+        modified: info.modified ?? '',
+      } as ResourceInfo,
+    }
   }
   return await fbGetResourceInfo(server, token, path)
+}
+
+// 构造下载/预览 URL；webdav 模式下返回服务端 URL，filebrowser 返回 server 原始 raw URL
+export function getRawFileUrl(server: ServerConfig, token: string, path: string, backend: FileBackend, webdavServer: WebDavConfig | null): string {
+  if (backend === 'webdav' && webdavServer) {
+    return webDavDownloadUrl(webdavServer, path)
+  }
+  return `${buildUrl(server.protocol, server.host, server.port)}/api/raw/${path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')}`
+}
+
+// 取得带认证的请求头；webdav 模式返回 Authorization Basic 头，filebrowser 返回 X-Auth 头
+export function getAuthHeaders(server: ServerConfig, token: string, backend: FileBackend, webdavServer: WebDavConfig | null): Record<string, string> {
+  if (backend === 'webdav' && webdavServer) {
+    return { Authorization: webDavAuthHeader(webdavServer) }
+  }
+  return { 'X-Auth': token }
 }
 
 export async function getFileChecksum(server: ServerConfig, token: string, path: string, algo: 'md5' | 'sha1' | 'sha256' | 'sha512', backend: FileBackend): Promise<{ ok: boolean; hash?: string; error?: string }> {
