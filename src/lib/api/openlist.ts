@@ -19,13 +19,11 @@ export interface OpenListPingResult {
 }
 
 export async function openListPing(server: OpenListServerConfig): Promise<OpenListPingResult> {
-  // 优先用公开端点 /public/settings 检测连通性，无需 token
   try {
     const url = `${server.url.replace(/\/+$/, '')}/api/public/settings`
     const res = await fetch(url)
     if (res.ok) return { ok: true }
   } catch {}
-  // fallback: 尝试 fs/list '/'（需要 token 或访客权限）
   try {
     await call<unknown>(server, 'fs/list', { path: '/' })
     return { ok: true }
@@ -55,36 +53,60 @@ export async function openListLogin(server: OpenListServerConfig): Promise<OpenL
 }
 
 export async function openListList(server: OpenListServerConfig, path: string, password = ''): Promise<OpenListFile[]> {
-  try {
-    const data = await call<{ content: OpenListFile[] }>(server, 'fs/list', { path, password })
-    return data.content ?? []
-  } catch {
-    return []
-  }
+  const data = await call<{ content: OpenListFile[] }>(server, 'fs/list', { path, password })
+  return data.content ?? []
 }
 
 export async function openListGet(server: OpenListServerConfig, path: string, password = ''): Promise<OpenListFile | null> {
-  try {
-    return await call<OpenListFile>(server, 'fs/get', { path, password })
-  } catch {
-    return null
+  return await call<OpenListFile>(server, 'fs/get', { path, password })
+}
+
+export async function openListMkdir(server: OpenListServerConfig, path: string): Promise<void> {
+  await call(server, 'fs/mkdir', { path })
+}
+
+export async function openListRemove(server: OpenListServerConfig, dir: string, names: string[]): Promise<void> {
+  await call(server, 'fs/remove', { dir, names })
+}
+
+export async function openListRename(server: OpenListServerConfig, path: string, newName: string): Promise<void> {
+  await call(server, 'fs/rename', { path, name: newName, overwrite: false })
+}
+
+export async function openListMove(server: OpenListServerConfig, srcDir: string, names: string[], dstDir: string): Promise<void> {
+  await call(server, 'fs/move', { src_dir: srcDir, dst_dir: dstDir, names, overwrite: false })
+}
+
+export async function openListCopy(server: OpenListServerConfig, srcDir: string, names: string[], dstDir: string): Promise<void> {
+  await call(server, 'fs/copy', { src_dir: srcDir, dst_dir: dstDir, names, overwrite: false, skip_existing: false })
+}
+
+export interface OpenListUploadAsset {
+  uri: string
+  name: string
+  size: number
+  mimeType?: string
+}
+
+/** multipart 表单上传，File-Path 需 URL 编码（服务端会 PathUnescape） */
+export async function openListFormUpload(server: OpenListServerConfig, remotePath: string, asset: OpenListUploadAsset, asTask = false): Promise<void> {
+  const url = `${server.url.replace(/\/+$/, '')}/api/fs/form`
+  const headers: Record<string, string> = {
+    'File-Path': encodeURI(remotePath),
   }
-}
-
-export async function openListMkdir(server: OpenListServerConfig, path: string): Promise<boolean> {
-  try { await call(server, 'fs/mkdir', { path }); return true } catch { return false }
-}
-
-export async function openListRemove(server: OpenListServerConfig, paths: string[], dir = false): Promise<boolean> {
-  try { await call(server, 'fs/remove', { names: paths, dir }); return true } catch { return false }
-}
-
-export async function openListRename(server: OpenListServerConfig, path: string, newName: string): Promise<boolean> {
-  try { await call(server, 'fs/rename', { path, name: newName }); return true } catch { return false }
+  if (server.token) headers['Authorization'] = server.token
+  if (asTask) headers['As-Task'] = 'true'
+  const form = new FormData()
+  form.append('file', { uri: asset.uri, name: asset.name, type: asset.mimeType || 'application/octet-stream' } as any)
+  const res = await fetch(url, { method: 'POST', headers, body: form })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const json = (await res.json().catch(() => null)) as { code?: number; message?: string } | null
+  if (json && json.code !== 200) throw new Error(json.message || `code ${json.code}`)
 }
 
 export function openListGetFileUrl(server: OpenListServerConfig, path: string, sign?: string): string {
   const base = server.url.replace(/\/+$/, '')
+  const segs = path.split('/').filter(Boolean).map((s) => encodeURIComponent(s)).join('/')
   const q = sign ? `?sign=${encodeURIComponent(sign)}` : ''
-  return `${base}/d/${encodeURI(path)}${q}`
+  return `${base}/d/${segs}${q}`
 }

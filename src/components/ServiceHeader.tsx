@@ -27,7 +27,7 @@ interface PlainProps extends BaseProps {
 
 type Props = DownloadProps | FileBrowserProps | PlainProps
 
-const SIDE_MIN_WIDTH = 110
+const SIDE_MIN_WIDTH = 0
 
 export default function ServiceHeader(props: Props) {
   const { t, onMenuPress, title, subtitle } = props
@@ -36,7 +36,7 @@ export default function ServiceHeader(props: Props) {
     <View style={[styles.header, { backgroundColor: t.card, borderBottomColor: t.border }]}>
       <View style={styles.side}>
         <TouchableOpacity onPress={onMenuPress} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Icon name="menu" size={24} />
+          <Icon name="menu" size={24} color={t.text} />
         </TouchableOpacity>
       </View>
 
@@ -62,17 +62,13 @@ export default function ServiceHeader(props: Props) {
                 style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
               />
               <TouchableOpacity onPress={props.onRefresh} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Icon name="refresh" size={22} />
+                <Icon name="refresh" size={22} color={t.primary} />
               </TouchableOpacity>
             </>
-          ) : props.mode === 'filebrowser' ? (
-            <TouchableOpacity onPress={props.onRefresh} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Icon name="refresh" size={22} />
-            </TouchableOpacity>
           ) : (
             props.onRefresh ? (
               <TouchableOpacity onPress={props.onRefresh} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Icon name="refresh" size={22} />
+                <Icon name="refresh" size={22} color={t.primary} />
               </TouchableOpacity>
             ) : null
           )}
@@ -86,9 +82,9 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   side: { minWidth: SIDE_MIN_WIDTH, flexDirection: 'row', alignItems: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  iconBtn: { padding: 8, borderRadius: 8 },
+  iconBtn: { padding: 6, borderRadius: 8 },
   title: { fontSize: 17, fontWeight: '700' },
   subtitle: { fontSize: 11, marginTop: 2 },
-  rightCluster: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 4 },
+  rightCluster: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 0 },
   autoLabel: { fontSize: 11 },
 })

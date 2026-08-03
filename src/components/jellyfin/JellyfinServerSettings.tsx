@@ -165,7 +165,7 @@ export default function JellyfinServerSettings({ visible, onClose }: Props) {
           <Text style={[styles.sectionTitle, { color: t.text }]}>快捷操作</Text>
           <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
             <TouchableOpacity style={styles.actionRow} onPress={handleRefresh} disabled={refreshing}>
-              <Icon name="refresh" size={20} color={t.text} />
+              <Icon name="refresh" size={20} color={t.primary} />
               <Text style={[styles.actionText, { color: t.text }]}>
                 {refreshing ? '正在刷新...' : '刷新媒体库'}
               </Text>

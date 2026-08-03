@@ -888,17 +888,19 @@ export interface OpenListServerConfig {
   username?: string   // 登录用户名（与 token 二选一）
   password?: string   // 登录密码
   token?: string      // admin jwt token (优先使用；若为空且有 username/password，会自动登录获取)
-  // 下载工具（aria2）配置：保存到 OpenList 自己的 server 缓存，独立于全局服务配置
+  // 下载工具（aria2）配置：保存在 OpenList 自己的 server 缓存，独立于全局服务配置。
+  // 推送时由 app 前端直连该 aria2 RPC（参照 alist-web 的 sendToAria2 方式，保目录结构）。
   downloader?: {
     type: 'aria2'   // 目前仅支持 aria2
     url: string     // aria2 RPC 地址（含 /jsonrpc）
-    secret: string  // rpc-secret；空表示无密码
+    secret: string  // rpc-secret；空表示无密钥
   }
 }
 
 export interface OpenListFile {
   name: string
   path: string
+  virtual_path?: string
   size: number
   is_dir: boolean
   modified?: string

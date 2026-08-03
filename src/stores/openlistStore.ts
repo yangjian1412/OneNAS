@@ -1,20 +1,30 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import type {
   OpenListServerConfig,
   OpenListFile,
+  Aria2ServerConfig,
   ServiceConfig,
 } from '@/types'
-
-const DOWNLOADER_PREFIX = 'openlist:downloader:'
 import {
   openListPing,
   openListList,
+  openListGet,
   openListMkdir,
   openListRemove,
   openListRename,
+  openListMove,
+  openListCopy,
   openListLogin,
+  openListFormUpload,
+  openListGetFileUrl,
+  type OpenListUploadAsset,
 } from '@/lib/api/openlist'
+import { aria2AddUri, aria2GetGlobalOption } from '@/lib/api/aria2'
+
+const DOWNLOADER_PREFIX = 'openlist:downloader:'
+const MAX_DEPTH = 20
+const MAX_FILES = 1000
 
 interface OpenListState {
   server: OpenListServerConfig | null
@@ -23,21 +33,38 @@ interface OpenListState {
   loading: boolean
   error: string | null
 
+  multiSelect: boolean
+  selectedPaths: string[]
+
   setServer: (server: OpenListServerConfig | null) => void
   setError: (e: string | null) => void
   logout: () => void
 
-  cd: (path: string) => Promise<void>
+  /**
+   * 进入子目录。优先使用服务端返回的 virtual_path，否则用本地拼接
+   * `${currentPath}/${name}` 兜底（避免依赖驱动内部 path 字段）。
+   */
+  cd: (name: string, parentPath?: string) => Promise<void>
+  cdByPath: (fullPath: string) => Promise<void>
   up: () => Promise<void>
   refresh: () => Promise<void>
   mkdir: (name: string) => Promise<boolean>
-  remove: (names: string[], dir?: boolean) => Promise<boolean>
+  remove: (dir: string, names: string[]) => Promise<boolean>
   rename: (path: string, newName: string) => Promise<boolean>
-  initWithService: (service: ServiceConfig) => Promise<void>
-
-  /*** 下载工具（aria2）配置：独立缓存 + 立即写入当前 server ***/
+  move: (srcDir: string, names: string[], dstDir: string) => Promise<boolean>
+  copy: (srcDir: string, names: string[], dstDir: string) => Promise<boolean>
+  /** 推送到 aria2（前端直连 RPC）：传入要推送的路径数组，文件夹会被递归展开，返回成功数 */
+  pushToAria2: (paths: string[]) => Promise<{ ok: boolean; count: number }>
+  upload: (remotePath: string, asset: OpenListUploadAsset) => Promise<boolean>
   getDownloader: () => Promise<NonNullable<OpenListServerConfig['downloader']> | null>
   setDownloader: (dl: NonNullable<OpenListServerConfig['downloader']> | null) => Promise<void>
+  initWithService: (service: ServiceConfig) => Promise<void>
+
+  enterMultiSelect: () => void
+  exitMultiSelect: () => void
+  toggleSelect: (path: string) => void
+  selectAll: () => void
+  clearSelection: () => void
 }
 
 function normalizeFromService(svc: ServiceConfig): OpenListServerConfig {
@@ -47,7 +74,6 @@ function normalizeFromService(svc: ServiceConfig): OpenListServerConfig {
     url: (svc.url || '').replace(/\/+$/, ''),
     username: svc.username || undefined,
     password: svc.password || undefined,
-    token: svc.apiKey || undefined,
   }
 }
 
@@ -62,6 +88,14 @@ export function normalizeOpenListPath(p: string): string {
   return out || '/'
 }
 
+// 本地拼接：把父目录 + 子名合成清洁路径
+export function joinOpenListPath(parent: string, name: string): string {
+  const p = normalizeOpenListPath(parent)
+  const n = name.replace(/^\/+/, '').replace(/\/+$/, '')
+  if (p === '/') return '/' + n
+  return p + '/' + n
+}
+
 export const useOpenListStore = create<OpenListState>((set, get) => ({
   server: null,
   path: '/',
@@ -69,26 +103,35 @@ export const useOpenListStore = create<OpenListState>((set, get) => ({
   loading: false,
   error: null,
 
+  multiSelect: false,
+  selectedPaths: [],
+
   setServer: (server) => set({ server }),
   setError: (error) => set({ error }),
-  logout: () => set({ server: null, files: [], path: '/', error: null }),
+  logout: () => set({ server: null, files: [], path: '/', error: null, multiSelect: false, selectedPaths: [] }),
 
   initWithService: async (service) => {
-    const base = normalizeFromService(service)
-    if (!base.url) {
+    const cfg = normalizeFromService(service)
+    if (!cfg.url) {
       set({ error: 'OpenList 未配置 URL' })
       return
     }
-    const dl = await getDownloaderCached(base.id)
-    const cfg: OpenListServerConfig = dl ? { ...base, downloader: dl } : base
 
-    // 无 token 但有用户名密码 → 自动登录获取 token
-    if (!cfg.token && cfg.username && cfg.password) {
-      const login = await openListLogin(cfg)
-      if (login.ok && login.token) {
-        cfg.token = login.token
-      }
+    // 只支持账号密码登录（去掉 token 登录）
+    if (!cfg.username || !cfg.password) {
+      set({ error: 'OpenList 需要配置账号密码' })
+      return
     }
+    const login = await openListLogin(cfg)
+    if (!login.ok || !login.token) {
+      set({ error: login.error ?? '登录失败' })
+      return
+    }
+    cfg.token = login.token
+
+    // 恢复下载工具（aria2）配置缓存
+    const cachedDl = await getDownloaderCached(cfg.id)
+    if (cachedDl && cachedDl.url) cfg.downloader = cachedDl
 
     set({ server: cfg, error: null })
     const ping = await openListPing(cfg)
@@ -96,76 +139,197 @@ export const useOpenListStore = create<OpenListState>((set, get) => ({
       set({ error: ping.error ?? 'OpenList 连接失败' })
       return
     }
-    void get().cd('/')
+    void get().cdByPath('/')
   },
 
-  cd: async (path) => {
+  cd: async (name, parentPath) => {
+    const parent = parentPath ?? get().path
+    const next = joinOpenListPath(parent, name)
+    await get().cdByPath(next)
+  },
+
+  cdByPath: async (fullPath) => {
     const server = get().server
     if (!server) return
-    const normalized = normalizeOpenListPath(path)
-    set({ loading: true, error: null, path: normalized })
-    const files = await openListList(server, normalized)
-    set({ files, loading: false })
+    const normalized = normalizeOpenListPath(fullPath)
+    set({ loading: true, error: null, path: normalized, multiSelect: false, selectedPaths: [] })
+    try {
+      const files = await openListList(server, normalized)
+      set({ files, loading: false })
+    } catch (e: any) {
+      set({ files: [], loading: false, error: e?.message ?? '打开目录失败' })
+    }
   },
 
   up: async () => {
     const cur = get().path
     if (cur === '/' || cur === '') return
     const parent = cur.replace(/\/+$/, '').split('/').slice(0, -1).join('/') || '/'
-    await get().cd(parent)
+    await get().cdByPath(parent)
   },
 
   refresh: async () => {
-    await get().cd(get().path)
+    const cur = get().path
+    set({ multiSelect: false, selectedPaths: [] })
+    await get().cdByPath(cur)
   },
 
   mkdir: async (name) => {
     const server = get().server
     if (!server) return false
-    const target = `${get().path.replace(/\/+$/, '')}/${name}`
-    const ok = await openListMkdir(server, target)
-    if (ok) await get().refresh()
-    return ok
+    const target = joinOpenListPath(get().path, name)
+    try {
+      await openListMkdir(server, target)
+      await get().refresh()
+      return true
+    } catch (e: any) {
+      set({ error: e?.message ?? '创建失败' })
+      return false
+    }
   },
 
-  remove: async (names, dir = false) => {
+  remove: async (dir, names) => {
     const server = get().server
-    if (!server) return false
-    const targets = names.map((n) => `${get().path.replace(/\/+$/, '')}/${n}`)
-    const ok = await openListRemove(server, targets, dir)
-    if (ok) await get().refresh()
-    return ok
+    if (!server || !names.length) return false
+    try {
+      await openListRemove(server, dir, names)
+      await get().refresh()
+      return true
+    } catch (e: any) {
+      set({ error: e?.message ?? '删除失败' })
+      return false
+    }
   },
 
   rename: async (path, newName) => {
     const server = get().server
     if (!server) return false
-    const ok = await openListRename(server, path, newName)
-    if (ok) await get().refresh()
-    return ok
+    try {
+      await openListRename(server, path, newName)
+      await get().refresh()
+      return true
+    } catch (e: any) {
+      set({ error: e?.message ?? '重命名失败' })
+      return false
+    }
+  },
+
+  move: async (srcDir, names, dstDir) => {
+    const server = get().server
+    if (!server || !names.length) return false
+    try {
+      await openListMove(server, srcDir, names, dstDir)
+      await get().refresh()
+      return true
+    } catch (e: any) {
+      set({ error: e?.message ?? '移动失败' })
+      return false
+    }
+  },
+
+  copy: async (srcDir, names, dstDir) => {
+    const server = get().server
+    if (!server || !names.length) return false
+    try {
+      await openListCopy(server, srcDir, names, dstDir)
+      await get().refresh()
+      return true
+    } catch (e: any) {
+      set({ error: e?.message ?? '复制失败' })
+      return false
+    }
+  },
+
+  /** 递归展开文件夹，收集 { 文件名, 直链, 相对子目录 } */
+  pushToAria2: async (paths) => {
+    const server = get().server
+    if (!server) return { ok: false, count: 0 }
+    const dl = server.downloader ?? (await getDownloaderCached(server.id))
+    if (!dl || !dl.url) {
+      set({ error: '未配置下载工具（aria2），请在抽屉 → 下载工具设置 中配置' })
+      return { ok: false, count: 0 }
+    }
+    const rpc: Aria2ServerConfig = { id: 'openlist-dl', name: 'OpenList', url: dl.url, secret: dl.secret }
+    try {
+      const collected: { name: string; url: string; relDir: string }[] = []
+      for (const p of paths) {
+        if (collected.length >= MAX_FILES) break
+        let entry: OpenListFile | null = null
+        try { entry = await openListGet(server, p) } catch { continue }
+        if (!entry) continue
+        if (entry.is_dir) {
+          await collectOpenListFiles(server, p, p, 0, collected)
+        } else {
+          collected.push({ name: entry.name, url: openListGetFileUrl(server, p, entry.sign), relDir: '' })
+        }
+      }
+      if (!collected.length) {
+        set({ error: '未找到可推送的文件' })
+        return { ok: false, count: 0 }
+      }
+      const saveDir = (await aria2GetGlobalOption(rpc))?.dir?.replace(/\/+$/, '') ?? ''
+      let okCount = 0
+      for (const f of collected) {
+        const options: Record<string, string> = { out: f.name, 'check-certificate': 'false' }
+        if (saveDir || f.relDir) {
+          options.dir = [saveDir, f.relDir].filter(Boolean).join('/')
+        }
+        const gid = await aria2AddUri(rpc, [f.url], options)
+        if (gid) okCount++
+      }
+      return { ok: okCount > 0, count: okCount }
+    } catch (e: any) {
+      set({ error: e?.message ?? '推送失败' })
+      return { ok: false, count: 0 }
+    }
+  },
+
+  upload: async (remotePath, asset) => {
+    const server = get().server
+    if (!server) return false
+    try {
+      await openListFormUpload(server, remotePath, asset)
+      await get().refresh()
+      return true
+    } catch (e: any) {
+      set({ error: e?.message ?? '上传失败' })
+      return false
+    }
   },
 
   getDownloader: async () => {
-    const id = get().server?.id
-    if (!id) return null
-    const cached = await getDownloaderCached(id)
+    const s = get().server
+    if (!s) return null
+    const cached = await getDownloaderCached(s.id)
     if (cached) return cached
-    const cur = get().server?.downloader ?? null
+    const cur = s.downloader
     if (cur && cur.url) {
-      await saveDownloaderCached(id, cur)
+      await saveDownloaderCached(s.id, cur)
       return cur
     }
     return null
   },
 
   setDownloader: async (dl) => {
-    const id = get().server?.id
-    set({ server: get().server ? { ...get().server!, downloader: dl ?? undefined } : null })
-    if (id) {
-      if (dl) await saveDownloaderCached(id, dl)
-      else await clearDownloaderCached(id)
-    }
+    const s = get().server
+    set({ server: s ? { ...s, downloader: dl ?? undefined } : null })
+    if (!s) return
+    if (dl) await saveDownloaderCached(s.id, dl)
+    else await clearDownloaderCached(s.id)
   },
+
+  enterMultiSelect: () => set({ multiSelect: true }),
+  exitMultiSelect: () => set({ multiSelect: false, selectedPaths: [] }),
+  toggleSelect: (path) =>
+    set((s) => ({
+      selectedPaths: s.selectedPaths.includes(path)
+        ? s.selectedPaths.filter((p) => p !== path)
+        : [...s.selectedPaths, path],
+    })),
+  selectAll: () => set((s) => ({
+    selectedPaths: s.files.map((f) => f.virtual_path ?? f.path ?? joinOpenListPath(s.path, f.name)).filter(Boolean),
+  })),
+  clearSelection: () => set({ selectedPaths: [] }),
 }))
 
 async function saveDownloaderCached(id: string, dl: NonNullable<OpenListServerConfig['downloader']>): Promise<void> {
@@ -181,4 +345,27 @@ async function getDownloaderCached(id: string): Promise<NonNullable<OpenListServ
 
 async function clearDownloaderCached(id: string): Promise<void> {
   try { await AsyncStorage.removeItem(DOWNLOADER_PREFIX + id) } catch {}
+}
+
+/** 递归收集目录下所有文件的直链；相对根目录的子路径用于保目录结构 */
+async function collectOpenListFiles(
+  server: OpenListServerConfig,
+  dirPath: string,
+  base: string,
+  depth: number,
+  out: { name: string; url: string; relDir: string }[],
+): Promise<void> {
+  if (out.length >= MAX_FILES) return
+  const entries = await openListList(server, dirPath)
+  for (const e of entries) {
+    if (out.length >= MAX_FILES) return
+    const full = joinOpenListPath(dirPath, e.name)
+    if (e.is_dir) {
+      if (depth < MAX_DEPTH) await collectOpenListFiles(server, full, base, depth + 1, out)
+      continue
+    }
+    const rel = full.startsWith(base) ? full.slice(base.length).replace(/^\//, '') : ''
+    const parentRel = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
+    out.push({ name: e.name, url: openListGetFileUrl(server, full, e.sign), relDir: parentRel })
+  }
 }

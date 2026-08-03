@@ -198,7 +198,8 @@ export default function ConfigModal({
       const isTalebook = normalizedType === 'talebook'
       const saveUsername = isTalebook ? (talebookLoginMode === 'password' ? (username || undefined) : undefined) : (username || undefined)
       const savePassword = isTalebook ? (talebookLoginMode === 'password' ? (password || undefined) : undefined) : (password || undefined)
-      const saveApiKey = isTalebook ? (talebookLoginMode === 'code' ? (apiKey || undefined) : undefined) : (apiKey || undefined)
+      // openlist 只支持账号密码登录，不保存 token
+      const saveApiKey = (isTalebook || normalizedType === 'openlist') ? undefined : (apiKey || undefined)
       onSaveService({
         id: service?.id ?? '',
         name,
@@ -423,15 +424,10 @@ export default function ConfigModal({
                       placeholder="登录用户名" placeholderTextColor={t.textMuted}
                       value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
 
-                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>密码（可选）</Text>
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>密码</Text>
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
                       placeholder="登录密码" secureTextEntry placeholderTextColor={t.textMuted}
                       value={password} onChangeText={setPassword} />
-
-                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Admin Token（可选）</Text>
-                    <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-                      placeholder="管理后台生成的 JWT token" secureTextEntry placeholderTextColor={t.textMuted}
-                      value={apiKey} onChangeText={setApiKey} />
                   </>
                 ) : (
                   <>
