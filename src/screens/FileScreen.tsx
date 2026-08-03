@@ -1290,7 +1290,7 @@ const styles = StyleSheet.create({
   gridCheckbox: { position: 'absolute', top: 8, right: 8, padding: 4 },
   bottomBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 76, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 4 }, selectedCount: { flex: 1, fontSize: 14, fontWeight: '700', paddingHorizontal: 6 }, bottomAction: { minWidth: 64, minHeight: 60, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }, bottomActionText: { fontSize: 14, fontWeight: '700' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth }, modalTitle: { fontSize: 17, fontWeight: '700' },
-  activeServiceRoot: { zIndex: 1000, elevation: 16 },
+  activeServiceRoot: { zIndex: 1000, elevation: 30 },
   activeServiceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }, modalBackdrop: { ...StyleSheet.absoluteFill },
   actionSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32, gap: 4 }, editSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32 },
