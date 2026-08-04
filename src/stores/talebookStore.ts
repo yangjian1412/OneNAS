@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import type {
   TalebookServerConfig,
   TalebookBook,
@@ -15,7 +16,6 @@ import {
   talebookGetUserInfo,
   talebookGetIndex,
   talebookGetReading,
-  talebookGetRecent,
   talebookGetShelf,
   talebookGetBookDetail,
   talebookToggleShelf,
@@ -37,6 +37,8 @@ interface TalebookState {
   setServer: (server: TalebookServerConfig | null) => void
   setError: (e: string | null) => void
   logout: () => void
+  initRecent: (serviceId: string) => Promise<void>
+  addRecent: (book: TalebookBook, serviceId: string) => Promise<void>
   loadHome: (force?: boolean) => Promise<void>
   loadDetail: (bookId: number) => Promise<TalebookBookDetail | null>
   toggleShelf: (bookId: number, inShelf: boolean) => Promise<boolean>
@@ -47,6 +49,12 @@ interface TalebookState {
 
 const HOME_TTL = 5 * 60 * 1000  // 5 分钟
 const USER_INFO_TTL = 5 * 60 * 1000
+const RECENT_KEY_PREFIX = 'talebook:recent:'
+const RECENT_MAX = 10
+
+function recentKey(serviceId: string) {
+  return RECENT_KEY_PREFIX + serviceId
+}
 
 function normalizeFromService(svc: ServiceConfig): TalebookServerConfig {
   const url = svc.url || ''
@@ -86,6 +94,26 @@ export const useTalebookStore = create<TalebookState>((set, get) => ({
     recentBooks: [],
     error: null,
   }),
+
+  initRecent: async (serviceId) => {
+    try {
+      const raw = await AsyncStorage.getItem(recentKey(serviceId))
+      const books = raw ? JSON.parse(raw) as TalebookBook[] : []
+      set({ recentBooks: Array.isArray(books) ? books.slice(0, RECENT_MAX) : [] })
+    } catch {
+      set({ recentBooks: [] })
+    }
+  },
+
+  addRecent: async (book, serviceId) => {
+    const list = [...get().recentBooks]
+    list.splice(0, list.length, book, ...list.filter((b) => b.id !== book.id))
+    const next = list.slice(0, RECENT_MAX)
+    set({ recentBooks: next })
+    try {
+      await AsyncStorage.setItem(recentKey(serviceId), JSON.stringify(next))
+    } catch {}
+  },
 
   initWithService: async (service) => {
     const cached = await getCached<TalebookServerConfig>(`server:${service.id}`)
@@ -181,17 +209,14 @@ export const useTalebookStore = create<TalebookState>((set, get) => ({
     // 登录模块
     let reading: TalebookBook[] = []
     let shelf: TalebookBook[] = []
-    let recent: TalebookBook[] = []
     let loadedLoggedIn = false
     if (server.cookie) {
-      const [readingRes, shelfRes, recentRes] = await Promise.all([
+      const [readingRes, shelfRes] = await Promise.all([
         talebookGetReading(server),
         talebookGetShelf(server),
-        talebookGetRecent(server),
       ])
       reading = readingRes.ok ? readingRes.books ?? [] : []
       shelf = shelfRes.ok ? shelfRes.books ?? [] : []
-      recent = (recentRes.ok ? recentRes.books ?? [] : []).slice(0, 10)
       loadedLoggedIn = readingRes.ok && shelfRes.ok
     }
 
@@ -200,7 +225,6 @@ export const useTalebookStore = create<TalebookState>((set, get) => ({
       newBooks: fresh,
       readingBooks: reading,
       shelfBooks: shelf,
-      recentBooks: recent,
       isLoading: false,
       lastHomeFetchAt: loadedLoggedIn ? now : get().lastHomeFetchAt,
     })

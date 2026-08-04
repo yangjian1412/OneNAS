@@ -26,6 +26,8 @@ export default function TalebookScreen({ service, onRequestClose }: Props) {
   const t = useTheme()
   const isFocused = useIsFocused()
   const initWithService = useTalebookStore((s) => s.initWithService)
+  const initRecent = useTalebookStore((s) => s.initRecent)
+  const addRecent = useTalebookStore((s) => s.addRecent)
   const loadHome = useTalebookStore((s) => s.loadHome)
   const server = useTalebookStore((s) => s.server)
   const userInfo = useTalebookStore((s) => s.userInfo)
@@ -57,6 +59,10 @@ export default function TalebookScreen({ service, onRequestClose }: Props) {
   useEffect(() => {
     if (isFocused) void initWithService(service)
   }, [isFocused, initWithService, service])
+
+  useEffect(() => {
+    void initRecent(service.id)
+  }, [initRecent, service.id])
 
   useEffect(() => {
     if (isFocused && server && view === 'home') void loadHome(false)
@@ -96,6 +102,7 @@ export default function TalebookScreen({ service, onRequestClose }: Props) {
 
   const handleBookPress = useCallback(async (book: TalebookBook) => {
     if (!server) return
+    void addRecent(book, service.id)
     viewStackRef.current.push(view)
     setDetail(null)
     setDetailLoading(true)
@@ -112,7 +119,7 @@ export default function TalebookScreen({ service, onRequestClose }: Props) {
       const shelfRes = await talebookGetShelf(server)
       setInShelf((shelfRes.ok && (shelfRes.books ?? []).some((b) => b.id === result.book!.id)) || false)
     }
-  }, [server, view, setError])
+  }, [server, view, setError, addRecent, service])
 
   const handleToggleShelf = useCallback(async () => {
     if (!detail || !server) return
