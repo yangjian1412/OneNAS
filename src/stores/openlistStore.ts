@@ -376,7 +376,7 @@ async function clearDownloaderCached(id: string): Promise<void> {
   try { await AsyncStorage.removeItem(DOWNLOADER_PREFIX + id) } catch {}
 }
 
-/** 递归收集目录下所有文件的直链；相对根目录的子路径用于保目录结构 */
+/** 递归收集目录下所有文件的直链；相对根目录的子路径用于保目录结构（顶层目录名也会带上） */
 async function collectOpenListFiles(
   server: OpenListServerConfig,
   dirPath: string,
@@ -386,6 +386,7 @@ async function collectOpenListFiles(
 ): Promise<void> {
   if (out.length >= MAX_FILES) return
   const entries = await openListList(server, dirPath)
+  const topName = base.split('/').filter(Boolean).pop() ?? ''
   for (const e of entries) {
     if (out.length >= MAX_FILES) return
     const full = joinOpenListPath(dirPath, e.name)
@@ -395,6 +396,10 @@ async function collectOpenListFiles(
     }
     const rel = full.startsWith(base) ? full.slice(base.length).replace(/^\//, '') : ''
     const parentRel = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
-    out.push({ name: e.name, url: openListGetProxyUrl(server, full, e.sign), relDir: parentRel })
+    // 把 base 顶层目录名加到前缀：推送 /Movies/A 时，A/x.mp4 会落到 saveDir/A/，而非 saveDir/
+    const finalRelDir = topName
+      ? (parentRel ? `${topName}/${parentRel}` : topName)
+      : parentRel
+    out.push({ name: e.name, url: openListGetProxyUrl(server, full, e.sign), relDir: finalRelDir })
   }
 }
