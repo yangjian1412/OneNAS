@@ -17,8 +17,7 @@ import {
   openListCopy,
   openListLogin,
   openListFormUpload,
-  openListGetFileUrl,
-  openListGetProxyUrl,
+  openListResolveFileUrl,
   type OpenListUploadAsset,
 } from '@/lib/api/openlist'
 import { aria2AddUri, aria2GetGlobalOption, aria2TellStatus } from '@/lib/api/aria2'
@@ -262,7 +261,12 @@ export const useOpenListStore = create<OpenListState>((set, get) => ({
         if (entry.is_dir) {
           await collectOpenListFiles(server, p, p, 0, collected)
         } else {
-          collected.push({ name: entry.name, url: openListGetProxyUrl(server, p, entry.sign), relDir: '' })
+          try {
+          const resolved = await openListResolveFileUrl(server, p)
+          collected.push({ name: entry.name, url: resolved.url, relDir: '' })
+        } catch {
+          continue
+        }
         }
       }
       if (!collected.length) {
@@ -400,6 +404,11 @@ async function collectOpenListFiles(
     const finalRelDir = topName
       ? (parentRel ? `${topName}/${parentRel}` : topName)
       : parentRel
-    out.push({ name: e.name, url: openListGetProxyUrl(server, full, e.sign), relDir: finalRelDir })
+    try {
+      const resolved = await openListResolveFileUrl(server, full)
+      out.push({ name: e.name, url: resolved.url, relDir: finalRelDir })
+    } catch {
+      // skip files we can't resolve
+    }
   }
 }

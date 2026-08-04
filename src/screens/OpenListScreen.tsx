@@ -698,6 +698,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       <OpenListPreviewModal
         visible={!!previewFile}
         file={previewFile}
+        filePath={previewFile ? filePathOf(previewFile) : ''}
         server={server}
         onClose={() => setPreviewFile(null)}
         onDownload={() => { const f = previewFile; setPreviewFile(null); if (f) download(f) }}

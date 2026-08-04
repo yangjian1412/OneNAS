@@ -118,3 +118,49 @@ export function openListGetProxyUrl(server: OpenListServerConfig, path: string, 
   const q = sign ? `?sign=${encodeURIComponent(sign)}` : ''
   return `${base}/p/${segs}${q}`
 }
+
+export interface OpenListResolvedFile {
+  /** 推荐 URL：raw_url 优先（alist 内部真实存储 URL，绕开 /d//p/ panic），其次 /p/，最后 /d/ */
+  url: string
+  /** 备用 /p/ URL */
+  proxyUrl: string
+  /** 备用 /d/ URL */
+  directUrl: string
+  /** alist 返回的 sign */
+  sign?: string
+  /** alist 返回的 raw_url（如果有） */
+  rawUrl?: string
+  /** 来自 fs/get 的元数据 */
+  meta?: OpenListFile
+}
+
+/** 通过 fs/get 获取文件元数据，返回多级 fallback 的可用 URL */
+export async function openListResolveFileUrl(server: OpenListServerConfig, path: string): Promise<OpenListResolvedFile> {
+  const directUrl = openListGetFileUrl(server, path)
+  const proxyUrl = openListGetProxyUrl(server, path)
+  let sign: string | undefined
+  let rawUrl: string | undefined
+  let meta: OpenListFile | undefined
+  try {
+    // fs/get 偶发挂起时也要能超时返回（fallback 用 /p/ /d/ 纯直链）
+    const r = await Promise.race([
+      openListGet(server, path),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('fs/get timeout')), 8000)),
+    ])
+    meta = r ?? undefined
+    if (meta?.sign) sign = meta.sign
+    // alist v3 fs/get 响应可能含 raw_url（存储源真实 URL）；类型未声明，运行时取一下
+    const m = meta as any
+    if (m?.raw_url) rawUrl = String(m.raw_url)
+    if (!sign && m?.url) {
+      // alist 返回的 url 可能是 /d/{path}?sign=...，从中提 sign
+      try {
+        const u = new URL(m.url)
+        const s = u.searchParams.get('sign')
+        if (s) sign = s
+      } catch {}
+    }
+  } catch {}
+  const url = rawUrl || proxyUrl || directUrl
+  return { url, proxyUrl, directUrl, sign, rawUrl, meta }
+}
