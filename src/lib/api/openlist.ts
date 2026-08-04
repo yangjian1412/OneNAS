@@ -110,3 +110,11 @@ export function openListGetFileUrl(server: OpenListServerConfig, path: string, s
   const q = sign ? `?sign=${encodeURIComponent(sign)}` : ''
   return `${base}/d/${segs}${q}`
 }
+
+/** /p/ 代理 URL：返回 302 重定向到真实存储 URL，绕过 /d/ 在某些 alist 版本上的 panic */
+export function openListGetProxyUrl(server: OpenListServerConfig, path: string, sign?: string): string {
+  const base = server.url.replace(/\/+$/, '')
+  const segs = path.split('/').filter(Boolean).map((s) => encodeURIComponent(s)).join('/')
+  const q = sign ? `?sign=${encodeURIComponent(sign)}` : ''
+  return `${base}/p/${segs}${q}`
+}

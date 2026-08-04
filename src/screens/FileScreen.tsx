@@ -34,9 +34,9 @@ type EditMode = 'folder' | 'rename' | 'copy' | 'move' | null
 type ViewMode = 'list' | 'grid'
 
 const SORT_BY_LABEL: Record<FileSortBy, string> = {
-  name: '按名称',
-  size: '按大小',
-  modified: '按修改时间',
+  name: '名称',
+  size: '大小',
+  modified: '时间',
 }
 const sortLabel = (by: FileSortBy) => SORT_BY_LABEL[by] ?? '排序'
 const encodeRemotePath = (path: string) => path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')
@@ -960,14 +960,14 @@ export default function FileScreen() {
             {(['name', 'size', 'modified'] as FileSortBy[]).map((by) => (
               <TouchableOpacity key={by} style={[styles.sortOption, { borderBottomColor: t.border }]} onPress={() => setFileSort({ by, dir: fileSort.dir })}>
                 <Text style={[styles.sortOptionText, { color: t.text }]}>{SORT_BY_LABEL[by]}</Text>
-                <Text style={[styles.sortOptionMark, { color: fileSort.by === by ? t.primary : 'transparent' }]}>●</Text>
+                {fileSort.by === by ? <Text style={[styles.sortOptionMark, { color: t.primary }]}>●</Text> : <View style={styles.sortOptionMarkSpacer} />}
               </TouchableOpacity>
             ))}
             <Text style={[styles.sortSheetTitle, { color: t.text, marginTop: 12 }]}>顺序</Text>
             {(['asc', 'desc'] as FileSortDir[]).map((dir) => (
               <TouchableOpacity key={dir} style={[styles.sortOption, { borderBottomColor: t.border }]} onPress={() => setFileSort({ by: fileSort.by, dir })}>
                 <Text style={[styles.sortOptionText, { color: t.text }]}>{dir === 'asc' ? '升序 ↑' : '降序 ↓'}</Text>
-                <Text style={[styles.sortOptionMark, { color: fileSort.dir === dir ? t.primary : 'transparent' }]}>●</Text>
+                {fileSort.dir === dir ? <Text style={[styles.sortOptionMark, { color: t.primary }]}>●</Text> : <View style={styles.sortOptionMarkSpacer} />}
               </TouchableOpacity>
             ))}
             <TouchableOpacity style={styles.sortCancel} onPress={() => setSortOpen(false)}>
@@ -1279,7 +1279,7 @@ const styles = StyleSheet.create({
   searchBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, gap: 4 }, searchInput: { flex: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, borderWidth: 1 }, searchAction: { minWidth: 56, paddingHorizontal: 6, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' }, searchActionText: { fontSize: 14, fontWeight: '600' },
   pathRow: { paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth }, pathLabel: { fontSize: 12 },
   toolbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, gap: 6, borderBottomWidth: StyleSheet.hairlineWidth }, toolbarSpacer: { flex: 1 }, toolbarButton: { minWidth: 56, minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 }, toolbarAction: { fontSize: 14, fontWeight: '600' }, iconButton: { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }, toolbarIcon: { fontSize: 22, fontWeight: '500' },
-  sortButton: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, minHeight: 36 }, sortButtonText: { fontSize: 13, fontWeight: '600' },
+  sortButton: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, paddingHorizontal: 10, height: 34 }, sortButtonText: { fontSize: 13, fontWeight: '500' },
   spinnerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 10 }, errorText: { fontSize: 13, textAlign: 'center', padding: 10 },
   list: { flex: 1 }, listContent: { paddingBottom: 48 }, listContentWithBar: { paddingBottom: 110 },
   fileItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, minHeight: 72, borderBottomWidth: StyleSheet.hairlineWidth, gap: 6 },
@@ -1294,7 +1294,7 @@ const styles = StyleSheet.create({
   activeServiceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }, modalBackdrop: { ...StyleSheet.absoluteFill },
   actionSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32, gap: 4 }, editSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32 },
-  sortSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }, sortSheetTitle: { fontSize: 15, fontWeight: '700', marginBottom: 6 }, sortOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth }, sortOptionText: { fontSize: 16, fontWeight: '500' }, sortOptionMark: { fontSize: 18, marginLeft: 12 }, sortCancel: { alignItems: 'center', paddingTop: 14 },
+  sortSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }, sortSheetTitle: { fontSize: 15, fontWeight: '700', marginBottom: 6 }, sortOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth }, sortOptionText: { fontSize: 16, fontWeight: '500' }, sortOptionMark: { fontSize: 18, marginLeft: 12 }, sortOptionMarkSpacer: { width: 18, marginLeft: 12 }, sortCancel: { alignItems: 'center', paddingTop: 14 },
   actionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 8 }, actionButton: { minHeight: 56, justifyContent: 'center', alignItems: 'center', borderRadius: 10, paddingHorizontal: 12 }, actionText: { fontSize: 16, fontWeight: '600' },
   editInput: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16, minHeight: 52 }, editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 28, paddingTop: 18 },
   toast: { position: 'absolute', left: 0, right: 0, bottom: 120, alignItems: 'center' }, toastInner: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24 }, toastText: { color: '#fff', fontSize: 15, fontWeight: '600' },

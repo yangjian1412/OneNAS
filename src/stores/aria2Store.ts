@@ -23,6 +23,9 @@ import {
 } from '@/lib/api/aria2'
 
 const AUTO_REFRESH_MS = 1000
+const PAGE_SIZE = 50
+// 已完成不分页：一次性拉最多 1024 条，reverse() 后存入（aria2 tellStopped 实际按 FIFO 返回）
+const STOPPED_ALL = 1024
 const AUTOREFRESH_KEY = 'aria2:autorefresh'
 
 interface Aria2State {
@@ -31,6 +34,8 @@ interface Aria2State {
   active: Aria2Task[]
   waiting: Aria2Task[]
   stopped: Aria2Task[]
+  waitingHasMore: boolean
+  loadingPage: boolean
   globalStat: Aria2GlobalStat | null
   globalOption: Record<string, string>
   isLoading: boolean
@@ -44,6 +49,7 @@ interface Aria2State {
 
   loadHome: () => Promise<void>
   refresh: () => Promise<void>
+  loadWaitingPage: () => Promise<void>
   pause: (gid: string) => Promise<void>
   unpause: (gid: string) => Promise<void>
   remove: (gid: string) => Promise<void>
@@ -85,6 +91,8 @@ export const useAria2Store = create<Aria2State>((set, get) => {
     active: [],
     waiting: [],
     stopped: [],
+    waitingHasMore: false,
+    loadingPage: false,
     globalStat: null,
     globalOption: {},
     isLoading: false,
@@ -106,6 +114,8 @@ export const useAria2Store = create<Aria2State>((set, get) => {
         active: [],
         waiting: [],
         stopped: [],
+        waitingHasMore: false,
+        loadingPage: false,
         globalStat: null,
         globalOption: {},
         error: null,
@@ -134,25 +144,43 @@ export const useAria2Store = create<Aria2State>((set, get) => {
       const server = get().server
       if (!server) return
       set({ isLoading: true, error: null })
-      const [v, stat, active, waiting, stopped] = await Promise.all([
+      const [v, stat, active, waitingPage, stoppedPage] = await Promise.all([
         aria2GetVersion(server),
         aria2GetGlobalStat(server),
         aria2TellActive(server),
-        aria2TellWaiting(server, 0, 1024),
-        aria2TellStopped(server, 0, 1024),
+        aria2TellWaiting(server, 0, PAGE_SIZE),
+        aria2TellStopped(server, 0, STOPPED_ALL),
       ])
+      const totalWaiting = Number(stat?.numWaiting) || 0
+      const totalStopped = Number(stat?.numStopped) || 0
       set({
         version: v?.version ?? get().version,
         globalStat: stat,
         active,
-        waiting,
-        stopped,
+        waiting: waitingPage,
+        stopped: stoppedPage.reverse(),
+        waitingHasMore: waitingPage.length < totalWaiting,
         isLoading: false,
       })
     },
 
     refresh: async () => {
       await get().loadHome()
+    },
+
+    loadWaitingPage: async () => {
+      const server = get().server
+      if (!server) return
+      const s = get()
+      if (!s.waitingHasMore || s.loadingPage) return
+      set({ loadingPage: true })
+      const totalWaiting = Number(s.globalStat?.numWaiting) || 0
+      const next = await aria2TellWaiting(server, s.waiting.length, PAGE_SIZE)
+      set((cur) => ({
+        waiting: [...cur.waiting, ...next],
+        waitingHasMore: cur.waiting.length + next.length < totalWaiting,
+        loadingPage: false,
+      }))
     },
 
     pause: async (gid) => {
@@ -186,9 +214,13 @@ export const useAria2Store = create<Aria2State>((set, get) => {
     addUri: async (uris, options) => {
       const server = get().server
       if (!server) return null
-      const gid = await aria2AddUri(server, uris, options)
-      if (gid) await get().loadHome()
-      return gid
+      try {
+        const gid = await aria2AddUri(server, uris, options)
+        await get().loadHome()
+        return gid
+      } catch {
+        return null
+      }
     },
 
     loadGlobalOption: async () => {

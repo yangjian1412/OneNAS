@@ -18,9 +18,10 @@ import {
   openListLogin,
   openListFormUpload,
   openListGetFileUrl,
+  openListGetProxyUrl,
   type OpenListUploadAsset,
 } from '@/lib/api/openlist'
-import { aria2AddUri, aria2GetGlobalOption } from '@/lib/api/aria2'
+import { aria2AddUri, aria2GetGlobalOption, aria2TellStatus } from '@/lib/api/aria2'
 
 const DOWNLOADER_PREFIX = 'openlist:downloader:'
 const MAX_DEPTH = 20
@@ -53,8 +54,8 @@ interface OpenListState {
   rename: (path: string, newName: string) => Promise<boolean>
   move: (srcDir: string, names: string[], dstDir: string) => Promise<boolean>
   copy: (srcDir: string, names: string[], dstDir: string) => Promise<boolean>
-  /** 推送到 aria2（前端直连 RPC）：传入要推送的路径数组，文件夹会被递归展开，返回成功数 */
-  pushToAria2: (paths: string[]) => Promise<{ ok: boolean; count: number }>
+  /** 推送到 aria2（前端直连 RPC）：传入要推送的路径数组，文件夹会被递归展开 */
+  pushToAria2: (paths: string[]) => Promise<{ ok: boolean; count: number; error?: string; verify?: { ok: number; bad: number; badMsg?: string } }>
   upload: (remotePath: string, asset: OpenListUploadAsset) => Promise<boolean>
   getDownloader: () => Promise<NonNullable<OpenListServerConfig['downloader']> | null>
   setDownloader: (dl: NonNullable<OpenListServerConfig['downloader']> | null) => Promise<void>
@@ -243,11 +244,12 @@ export const useOpenListStore = create<OpenListState>((set, get) => ({
   /** 递归展开文件夹，收集 { 文件名, 直链, 相对子目录 } */
   pushToAria2: async (paths) => {
     const server = get().server
-    if (!server) return { ok: false, count: 0 }
+    if (!server) return { ok: false, count: 0, error: '未连接' }
     const dl = server.downloader ?? (await getDownloaderCached(server.id))
     if (!dl || !dl.url) {
-      set({ error: '未配置下载工具（aria2），请在抽屉 → 下载工具设置 中配置' })
-      return { ok: false, count: 0 }
+      const msg = '未配置下载工具（aria2），请在抽屉 → 下载工具设置 中配置'
+      set({ error: msg })
+      return { ok: false, count: 0, error: msg }
     }
     const rpc: Aria2ServerConfig = { id: 'openlist-dl', name: 'OpenList', url: dl.url, secret: dl.secret }
     try {
@@ -260,27 +262,54 @@ export const useOpenListStore = create<OpenListState>((set, get) => ({
         if (entry.is_dir) {
           await collectOpenListFiles(server, p, p, 0, collected)
         } else {
-          collected.push({ name: entry.name, url: openListGetFileUrl(server, p, entry.sign), relDir: '' })
+          collected.push({ name: entry.name, url: openListGetProxyUrl(server, p, entry.sign), relDir: '' })
         }
       }
       if (!collected.length) {
-        set({ error: '未找到可推送的文件' })
-        return { ok: false, count: 0 }
+        const msg = '没有可推送的文件'
+        set({ error: msg })
+        return { ok: false, count: 0, error: msg }
       }
       const saveDir = (await aria2GetGlobalOption(rpc))?.dir?.replace(/\/+$/, '') ?? ''
+      // 让 aria2 带 Authorization 头拉直链，绕开对 sign 的强依赖（alist-web 也靠 sign，
+      // 但部分存储驱动不返回 sign；带 Authorization 可让 aria2 通过认证）
+      const authHeader = server.token ? `Authorization: ${server.token}` : ''
+      const gids: string[] = []
+      const errors: string[] = []
       let okCount = 0
       for (const f of collected) {
         const options: Record<string, string> = { out: f.name, 'check-certificate': 'false' }
-        if (saveDir || f.relDir) {
-          options.dir = [saveDir, f.relDir].filter(Boolean).join('/')
+        if (saveDir || f.relDir) options.dir = [saveDir, f.relDir].filter(Boolean).join('/')
+        if (authHeader) options.header = authHeader
+        try {
+          const gid = await aria2AddUri(rpc, [f.url], options)
+          gids.push(gid)
+          okCount++
+        } catch (e: any) {
+          errors.push(`${f.name}: ${e?.message ?? 'addUri 失败'}`)
         }
-        const gid = await aria2AddUri(rpc, [f.url], options)
-        if (gid) okCount++
       }
-      return { ok: okCount > 0, count: okCount }
+      // 反向验证：用返回的 gid 查 tellStatus，确认 aria2 真接收且未立即 error
+      let bad = 0
+      let badMsg = ''
+      for (const gid of gids) {
+        try {
+          const s = await aria2TellStatus(rpc, gid)
+          if (!s) { bad++; continue }
+          if (s.status === 'error' || s.status === 'removed') {
+            bad++
+            if (!badMsg) badMsg = s.errorMessage || `状态 ${s.status}`
+          }
+        } catch {
+          bad++
+        }
+      }
+      const verify = { ok: okCount - bad, bad, badMsg: badMsg || undefined }
+      return { ok: okCount > 0, count: okCount, error: errors[0], verify }
     } catch (e: any) {
-      set({ error: e?.message ?? '推送失败' })
-      return { ok: false, count: 0 }
+      const msg = e?.message ?? '推送失败'
+      set({ error: msg })
+      return { ok: false, count: 0, error: msg }
     }
   },
 
@@ -366,6 +395,6 @@ async function collectOpenListFiles(
     }
     const rel = full.startsWith(base) ? full.slice(base.length).replace(/^\//, '') : ''
     const parentRel = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
-    out.push({ name: e.name, url: openListGetFileUrl(server, full, e.sign), relDir: parentRel })
+    out.push({ name: e.name, url: openListGetProxyUrl(server, full, e.sign), relDir: parentRel })
   }
 }

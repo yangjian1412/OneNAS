@@ -6,11 +6,14 @@ import { useOpenListStore, joinOpenListPath } from '@/stores/openlistStore'
 import { useAppStore } from '@/stores/appStore'
 import type { OpenListFile, ServiceConfig } from '@/types'
 import { openListGetFileUrl, openListGet } from '@/lib/api/openlist'
+import { aria2Ping } from '@/lib/api/aria2'
 import { checkStoragePermission, openAllFilesSettings, enqueueDownload } from '@/lib/downloadManager'
 import { useTheme } from '@/lib/theme'
 import Icon, { IconName } from '@/components/Icon'
 import ServiceHeader from '@/components/ServiceHeader'
 import ServiceDrawer, { DrawerItem } from '@/components/ServiceDrawer'
+import OpenListPreviewModal from '@/components/openlist/OpenListPreviewModal'
+import { getFileCategory } from '@/lib/fileTypes'
 
 interface Props {
   service: ServiceConfig
@@ -60,6 +63,8 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
   const [dlOpen, setDlOpen] = useState(false)
   const [dlUrl, setDlUrl] = useState('')
   const [dlSecret, setDlSecret] = useState('')
+  const [dlTesting, setDlTesting] = useState(false)
+  const [previewFile, setPreviewFile] = useState<OpenListFile | null>(null)
 
   const [actionItem, setActionItem] = useState<OpenListFile | null>(null)
   const [editMode, setEditMode] = useState<EditMode>(null)
@@ -106,9 +111,20 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
     setDlOpen(false)
   }, [dlUrl, dlSecret, setDownloader])
 
+  const onDlTest = useCallback(async () => {
+    const url = dlUrl.trim()
+    if (!url) { Alert.alert('提示', '请先填写 RPC 地址'); return }
+    setDlTesting(true)
+    const r = await aria2Ping({ id: 'test', name: 'test', url, secret: dlSecret.trim() })
+    setDlTesting(false)
+    if (r.ok) Alert.alert('连接成功', `aria2 版本：${r.version ?? 'unknown'}`)
+    else Alert.alert('连接失败', r.error ?? '未知错误')
+  }, [dlUrl, dlSecret])
+
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!isFocused) return false
+      if (previewFile) { setPreviewFile(null); return true }
       if (detailItem) { setDetailItem(null); return true }
       if (editMode) { setEditMode(null); return true }
       if (actionItem) { setActionItem(null); return true }
@@ -125,7 +141,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       return true
     })
     return () => sub.remove()
-  }, [isFocused, detailItem, editMode, actionItem, sortOpen, dlOpen, mkdirOpen, drawerOpen, multiSelect, path, up, exitMultiSelect, onRequestClose])
+  }, [isFocused, previewFile, detailItem, editMode, actionItem, sortOpen, dlOpen, mkdirOpen, drawerOpen, multiSelect, path, up, exitMultiSelect, onRequestClose])
 
   const filePathOf = useCallback((f: OpenListFile): string => {
     return f.virtual_path ?? f.path ?? joinOpenListPath(path, f.name)
@@ -196,14 +212,19 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       toggleSelect(filePathOf(f))
       return
     }
-    if (f.is_dir) { void cd(f.name, path) }
-    else setActionItem(f)
+    if (f.is_dir) { void cd(f.name, path); return }
+    const cat = getFileCategory(f.name)
+    if (cat === 'image' || cat === 'video' || cat === 'audio' || cat === 'text') {
+      setPreviewFile(f)
+      return
+    }
+    setActionItem(f)
   }, [multiSelect, filePathOf, toggleSelect, cd, path])
 
   const onItemLongPress = useCallback((f: OpenListFile) => {
-    if (!multiSelect) enterMultiSelect()
-    toggleSelect(filePathOf(f))
-  }, [multiSelect, enterMultiSelect, toggleSelect, filePathOf])
+    if (multiSelect) { toggleSelect(filePathOf(f)); return }
+    setActionItem(f)
+  }, [multiSelect, toggleSelect, filePathOf])
 
   const enqueueOne = useCallback(async (url: string, fileName: string) => {
     if (!server) return
@@ -244,8 +265,12 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       setActionItem(null)
       void (async () => {
         const res = await pushToAria2([filePathOf(f)])
-        if (res.ok) Alert.alert('已推送', `${f.name} 已加入 aria2 下载`)
-        else Alert.alert('推送失败', latestError() ?? '未知错误')
+        if (res.ok) {
+          const verify = res.verify && res.verify.bad > 0
+            ? `\naria2 收到 ${res.verify.bad} 个错误任务：${res.verify.badMsg ?? '未知'}`
+            : ''
+          Alert.alert('已推送', `${f.name} 已加入 aria2${verify}`)
+        } else Alert.alert('推送失败', res.error ?? '未知错误')
       })()
     }
     if (f.is_dir) {
@@ -264,8 +289,12 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       exitMultiSelect()
       void (async () => {
         const res = await pushToAria2(paths)
-        if (res.ok) Alert.alert('已推送', `${res.count} 个文件已加入 aria2 下载`)
-        else Alert.alert('推送失败', latestError() ?? '未知错误')
+        if (res.ok) {
+          const verify = res.verify && res.verify.bad > 0
+            ? `\naria2 收到 ${res.verify.bad} 个错误任务：${res.verify.badMsg ?? '未知'}`
+            : ''
+          Alert.alert('已推送', `${res.count} 个文件已加入 aria2${verify}`)
+        } else Alert.alert('推送失败', res.error ?? '未知错误')
       })()
     }
     if (selected.some((f) => f.is_dir)) {
@@ -361,7 +390,6 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
   }
 
   const drawerItems: DrawerItem[] = [
-    { key: 'multiSelect', label: '多选模式', icon: 'multiSelect', onPress: () => { setDrawerOpen(false); enterMultiSelect() } },
     { key: 'downloader', label: '下载工具设置', icon: 'settings', onPress: () => { setDrawerOpen(false); setDlOpen(true) } },
   ]
 
@@ -422,7 +450,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
                     {selected ? <View style={[styles.checkboxInner, { backgroundColor: t.primary }]} /> : null}
                   </View>
                 ) : null}
-                <Icon name={f.is_dir ? 'folderContent' : fileIcon(f.name)} size={22} style={{ marginRight: 10 }} />
+                <Icon name={f.is_dir ? 'folderContent' : fileIcon(f.name)} size={22} color={t.primary} style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.fileName, { color: t.text }]} numberOfLines={1}>{f.name}</Text>
                   {!f.is_dir ? <Text style={[styles.fileMeta, { color: t.textMuted }]}>{formatSize(f.size)}{f.modified ? `  ·  ${f.modified}` : ''}</Text> : null}
@@ -604,14 +632,14 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
             {(['name', 'size', 'modified'] as OpenListSortBy[]).map((by) => (
               <TouchableOpacity key={by} style={styles.sortOption} onPress={() => setSortBy(by)}>
                 <Text style={[styles.sortOptionText, { color: t.text }]}>{SORT_LABELS[by]}</Text>
-                <Text style={[styles.sortOptionMark, { color: sortBy === by ? t.primary : 'transparent' }]}>●</Text>
+                {sortBy === by ? <Text style={[styles.sortOptionMark, { color: t.primary }]}>●</Text> : <View style={styles.sortOptionMarkSpacer} />}
               </TouchableOpacity>
             ))}
             <Text style={[styles.sheetTitle, { color: t.text, marginTop: 12 }]}>顺序</Text>
             {(['asc', 'desc'] as const).map((d) => (
               <TouchableOpacity key={d} style={styles.sortOption} onPress={() => setSortDir(d)}>
                 <Text style={[styles.sortOptionText, { color: t.text }]}>{d === 'asc' ? '升序 ↑' : '降序 ↓'}</Text>
-                <Text style={[styles.sortOptionMark, { color: sortDir === d ? t.primary : 'transparent' }]}>●</Text>
+                {sortDir === d ? <Text style={[styles.sortOptionMark, { color: t.primary }]}>●</Text> : <View style={styles.sortOptionMarkSpacer} />}
               </TouchableOpacity>
             ))}
             <View style={styles.sheetActions}>
@@ -658,11 +686,23 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
             />
 
             <View style={styles.sheetActions}>
+              <TouchableOpacity onPress={onDlTest} disabled={dlTesting}>
+                <Text style={[styles.actionText, { color: t.text }]}>{dlTesting ? '测试中...' : '测试连接'}</Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={onDlSave}><Text style={[styles.actionText, { color: t.primary }]}>保存</Text></TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+
+      <OpenListPreviewModal
+        visible={!!previewFile}
+        file={previewFile}
+        server={server}
+        onClose={() => setPreviewFile(null)}
+        onDownload={() => { const f = previewFile; setPreviewFile(null); if (f) download(f) }}
+        onReLogin={() => { setPreviewFile(null); void initWithService(service) }}
+      />
     </View>
   )
 }
@@ -825,6 +865,7 @@ const styles = StyleSheet.create({
   sortOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
   sortOptionText: { fontSize: 15, fontWeight: '500' },
   sortOptionMark: { fontSize: 14 },
+  sortOptionMarkSpacer: { width: 14 },
 
   dlHint: { fontSize: 12, marginBottom: 12 },
   dlLabel: { fontSize: 13, fontWeight: '600', marginTop: 12, marginBottom: 6 },

@@ -81,10 +81,15 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
   const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
   const isFocused = useIsFocused()
+  const hasLoadedOnce = useRef(false)
 
   useEffect(() => {
     if (isFocused) void initWithService(service)
   }, [isFocused, initWithService, service])
+
+  useEffect(() => {
+    if (!isLoading) hasLoadedOnce.current = true
+  }, [isLoading])
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -161,7 +166,7 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
       ) : null}
 
       <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 32 }}>
-        {isLoading && tasks.length === 0 ? (
+        {!hasLoadedOnce.current && isLoading ? (
           <View style={styles.center}><ActivityIndicator size="large" color={t.primary} /></View>
         ) : tasks.length === 0 ? (
           <Text style={[styles.empty, { color: t.textMuted }]}>暂无任务，点 + 添加磁力链或 URL</Text>

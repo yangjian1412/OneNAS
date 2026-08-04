@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal, Animated } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal, Animated, FlatList } from 'react-native'
 import { useIsFocused } from '@react-navigation/native'
 import { useAria2Store } from '@/stores/aria2Store'
 import type { Aria2Task, ServiceConfig } from '@/types'
@@ -63,9 +63,9 @@ export default function Aria2Screen({ service, onRequestClose }: Props) {
   const t = useTheme()
   const {
     server, version, globalStat, globalOption,
-    active, waiting, stopped,
+    active, waiting, stopped, waitingHasMore, loadingPage,
     isLoading, error,
-    loadHome, refresh,
+    loadHome, refresh, loadWaitingPage,
     pause, unpause, remove, forceRemove, addUri,
     loadGlobalOption, saveGlobalOption,
     initWithService, autoRefresh, setAutoRefresh,
@@ -79,10 +79,16 @@ export default function Aria2Screen({ service, onRequestClose }: Props) {
   const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
   const isFocused = useIsFocused()
+  const hasLoadedOnce = useRef(false)
 
   useEffect(() => {
     if (isFocused) void initWithService(service)
   }, [isFocused, initWithService, service])
+
+  useEffect(() => {
+    // 首次 loadHome 完成后置 true；用于空任务时稳定显示，不被每秒轮询触发闪烁
+    if (!isLoading) hasLoadedOnce.current = true
+  }, [isLoading])
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -114,6 +120,8 @@ export default function Aria2Screen({ service, onRequestClose }: Props) {
   }, [addUrls, addUri])
 
   const tasks = tab === 'active' ? active : tab === 'waiting' ? waiting : stopped
+const hasMore = tab === 'waiting' ? waitingHasMore : false
+const onLoadMore = tab === 'waiting' ? loadWaitingPage : null
 
   if (!server) {
     return (
@@ -167,34 +175,63 @@ export default function Aria2Screen({ service, onRequestClose }: Props) {
         </View>
       ) : null}
 
-      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 32 }}>
-        {isLoading && tasks.length === 0 ? (
-          <View style={styles.center}><ActivityIndicator size="large" color={t.primary} /></View>
-        ) : tasks.length === 0 ? (
-          <Text style={[styles.empty, { color: t.textMuted }]}>
-            {tab === 'active' ? '无正在下载的任务' : tab === 'waiting' ? '无等待中的任务' : '无已完成/失败的任务'}
-          </Text>
-        ) : (
-          tasks.map((task) => (
-            <TaskRow key={task.gid} task={task} tab={tab} t={t}
-              onPause={() => void pause(task.gid)}
-              onUnpause={() => void unpause(task.gid)}
-              onRemove={() => {
-                Alert.alert('删除任务', `确定要删除 "${fileName(task)}" 吗？`, [
-                  { text: '取消', style: 'cancel' },
-                  { text: '删除', style: 'destructive', onPress: () => { void remove(task.gid) } },
-                ])
-              }}
-              onForceRemove={() => {
-                Alert.alert('强制删除', `确定要强制删除 "${fileName(task)}" 吗？`, [
-                  { text: '取消', style: 'cancel' },
-                  { text: '强制删除', style: 'destructive', onPress: () => { void forceRemove(task.gid) } },
-                ])
-              }}
-            />
-          ))
+      <FlatList
+        data={tasks}
+        keyExtractor={(it) => it.gid}
+        contentContainerStyle={{ padding: 12, paddingBottom: 32 }}
+        onEndReached={onLoadMore ? () => { void onLoadMore() } : undefined}
+        onEndReachedThreshold={0.4}
+        ListEmptyComponent={
+          !hasLoadedOnce.current && isLoading ? (
+            <View style={styles.center}><ActivityIndicator size="large" color={t.primary} /></View>
+          ) : (
+            <Text style={[styles.empty, { color: t.textMuted }]}>
+              {tab === 'active' ? '无正在下载的任务' : tab === 'waiting' ? '无等待中的任务' : '无已完成/失败的任务'}
+            </Text>
+          )
+        }
+        ListFooterComponent={
+          loadingPage ? (
+            <View style={styles.footer}><ActivityIndicator color={t.primary} /></View>
+          ) : hasMore ? null : tasks.length > 0 ? (
+            <Text style={[styles.footerText, { color: t.textMuted }]}>— 已加载全部 —</Text>
+          ) : null
+        }
+        renderItem={({ item: task }) => (
+          <TaskRow task={task} tab={tab} t={t}
+            onPause={() => void pause(task.gid)}
+            onUnpause={() => void unpause(task.gid)}
+            onRemove={() => {
+              Alert.alert('删除任务', `确定要删除 "${fileName(task)}" 吗？`, [
+                { text: '取消', style: 'cancel' },
+                { text: '删除', style: 'destructive', onPress: () => { void remove(task.gid) } },
+              ])
+            }}
+            onForceRemove={() => {
+              Alert.alert('强制删除', `确定要强制删除 "${fileName(task)}" 吗？`, [
+                { text: '取消', style: 'cancel' },
+                { text: '强制删除', style: 'destructive', onPress: () => { void forceRemove(task.gid) } },
+              ])
+            }}
+            onRetry={() => {
+              const uris = (task.files || []).flatMap((f) => (f.uris || []).map((u) => u.uri).filter(Boolean))
+              if (!uris.length) { Alert.alert('重试失败', '该任务没有可用的下载链接'); return }
+              Alert.alert('重试下载', `将重新添加 ${uris.length} 个链接到下载队列？`, [
+                { text: '取消', style: 'cancel' },
+                { text: '重试', onPress: async () => {
+                  const gid = await addUri(uris, { 'check-certificate': 'false' })
+                  if (gid) {
+                    await remove(task.gid)
+                    Alert.alert('已重试', '任务已重新加入下载队列')
+                  } else {
+                    Alert.alert('重试失败', '请检查 Aria2 配置')
+                  }
+                } },
+              ])
+            }}
+          />
         )}
-      </ScrollView>
+      />
 
       <TouchableOpacity style={[styles.fab, { backgroundColor: t.primary }]} onPress={() => setAddOpen(true)}>
         <Icon name="plus" size={26} color="#fff" />
@@ -256,7 +293,7 @@ function Stat({ label, value, color, t }: { label: string; value: string; color:
   )
 }
 
-function TaskRow({ task, tab, t, onPause, onUnpause, onRemove, onForceRemove }: {
+function TaskRow({ task, tab, t, onPause, onUnpause, onRemove, onForceRemove, onRetry }: {
   task: Aria2Task
   tab: Tab
   t: any
@@ -264,23 +301,30 @@ function TaskRow({ task, tab, t, onPause, onUnpause, onRemove, onForceRemove }: 
   onUnpause: () => void
   onRemove: () => void
   onForceRemove: () => void
+  onRetry: () => void
 }) {
   const total = Number(task.totalLength) || 0
   const done = Number(task.completedLength) || 0
   const pct = total > 0 ? done / total : 0
   const isPaused = task.status === 'paused'
   const isActive = tab === 'active'
+  const isError = task.status === 'error' || task.status === 'removed'
   return (
-    <View style={[styles.taskCard, { backgroundColor: t.card, borderColor: t.border }]}>
-      <Text style={[styles.taskName, { color: t.text }]} numberOfLines={2}>{fileName(task)}</Text>
+    <View style={[styles.taskCard, { backgroundColor: t.card, borderColor: isError ? t.danger : t.border }]}>
+      <View style={styles.taskHeader}>
+        {isError ? <Icon name="alertCircle" size={16} color={t.danger} style={{ marginRight: 6 }} /> : null}
+        <Text style={[styles.taskName, { color: t.text, flex: 1 }]} numberOfLines={2}>{fileName(task)}</Text>
+      </View>
       <View style={[styles.progressBg, { backgroundColor: t.border }]}>
-        <View style={[styles.progressFill, { backgroundColor: t.primary, width: `${Math.min(100, pct * 100)}%` }]} />
+        <View style={[styles.progressFill, { backgroundColor: isError ? t.danger : t.primary, width: `${Math.min(100, pct * 100)}%` }]} />
       </View>
       <View style={styles.taskMeta}>
         <Text style={[styles.metaText, { color: t.textMuted }]}>{formatBytes(done)} / {formatBytes(total)}</Text>
         {Number(task.downloadSpeed) > 0 ? <Text style={[styles.metaText, { color: t.textMuted }]}>{formatSpeed(task.downloadSpeed)}</Text> : null}
-        {task.errorMessage ? <Text style={[styles.metaText, { color: '#c0392b' }]} numberOfLines={1}>{task.errorMessage}</Text> : null}
       </View>
+      {task.errorMessage ? (
+        <Text style={[styles.errorText, { color: t.danger }]} numberOfLines={3}>{task.errorMessage}</Text>
+      ) : null}
       <View style={styles.taskActions}>
         {isActive && !isPaused ? (
           <TouchableOpacity onPress={onPause} style={[styles.btn, { backgroundColor: t.border }]}><Text style={[styles.btnText, { color: t.text }]}>暂停</Text></TouchableOpacity>
@@ -288,7 +332,11 @@ function TaskRow({ task, tab, t, onPause, onUnpause, onRemove, onForceRemove }: 
           <TouchableOpacity onPress={onUnpause} style={[styles.btn, { backgroundColor: t.primary }]}><Text style={[styles.btnText, { color: '#fff' }]}>继续</Text></TouchableOpacity>
         ) : null}
         <TouchableOpacity onPress={onRemove} style={[styles.btn, { backgroundColor: t.border }]}><Text style={[styles.btnText, { color: t.text }]}>删除</Text></TouchableOpacity>
-        <TouchableOpacity onPress={onForceRemove} style={[styles.btn, { backgroundColor: t.border }]}><Text style={[styles.btnText, { color: '#c0392b' }]}>强制删除</Text></TouchableOpacity>
+        {isError ? (
+          <TouchableOpacity onPress={onRetry} style={[styles.btn, { backgroundColor: t.primary }]}><Text style={[styles.btnText, { color: '#fff' }]}>重试</Text></TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={onForceRemove} style={[styles.btn, { backgroundColor: t.border }]}><Text style={[styles.btnText, { color: t.danger }]}>强制删除</Text></TouchableOpacity>
+        )}
       </View>
     </View>
   )
@@ -394,14 +442,19 @@ const styles = StyleSheet.create({
   errorBanner: { padding: 8, marginHorizontal: 12, marginTop: 8, borderRadius: 8 },
 
   taskCard: { padding: 12, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, marginBottom: 10 },
-  taskName: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
+  taskHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  taskName: { fontSize: 14, fontWeight: '600' },
   progressBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: 6 },
   taskMeta: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 6, gap: 12 },
   metaText: { fontSize: 12 },
+  errorText: { fontSize: 12, marginTop: 6, fontWeight: '500' },
   taskActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   btn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
   btnText: { fontSize: 12, fontWeight: '600' },
+
+  footer: { paddingVertical: 16, alignItems: 'center' },
+  footerText: { textAlign: 'center', paddingVertical: 14, fontSize: 12 },
 
   empty: { textAlign: 'center', marginTop: 32, fontSize: 13 },
 

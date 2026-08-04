@@ -108,9 +108,18 @@ export async function aria2AddUri(
   server: Aria2ServerConfig,
   uris: string[],
   options: Record<string, string> = {},
-): Promise<string | null> {
+): Promise<string> {
+  const gid = await call<string>(server, 'addUri', [uris, options])
+  if (!gid) throw new Error('aria2 addUri 返回为空')
+  return gid
+}
+
+export async function aria2TellStatus(
+  server: Aria2ServerConfig,
+  gid: string,
+): Promise<Aria2Task | null> {
   try {
-    return await call<string>(server, 'addUri', [uris, options])
+    return await call<Aria2Task>(server, 'tellStatus', [gid])
   } catch {
     return null
   }
