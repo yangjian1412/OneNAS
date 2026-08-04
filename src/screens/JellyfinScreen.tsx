@@ -39,6 +39,7 @@ interface Props {
 
 export default function JellyfinScreen({ service, onRequestClose }: Props) {
   const t = useTheme()
+  const cacheNs = service.id
   const { server, user, libraries, resumeItems, setServer, setUser, setLibraries, setResumeItems } = useJellyfinStore()
   const prefsLoadFromStorage = useJellyfinPlaybackStore((s) => s.loadFromStorage)
   const prefs = useJellyfinPlaybackStore()
@@ -82,6 +83,9 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
   ]
 
   const loadServer = useCallback(async () => {
+    if (useJellyfinStore.getState().serviceId !== service.id) {
+      useJellyfinStore.getState().resetForService(service.id)
+    }
     if (!service.url || !service.username || !service.password) {
       setError(`请先在设置中配置 ${service.type === 'emby' ? 'Emby' : 'Jellyfin'} 服务器地址和账号密码`)
       return
@@ -90,9 +94,9 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
 
     // Read cache first for instant display
     const [cachedServer, cachedLibs, cachedResume] = await Promise.all([
-      getCached<JellyfinServerConfig>('serverInfo'),
-      getCached<JellyfinLibrary[]>('libraries'),
-      getCached<JellyfinItem[]>('resumeItems'),
+      getCached<JellyfinServerConfig>(`${cacheNs}:serverInfo`),
+      getCached<JellyfinLibrary[]>(`${cacheNs}:libraries`),
+      getCached<JellyfinItem[]>(`${cacheNs}:resumeItems`),
     ])
 
     const hasCachedServer = cachedServer && cachedServer.url === service.url && cachedServer.username === service.username && cachedServer.userId && cachedServer.userName && cachedServer.accessToken
@@ -119,15 +123,15 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
 
     setServer(result.server)
     setUser({ Id: result.server.userId!, Name: result.server.userName! })
-    await setCached('serverInfo', result.server, 86400000)
+    await setCached(`${cacheNs}:serverInfo`, result.server, 86400000)
 
     const [libs, resume, sys] = await Promise.all([
       jellyfinGetLibraries(result.server),
       jellyfinGetResumeItems(result.server),
       jellyfinGetSystemInfo(result.server),
     ])
-    if (libs.ok) { setLibraries(libs.libraries ?? []); await setCached('libraries', libs.libraries ?? [], 300000) }
-    if (resume.ok) { setResumeItems(resume.items ?? []); await setCached('resumeItems', resume.items ?? [], 30000) }
+    if (libs.ok) { setLibraries(libs.libraries ?? []); await setCached(`${cacheNs}:libraries`, libs.libraries ?? [], 300000) }
+    if (resume.ok) { setResumeItems(resume.items ?? []); await setCached(`${cacheNs}:resumeItems`, resume.items ?? [], 30000) }
     if (sys.ok && sys.version) setServerVersion(sys.version)
 
     setLoading(false)
@@ -190,7 +194,7 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     setView('items')
     setLoading(true)
 
-    const cacheKey = `libItems:${lib.ItemId}`
+    const cacheKey = `libItems:${cacheNs}:${lib.ItemId}`
     const cached = await getCached<JellyfinItem[]>(cacheKey)
     if (cached) { setCurrentItems(cached); setLoading(false) }
 
@@ -234,7 +238,7 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
       setView('items')
       setLoading(true)
 
-      const folderCacheKey = `libItems:${item.Id}`
+      const folderCacheKey = `libItems:${cacheNs}:${item.Id}`
       const cachedItems = await getCached<JellyfinItem[]>(folderCacheKey)
       if (cachedItems) { setCurrentItems(cachedItems); setLoading(false) }
 
@@ -294,7 +298,7 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     if (!server || !detailSeriesId) return
     setLoading(true)
 
-    const cacheKey = `episodes:${detailSeriesId}:${seasonId}`
+    const cacheKey = `episodes:${cacheNs}:${detailSeriesId}:${seasonId}`
     const cached = await getCached<JellyfinItem[]>(cacheKey)
     if (cached) {
       setCurrentItems(cached)
@@ -457,6 +461,7 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
       {view === 'detail' && detailItem && server && (
         <JellyfinItemDetail
           server={server}
+          cacheNs={cacheNs}
           item={detailItem}
           onPlay={handlePlay}
           onSeasonPress={handleSeasonPress}

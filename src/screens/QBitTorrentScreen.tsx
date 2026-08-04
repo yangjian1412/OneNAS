@@ -78,7 +78,6 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [addUrls, setAddUrls] = useState('')
-  const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
   const isFocused = useIsFocused()
   const hasLoadedOnce = useRef(false)
@@ -93,17 +92,14 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!isFocused) return false
       if (settingsOpen) { setSettingsOpen(false); return true }
       if (addOpen) { setAddOpen(false); return true }
       if (drawerOpen) { setDrawerOpen(false); return true }
-      const now = Date.now()
-      if (now - lastBackPressRef.current < 2000) return false
-      lastBackPressRef.current = now
-      return true
+      if (onRequestClose) { onRequestClose(); return true }
+      return false
     })
     return () => sub.remove()
-  }, [isFocused, settingsOpen, addOpen, drawerOpen])
+  }, [settingsOpen, addOpen, drawerOpen, onRequestClose])
 
   const onAddSubmit = useCallback(async () => {
     const urls = addUrls.split(/\s+/).map((s) => s.trim()).filter(Boolean)

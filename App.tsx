@@ -5,11 +5,13 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useAppStore } from '@/stores/appStore'
 import { useTheme } from '@/lib/theme'
+import SplashView from '@/components/SplashView'
 import TabNavigator from '@/navigation/TabNavigator'
 import { pollTaskProgress } from '@/lib/downloadManager'
 
 export default function App() {
   const init = useAppStore((s) => s.init)
+  const loaded = useAppStore((s) => s.loaded)
   const t = useTheme()
 
   useEffect(() => { init() }, [init])
@@ -30,7 +32,7 @@ export default function App() {
       <GestureHandlerRootView style={styles.container}>
         <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'bottom']}>
           <StatusBar style="auto" />
-          <TabNavigator />
+          {loaded ? <TabNavigator /> : <SplashView />}
         </SafeAreaView>
       </GestureHandlerRootView>
     </SafeAreaProvider>

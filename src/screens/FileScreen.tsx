@@ -1254,7 +1254,7 @@ function ActiveServiceView({ service, onClose }: ActiveServiceViewProps) {
         ) : service.type === 'navidrome' ? (
           <NavidromeScreen service={service} onRequestClose={handleClose} />
         ) : isAudiobookshelfService(service) ? (
-          <AudiobookshelfScreen service={service} />
+          <AudiobookshelfScreen service={service} onRequestClose={handleClose} />
         ) : isTalebookService(service) ? (
           <TalebookScreen service={service} onRequestClose={handleClose} />
         ) : service.type === 'aria2' ? (

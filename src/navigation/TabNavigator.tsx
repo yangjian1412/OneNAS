@@ -34,8 +34,8 @@ export default function TabNavigator() {
       return null
     }
     return (
-      <View style={{ alignItems: 'center', justifyContent: 'center', width: 32, height: 32 }}>
-        {focused && <View style={{ width: 18, height: 3, borderRadius: 1.5, backgroundColor: t.primary, marginBottom: 4 }} />}
+      <View style={{ alignItems: 'center', justifyContent: 'center', width: 32, height: 34 }}>
+        <View style={{ width: 18, height: 3, borderRadius: 1.5, backgroundColor: focused ? t.primary : 'transparent', marginBottom: 4 }} />
         {icon()}
       </View>
     )

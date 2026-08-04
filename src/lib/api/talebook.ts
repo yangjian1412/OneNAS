@@ -182,6 +182,22 @@ export async function talebookGetReading(server: TalebookServerConfig): Promise<
   return { ok: true, books: result.data?.books ?? [] }
 }
 
+export async function talebookGetRecent(server: TalebookServerConfig): Promise<{
+  ok: boolean
+  books?: TalebookBook[]
+  error?: string
+}> {
+  const url = `${baseUrl(server)}/api/recent`
+  const result = await apiFetch<TalebookApiEnvelope>(url, {
+    headers: withCookie({}, server.cookie),
+  })
+  if (!result.ok) return { ok: false, error: result.error }
+  if (result.data?.err && result.data.err !== 'ok') {
+    return { ok: false, error: result.data.msg ?? result.data.err }
+  }
+  return { ok: true, books: result.data?.books ?? [] }
+}
+
 export async function talebookGetShelf(server: TalebookServerConfig): Promise<{
   ok: boolean
   books?: TalebookBook[]

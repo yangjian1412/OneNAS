@@ -79,9 +79,9 @@ export default function ServiceHeader(props: Props) {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   side: { minWidth: SIDE_MIN_WIDTH, flexDirection: 'row', alignItems: 'center' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' },
   iconBtn: { padding: 6, borderRadius: 8 },
   title: { fontSize: 17, fontWeight: '700' },
   subtitle: { fontSize: 11, marginTop: 2 },

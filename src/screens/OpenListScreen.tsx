@@ -123,7 +123,6 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!isFocused) return false
       if (previewFile) { setPreviewFile(null); return true }
       if (detailItem) { setDetailItem(null); return true }
       if (editMode) { setEditMode(null); return true }
@@ -141,7 +140,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       return true
     })
     return () => sub.remove()
-  }, [isFocused, previewFile, detailItem, editMode, actionItem, sortOpen, dlOpen, mkdirOpen, drawerOpen, multiSelect, path, up, exitMultiSelect, onRequestClose])
+  }, [previewFile, detailItem, editMode, actionItem, sortOpen, dlOpen, mkdirOpen, drawerOpen, multiSelect, path, up, exitMultiSelect, onRequestClose])
 
   const filePathOf = useCallback((f: OpenListFile): string => {
     return f.virtual_path ?? f.path ?? joinOpenListPath(path, f.name)

@@ -15,6 +15,7 @@ import {
   talebookGetUserInfo,
   talebookGetIndex,
   talebookGetReading,
+  talebookGetRecent,
   talebookGetShelf,
   talebookGetBookDetail,
   talebookToggleShelf,
@@ -28,6 +29,7 @@ interface TalebookState {
   shelfBooks: TalebookBook[]
   randomBooks: TalebookBook[]
   newBooks: TalebookBook[]
+  recentBooks: TalebookBook[]
   isLoading: boolean
   error: string | null
   lastHomeFetchAt: number
@@ -67,6 +69,7 @@ export const useTalebookStore = create<TalebookState>((set, get) => ({
   shelfBooks: [],
   randomBooks: [],
   newBooks: [],
+  recentBooks: [],
   isLoading: false,
   error: null,
   lastHomeFetchAt: 0,
@@ -80,6 +83,7 @@ export const useTalebookStore = create<TalebookState>((set, get) => ({
     shelfBooks: [],
     randomBooks: [],
     newBooks: [],
+    recentBooks: [],
     error: null,
   }),
 
@@ -177,14 +181,17 @@ export const useTalebookStore = create<TalebookState>((set, get) => ({
     // 登录模块
     let reading: TalebookBook[] = []
     let shelf: TalebookBook[] = []
+    let recent: TalebookBook[] = []
     let loadedLoggedIn = false
     if (server.cookie) {
-      const [readingRes, shelfRes] = await Promise.all([
+      const [readingRes, shelfRes, recentRes] = await Promise.all([
         talebookGetReading(server),
         talebookGetShelf(server),
+        talebookGetRecent(server),
       ])
       reading = readingRes.ok ? readingRes.books ?? [] : []
       shelf = shelfRes.ok ? shelfRes.books ?? [] : []
+      recent = (recentRes.ok ? recentRes.books ?? [] : []).slice(0, 10)
       loadedLoggedIn = readingRes.ok && shelfRes.ok
     }
 
@@ -193,6 +200,7 @@ export const useTalebookStore = create<TalebookState>((set, get) => ({
       newBooks: fresh,
       readingBooks: reading,
       shelfBooks: shelf,
+      recentBooks: recent,
       isLoading: false,
       lastHomeFetchAt: loadedLoggedIn ? now : get().lastHomeFetchAt,
     })

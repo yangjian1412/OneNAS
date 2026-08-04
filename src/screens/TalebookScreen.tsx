@@ -29,10 +29,10 @@ export default function TalebookScreen({ service, onRequestClose }: Props) {
   const loadHome = useTalebookStore((s) => s.loadHome)
   const server = useTalebookStore((s) => s.server)
   const userInfo = useTalebookStore((s) => s.userInfo)
-  const readingBooks = useTalebookStore((s) => s.readingBooks)
   const shelfBooks = useTalebookStore((s) => s.shelfBooks)
   const randomBooks = useTalebookStore((s) => s.randomBooks)
   const newBooks = useTalebookStore((s) => s.newBooks)
+  const recentBooks = useTalebookStore((s) => s.recentBooks)
   const isLoading = useTalebookStore((s) => s.isLoading)
   const error = useTalebookStore((s) => s.error)
   const setError = useTalebookStore((s) => s.setError)
@@ -212,7 +212,7 @@ export default function TalebookScreen({ service, onRequestClose }: Props) {
       {view === 'home' && (
         <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 32 }]}>
           <HomeSection title="最近浏览" icon="schedule">
-            <TalebookBookRow server={server} books={readingBooks} onPress={handleBookPress} emptyText="暂无最近浏览" />
+            <TalebookBookRow server={server} books={recentBooks} onPress={handleBookPress} emptyText="暂无最近浏览" />
           </HomeSection>
           <HomeSection title="我的书架" icon="bookmark">
             <TalebookBookRow server={server} books={shelfBooks} onPress={handleBookPress} emptyText="书架为空，去添加喜欢的书吧" />

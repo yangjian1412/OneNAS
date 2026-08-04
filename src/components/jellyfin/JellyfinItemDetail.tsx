@@ -13,6 +13,7 @@ const POSTER_W = (SCREEN_W - 32 - 12) / 3
 
 interface Props {
   server: JellyfinServerConfig
+  cacheNs: string
   item: JellyfinItem
   onPlay: (item: JellyfinItem) => void
   onSeasonPress?: (seasonId: string, seasonNumber: number) => void
@@ -27,7 +28,7 @@ function ticksToMinutes(ticks?: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-export default function JellyfinItemDetail({ server, item, onPlay, onSeasonPress, onBack }: Props) {
+export default function JellyfinItemDetail({ server, cacheNs, item, onPlay, onSeasonPress, onBack }: Props) {
   const t = useTheme()
   const [detail, setDetail] = useState<JellyfinItem>(item)
   const [seasons, setSeasons] = useState<any[]>([])
@@ -41,11 +42,11 @@ export default function JellyfinItemDetail({ server, item, onPlay, onSeasonPress
     const run = async () => {
       setLoading(true)
 
-      const detailCacheKey = `itemDetail:${item.Id}`
+      const detailCacheKey = `itemDetail:${cacheNs}:${item.Id}`
       const cachedDetail = await getCached<JellyfinItem>(detailCacheKey)
       if (cachedDetail) setDetail(cachedDetail)
 
-      const seasonsCacheKey = `seasons:${item.Id}`
+      const seasonsCacheKey = `seasons:${cacheNs}:${item.Id}`
       const cachedSeasons = await getCached<any[]>(seasonsCacheKey)
       if (cachedSeasons) { setSeasons(cachedSeasons); if (cachedDetail) setLoading(false) }
 
@@ -67,7 +68,7 @@ export default function JellyfinItemDetail({ server, item, onPlay, onSeasonPress
     }
     run()
     return () => { cancelled = true }
-  }, [server, item.Id, item.Type])
+  }, [server, cacheNs, item.Id, item.Type])
 
   const backdropUri = detail.BackdropImageTags?.[0]
     ? jellyfinGetImageUrl(server, detail.Id, 'Backdrop', detail.BackdropImageTags[0], Math.round(SCREEN_W * 2))
