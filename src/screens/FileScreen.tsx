@@ -5,7 +5,7 @@ import { useIsFocused, useNavigation } from '@react-navigation/native'
 import { useAppStore, FileSortBy, FileSortDir } from '@/stores/appStore'
 import { ServerConfig, FileItem, ServiceConfig, ShareInfo } from '@/types'
 import { login, listFiles, createFolder, deleteResource, renameResource, copyResource, uploadResource, getShares, createShare, deleteShare, getResourceInfo, getFileChecksum, ResourceInfo } from '@/lib/api/filebrowser'
-import { connectFileManager, listDir as fmListDir, mkdir as fmMkdir, removeFiles as fmRemoveFiles, renameFile as fmRename, copyFile as fmCopy, uploadFile as fmUpload, searchFilesStream as fmSearchStream, getShares as fmGetShares, createShare as fmCreateShare, deleteShare as fmDeleteShare, getResourceInfo as fmGetResourceInfo, getFileChecksum as fmGetChecksum } from '@/lib/api/fileManager'
+import { connectFileManager, webDavToServer, listDir as fmListDir, mkdir as fmMkdir, removeFiles as fmRemoveFiles, renameFile as fmRename, copyFile as fmCopy, uploadFile as fmUpload, searchFilesStream as fmSearchStream, getShares as fmGetShares, createShare as fmCreateShare, deleteShare as fmDeleteShare, getResourceInfo as fmGetResourceInfo, getFileChecksum as fmGetChecksum } from '@/lib/api/fileManager'
 import { getFileIcon } from '@/lib/fileTypes'
 import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '@/lib/theme'
@@ -270,7 +270,7 @@ export default function FileScreen() {
 
   useEffect(() => {
     if (fileBackend === 'filebrowser' && fbServers.length === 1 && !selectedServer && !token) connect(fbServers[0])
-    else if (fileBackend === 'webdav' && webdavServer && !selectedServer && !token) connect(null)
+    else if (fileBackend === 'webdav' && webdavServer && !selectedServer && !token) connect(webDavToServer(webdavServer))
   }, [fileBackend, fbServers, webdavServer, selectedServer, token, connect])
   useEffect(() => {
     if (selectedServer && token && !autoLoaded.current) {
@@ -547,7 +547,7 @@ export default function FileScreen() {
     setDetailsItem(item)
     setDetailsLoading(true)
     setDetailsInfo(null)
-    const result = await fmGetResourceInfo(selectedServer!, token!, item.path, fileBackend, webdavServer)
+    const result = await fmGetResourceInfo(selectedServer!, token!, item.path, fileBackend, webdavServer, item.isDirectory)
     if (result.ok) setDetailsInfo(result.data ?? null)
     setDetailsLoading(false)
   }
@@ -646,12 +646,16 @@ export default function FileScreen() {
         <View style={styles.headerTitle}>
           <Text style={[styles.headerTitleText, { color: t.text }]} numberOfLines={1}>{isSearchResults ? '搜索结果' : (currentPath === '/' ? '文件管理' : '文件')}</Text>
         </View>
-        <TouchableOpacity style={styles.headerButton} onPress={() => { loadShares(); setShareManageOpen(true) }}>
-          <Icon name="shareManage" size={22} color={t.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.headerButton} onPress={() => { setSearchQuery(''); setSearchError(null); setSearchCategory('all'); setSearchModalOpen(true) }}>
-          <Icon name="search" size={22} color={t.primary} />
-        </TouchableOpacity>
+        {fileBackend === 'filebrowser' && (
+          <TouchableOpacity style={styles.headerButton} onPress={() => { loadShares(); setShareManageOpen(true) }}>
+            <Icon name="shareManage" size={22} color={t.primary} />
+          </TouchableOpacity>
+        )}
+        {fileBackend === 'filebrowser' && (
+          <TouchableOpacity style={styles.headerButton} onPress={() => { setSearchQuery(''); setSearchError(null); setSearchCategory('all'); setSearchModalOpen(true) }}>
+            <Icon name="search" size={22} color={t.primary} />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.headerButton} onPress={() => selectedServer && loadDir(currentPath)}>
           <Icon name="refresh" size={22} color={t.primary} />
         </TouchableOpacity>
@@ -943,7 +947,7 @@ export default function FileScreen() {
                     <Text style={[styles.detailsValue, { color: t.text }]}>{detailsInfo.resolution.width} × {detailsInfo.resolution.height}</Text>
                   </View>
                 )}
-                {!detailsInfo.isDir && (
+                {!detailsInfo.isDir && fileBackend === 'filebrowser' && (
                   <DetailsChecksums server={selectedServer!} token={token!} path={detailsInfo.path} />
                 )}
               </View>

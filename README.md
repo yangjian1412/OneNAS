@@ -209,10 +209,14 @@ App 端 (`src/lib/api/unraidCapabilities.ts`)：
 
 ### WebDAV 实现要点（`src/lib/api/webdav.ts`）
 
+- **PROPFIND body 必须显式**：发送 `<?xml ...><D:propfind><D:prop><D:resourcetype/><D:getcontentlength/><D:getlastmodified/><D:displayname/></D:prop></D:propfind>`。Alist / OpenList / 部分 NAS 在不带 body 的 PROPFIND 响应里不返回 `<D:resourcetype>`，会导致所有目录被误判为文件
 - **UTF-8 → Base64**：RN Hermes 无 `btoa`，自实现 `utf8Encode` + `toBase64`（**禁止**用 `btoa(unescape(encodeURIComponent(...)))`，Hermes 抛错）
 - **XML 解析**：`PROPFIND` 返回的多状态 XML (207) 标签带命名空间前缀（`<D:href>`、`<d:getcontentlength>`），正则 `(?:[A-Za-z]+:)?${tag}` 兼容
-- **路径**：所有 API 入参都用相对路径 `/foo/bar.txt`；`normalizeRelativePath` 去 URL 前缀，`joinDavUrl` 逐段 `encodeURIComponent`
-- **不支持**：搜索、checksum、分享（FileBrowser only）
+- **路径编码**：`joinDavUrl` 用 RFC 3986 段编码（`encodeURIComponent` + 转义 `!'()*`），正确处理中文 / 非 ASCII 文件名
+- **目录尾斜杠**：目录的 PROPFIND（`webDavList`、`webDavGetResourceInfo` 且 isDir）URL 必须以 `/` 结尾——Apache mod_dav 无尾斜杠会 301 并把 Location 降级为 `http://`，RN fetch 跳转时丢 Authorization → 401；文件则无斜杠
+- **路径**：所有 API 入参都用相对路径 `/foo/bar.txt`；`normalizeRelativePath(p)` 去 URL 前缀
+- **支持**：浏览 / 上传 (PUT) / 创建文件夹 (MKCOL) / 删除 (DELETE) / 重命名 (MOVE) / 复制 (COPY) / 资源详情 / 文本编辑 (PUT) / 下载 / 预览（图 / 视频 / 音频 / 文本 / PDF / Office）
+- **不支持（UI 隐藏）**：搜索、checksum、分享、文件夹打包下载
 
 ### 多实例 Store 单例
 

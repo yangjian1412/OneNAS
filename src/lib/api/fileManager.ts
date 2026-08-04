@@ -1,12 +1,13 @@
 import type { ServerConfig, WebDavConfig, FileItem, FileBackend } from '@/types'
 import { login as fbLogin, listFiles as fbListFiles, searchFilesStream as fbSearchFilesStream, createFolder as fbCreateFolder, deleteResource as fbDeleteResource, renameResource as fbRenameResource, copyResource as fbCopyResource, uploadResource as fbUploadResource, getShares as fbGetShares, createShare as fbCreateShare, deleteShare as fbDeleteShare, getResourceInfo as fbGetResourceInfo, getFileChecksum as fbGetFileChecksum, ResourceInfo } from '@/lib/api/filebrowser'
-import { webDavPing, webDavList, webDavMkdir, webDavDelete, webDavMove, webDavCopy, webDavUpload, webDavDownloadUrl, webDavAuthHeader, webDavGetResourceInfo } from '@/lib/api/webdav'
+import { webDavPing, webDavList, webDavMkdir, webDavDelete, webDavMove, webDavCopy, webDavDownloadUrl, webDavAuthHeader, webDavGetResourceInfo } from '@/lib/api/webdav'
 import { buildUrl } from '@/lib/api/client'
+import { File, UploadType } from 'expo-file-system'
 
 export type { FileBackend } from '@/types'
 
 // 把 WebDavConfig 转成符合 filebrowser 形状的"伪 ServerConfig"用于 filebrowser API 内部 token 流程
-function webDavToServer(cfg: WebDavConfig): ServerConfig {
+export function webDavToServer(cfg: WebDavConfig): ServerConfig {
   return {
     id: cfg.id,
     name: cfg.name,
@@ -41,16 +42,20 @@ export async function connectFileManager(server: ServerConfig | null, backend: F
 export async function listDir(server: ServerConfig | null, token: string, path: string, backend: FileBackend, webdavServer: WebDavConfig | null): Promise<{ ok: boolean; files?: FileItem[]; error?: string }> {
   if (backend === 'webdav') {
     if (!webdavServer) return { ok: false, error: 'WebDAV 未配置' }
-    const files = await webDavList(webdavServer, path)
-    return {
-      ok: true,
-      files: files.map((f) => ({
-        name: f.name,
-        path: f.path,
-        isDirectory: f.isDir,
-        size: f.size,
-        modified: f.modified,
-      } as FileItem)),
+    try {
+      const files = await webDavList(webdavServer, path)
+      return {
+        ok: true,
+        files: files.map((f) => ({
+          name: f.name,
+          path: f.path,
+          isDirectory: f.isDir,
+          size: f.size,
+          modified: f.modified,
+        } as FileItem)),
+      }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? '加载失败' }
     }
   }
   const r = await fbListFiles(server!, token, path)
@@ -106,13 +111,20 @@ export async function copyFile(server: ServerConfig | null, token: string, from:
 export async function uploadFile(server: ServerConfig | null, token: string, localUri: string, remotePath: string, backend: FileBackend, webdavServer: WebDavConfig | null): Promise<{ ok: boolean; error?: string }> {
   if (backend === 'webdav') {
     if (!webdavServer) return { ok: false, error: 'WebDAV 未配置' }
-    // 读取本地文件，转成 Blob 上传
+    // 用 expo-file-system 的 File.upload：RN/Hermes 没有 WHATWG File/Blob 全局，
+    // 必须走原生上传通道。PUT 到 <server.url>/<remotePath>。
     try {
+      const url = webDavDownloadUrl(webdavServer, remotePath)
       const file = new File(localUri)
-      const buf = await file.arrayBuffer()
-      const blob = new Blob([buf])
-      const ok = await webDavUpload(webdavServer, remotePath, blob)
-      return ok ? { ok: true } : { ok: false, error: '上传失败' }
+      const response = await file.upload(url, {
+        httpMethod: 'PUT',
+        uploadType: UploadType.BINARY_CONTENT,
+        headers: { Authorization: webDavAuthHeader(webdavServer) },
+      })
+      if (response.status < 200 || response.status >= 300) {
+        return { ok: false, error: `HTTP ${response.status}` }
+      }
+      return { ok: true }
     } catch (e: any) {
       return { ok: false, error: e?.message ?? '上传失败' }
     }
@@ -155,10 +167,10 @@ export async function deleteShare(server: ServerConfig, token: string, hash: str
   return r.ok ? { ok: true } : { ok: false, error: (r as any).error }
 }
 
-export async function getResourceInfo(server: ServerConfig, token: string, path: string, backend: FileBackend, webdavServer?: WebDavConfig | null): Promise<{ ok: boolean; data?: ResourceInfo; error?: string }> {
+export async function getResourceInfo(server: ServerConfig, token: string, path: string, backend: FileBackend, webdavServer?: WebDavConfig | null, isDir = false): Promise<{ ok: boolean; data?: ResourceInfo; error?: string }> {
   if (backend === 'webdav') {
     if (!webdavServer) return { ok: false, error: 'WebDAV 未配置' }
-    const info = await webDavGetResourceInfo(webdavServer, path)
+    const info = await webDavGetResourceInfo(webdavServer, path, isDir)
     if (!info) return { ok: false, error: '获取详情失败' }
     return {
       ok: true,

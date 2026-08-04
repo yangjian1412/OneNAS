@@ -124,11 +124,14 @@ VM mutations (`vm { start/stop/reboot/pause/resume/forceStop/reset }`) schema �
 
 Alternative file backend. Switch via Settings → 服务设置 → 文件管理 → WebDAV. Uses Basic auth over HTTP(S).
 
+- **PROPFIND 必须显式带 body**：`<?xml version="1.0" encoding="utf-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/><D:getcontentlength/><D:getlastmodified/><D:displayname/></D:prop></D:propfind>`。Alist / OpenList / 部分 NAS 在不带 body 或仅 `<D:allprop/>` 的响应里不返回 `<D:resourcetype>`，导致所有目录被误判为文件（用户曾撞坑）
 - **Auth header**: `Authorization: Basic <base64("user:pass")>` — RN Hermes has no `btoa`/`unescape`, so `src/lib/api/webdav.ts` exports a self-contained UTF-8 → Base64 encoder (`utf8Encode` + `toBase64`). **Do not** try `btoa(unescape(encodeURIComponent(...)))` — it throws on Hermes.
 - **Listing**: `PROPFIND {url} Depth:1` → multistatus XML (207). The parser MUST accept namespace-prefixed tags: `<D:href>`, `<D:resourcetype>`, `<d:getcontentlength>`, etc. Use the helper `xmlMatch(block, 'href')` in `webdav.ts` (regex `(?:[A-Za-z]+:)?${tag}`).
-- **Path normalization**: Always pass relative paths (`/foo/bar.txt`) into the API. Helpers: `normalizeRelativePath(p)` strips URL prefixes and trailing slashes; `joinDavUrl(base, sub)` builds the full URL with per-segment `encodeURIComponent`.
+- **目录 PROPFIND 必须带尾斜杠**：`webDavList` / 目录的 `webDavGetResourceInfo(isDir=true)` 构造 URL 时强制以 `/` 结尾。Apache mod_dav 对无尾斜杠的集合 PROPFIND 返回 301 且 Location 降级为 `http://`，RN fetch 跟随跳转时因 https→http origin 变化丢弃 Authorization 头 → 401（用户实测根因）。文件 PROPFIND 保持无斜杠。
+- **Path normalization**: Always pass relative paths (`/foo/bar.txt`) into the API. Helpers: `normalizeRelativePath(p)` strips URL prefixes and trailing slashes; `joinDavUrl(base, sub)` builds the full URL with per-segment RFC 3986 encoding (`encodeDavSegment` = `encodeURIComponent` + 转义 `!'()*`)，正确处理中文 / 非 ASCII 文件名。
 - **Auth header accessor**: `webDavAuthHeader(server)` → `Basic ...` — used by fileManager `getAuthHeaders()` for preview fetches.
 - **Download**: `webDavDownloadUrl(server, path)` returns the URL; call `enqueueDownloadWithHeader(url, name, 'Authorization', header)` from `src/lib/downloadManager.ts`.
+- **Upload**: 必须用 `expo-file-system` 的 `File.upload(url, { httpMethod: 'PUT', uploadType: BINARY_CONTENT, headers })` —— RN/Hermes 没有 WHATWG `File`/`Blob` 全局，`new File(localUri).arrayBuffer()` 会抛 `File is not defined`。FileScreen upload 链路已切到 `expo-file-system`。
 - **Preview** (`FilePreviewModal.tsx`): component props now include `backend: FileBackend` + `webdavServer: WebDavConfig | null`. Build `authHeaders` once (`{ Authorization: webDavAuthHeader(...) }` for WebDAV, `{ 'X-Auth': token }` for FileBrowser) and pass to children instead of bare `token`.
   - **Images**: `fetch + blob + FileReader.readAsDataURL` (RN `<Image>` doesn't take headers directly)
   - **Video**: `useVideoPlayer({ uri, headers })` — supports HTTP Range, streams
@@ -136,7 +139,7 @@ Alternative file backend. Switch via Settings → 服务设置 → 文件管理 
   - **Text/code/HTML**: `fetch + decodeTextBuffer(buf)` (GBK fallback chain — see `decodeTextBuffer` in `FilePreviewModal.tsx`). **HTML is rendered as source text** — `react-native-webview` cannot inject custom HTTP headers, so HTML preview is source-view (same as text).
   - **PDF/Office**: download to cache via `FileSystem.downloadAsync(url, cachePath, { headers })`, then `expo-intent-launcher startActivityAsync('android.intent.action.VIEW', ...)`. Same flow as FileBrowser.
 - **Resource info**: `webDavGetResourceInfo(server, path)` — `PROPFIND Depth:0` returns `{ path, name, isDir, size, modified }`.
-- **Unsupported** (return error from FileManager): search, checksum, share. The action sheet hides "打包下载", "分享" buttons in WebDAV mode.
+- **Unsupported in WebDAV mode (UI 完全隐藏)**：search header 图标、share 管理 header 图标、详情 modal 中 checksum 区域、action sheet "打包下载"（仅 filebrowser）。底层函数（`fmSearchStream` / `fmGetShares` / `fmCreateShare` / `fmDeleteShare` / `fmGetFileChecksum`）保留 stub 返回 `ok:false` 兜底。
 
 ## Service page conventions (drawer + screen + store)
 
