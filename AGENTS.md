@@ -39,15 +39,20 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - `WRITE_EXTERNAL_STORAGE` (maxSdkVersion 32)
 - `MANAGE_EXTERNAL_STORAGE` (Android 11+)
 
-## Splash screen (talebook-style — Compose-like in RN)
+## Splash screen (native two-phase)
 
-- `android/app/src/main/res/values/styles.xml` defines `Theme.App.SplashScreen` extending `AppTheme` (both share `windowBackground = @color/window_background`)
-- `AppTheme` extends `Theme.AppCompat.DayNight.NoActionBar` with explicit `android:windowBackground = @color/window_background`
-- `android/app/src/main/res/values/colors.xml` → `window_background = #FFFFFF` (light)
-- `android/app/src/main/res/values-night/colors.xml` → `window_background = #1a1a2e` (dark)
-- Splash background = AppTheme background = same color resource (no flash on transition)
-- Splash icon / drawable: NONE (no `splashscreen_logo.png`; pure color splash)
-- Text "One NAS" rendered by JS in `src/components/SplashView.tsx` using `useTheme()` — color follows theme (`t.bg` background, `t.primary` text)
+- `android/app/src/main/res/values/styles.xml` `AppTheme` defines `android:windowBackground = @drawable/splash_window`
+- `AppTheme` extends `Theme.AppCompat.DayNight.NoActionBar`, transparent status/nav bar, edge-to-edge
+- `android/app/src/main/res/values/colors.xml` → `window_background = #FFFFFF` (light); `values-night` → `#1a1a2e`
+- `drawable/splash_window.xml` = layer-list: `@color/window_background` + 居中" One NAS" 位图（`drawable/splash_text.png`，深蓝 `#1b3a8c` / `drawable-night/splash_text.png` 浅蓝 `#64b5f6`），位图显式 340×113dp
+- 位图垂直位置：item `gravity="center_horizontal|bottom"` + `bottom="150dp"`（屏幕下方约 1/4 区域，避免居中显得偏高）
+- Android 12+ 系统 splash（`windowSplashScreen*`）：
+  - `windowSplashScreenBackground = @color/window_background`
+  - `windowSplashScreenAnimatedIcon = @drawable/splash_empty`（**透明 shape**，让系统 splash 只显示纯色，与窗口背景衔接无缝）
+  - `windowSplashScreenIconBackgroundColor = @android:color/transparent`
+- 文字 PNG：`drawable/splash_text.png` 1440×480 透明背景，用 `System.Drawing` 渲染 "One NAS" Segoe UI Bold 170px
+- **无 JS SplashView**（`src/components/SplashView.tsx` 已删）—— `App.tsx` 直接渲染 `<TabNavigator />`，省 400ms 强制等待
+- **不调用 `expo-splash-screen`**（项目未装该包），原生 splash 由系统自动管理
 
 ## Adaptive icon
 
@@ -56,6 +61,26 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   - `<foreground android:drawable="@mipmap/ic_launcher_foreground"/>` — deep-blue rack icon (`cbi--nas-v2.svg`, fill `#1b3a8c`) at 65% size
   - `<monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>` — white version for Android 13+ themed icons
 - `mipmap-{m,h,xh,xxh,xxxh}dpi/` — `.webp` files generated via `sharp` from `assets/cbi--nas-v2.svg`
+
+## Unraid GraphQL docker mutations (compatibility)
+
+Unraid API 不同版本的 `DockerMutations` 字段集不同（**严禁**带 `Container` 后缀或 `wait` 参数调用，那是早期错误写法）：
+
+| Unraid API 版本 | `start` | `stop` | `restart` | `pause` | `unpause` |
+|---|---|---|---|---|---|
+| 4.32.x / 4.33.x / 4.34.x | ✅ | ✅ | ❌ | ✅ | ✅ |
+| 4.35.0+ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+实现位置：
+- `src/lib/api/unraid.ts`：暴露 `startContainer`/`stopContainer`/`restartContainer(server, id)` 三个函数（API 与签名保持稳定）
+- `src/lib/api/unraidCapabilities.ts`：introspection 探测 `{ __type(name: "DockerMutations") { fields { name } } }`，结果按 `server.id` 缓存在内存（**不持久化**到 AsyncStorage，避免服务端升级后旧缓存误导）
+- `restartContainer` 路由：有 `restart` → 直接用；没有 → fallback `stop` + `await sleep(RESTART_FALLBACK_DELAY_MS=1500)` + `start`
+- 服务端返回 `Cannot query field`/`Unknown field` 错误时自动 `invalidateDockerCapabilities(server.id)`，下次重新探测
+- DockerScreen mount 时 `useEffect(() => { unraidServers.forEach((s) => void getDockerCapabilities(s)) }, [unraidServers])` 预探测，避免首次操作多 ~100ms
+
+错误信息提示：探测到缺失字段时（如极端旧 API 无 `start`），返回 `{ ok: false, error: '当前 Unraid API 版本不支持 start 容器，请升级 Unraid API 插件至 ≥ 4.35' }`，走 DockerScreen 现有的 `Alert.alert('操作失败', result.error)`。
+
+VM mutations (`vm { start/stop/reboot/pause/resume/forceStop/reset }`) schema 稳定，无需特殊处理。
 
 ## FileBrowser file details
 
@@ -67,12 +92,10 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - `formatFileSize()` and `formatDateTime()` helpers at module level
 - `commonParent()` utility for multi-file ZIP URL construction
 
-## JS splash flow (talebook-style)
+## JS splash flow
 
-- `App.tsx` calls `SplashScreen.preventAutoHideAsync()` at module scope
-- While `loaded=false`, renders `<SplashView />` (theme-colored background + centered "One NAS" text)
-- After `loaded=true`, calls `SplashScreen.hideAsync()` and renders main UI
-- Native splash and JS SplashView share the same color resource (`@color/window_background`) so transition is seamless
+- **无 JS splash**：`App.tsx` mount 时直接渲染 `<TabNavigator />`，启动瞬间 RN 接管原生窗口
+- 原生 splash → 应用窗口背景（`splash_window` layer-list）→ 主 UI；两阶段文字一致，位置位于下方约 1/4
 
 ## FileBrowser downloads
 
@@ -250,3 +273,38 @@ For the **settings class** (download settings, basic settings, etc.) → **use F
 Service screens are mounted in TWO places: the dedicated tab (`ServiceScreen`) and the top-bar overlay (`ActiveServiceView` in `FileScreen.tsx`). Both must use the **same** store singleton — that's why the polling lives in the store, not in the screen.
 
 When mounted in `ActiveServiceView`, the elevation of the overlay (`styles.activeServiceRoot` in `FileScreen.tsx`) must be greater than `ServiceBar`'s elevation (currently 30 vs 20) so the overlay receives touch events on Android.
+
+## Service back-button handling
+
+Each service screen mounted on a stack (tab + top-bar overlay) MUST intercept the hardware back button itself. Pattern (see `NavidromeScreen.tsx:235-249` for canonical):
+
+```ts
+const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+  if (!isFocusedRef.current) return false
+  // 1) Close any open modal / drawer / keyboard
+  if (drawerOpen) { setDrawerOpen(false); return true }
+  if (searchOpen) { setSearchOpen(false); return true }
+  // 2) Pop stack if nested
+  if (navigation.canGoBack()) { navigation.goBack(); return true }
+  // 3) Ask parent to close overlay / exit to tab1
+  if (onRequestClose) { onRequestClose(); return true }
+  return false
+})
+```
+
+Applied to all 4 download/filebrowser services (`Aria2Screen`, `QBitTorrentScreen`, `OpenListScreen`, plus top-bar `AudiobookshelfScreen` via `FileScreen.tsx:1257`). Do **not** add a `!isFocused` gate or 2000ms double-back-press — both lead to swallowed events; rely on `isFocusedRef` only.
+
+## Talebook local browse history
+
+Talebook 服务端**没有**"最近浏览"端点（`/api/recent` 是"最近添加"的新书推荐，与浏览无关；`/api/reading` 是"在读"，不是"已读"）。实现在客户端：
+
+- `src/stores/talebookStore.ts`：
+  - `initRecent(serviceId)` —— mount 时从 AsyncStorage `talebook:recent:<serviceId>` 读取最近浏览列表
+  - `addRecent(book, serviceId)` —— `handleBookPress` 入口去重、`.slice(0, 10)`、写回 AsyncStorage
+  - `recentBooks` —— 在 store state 中暴露给 Screen 渲染
+- `src/screens/TalebookScreen.tsx`：首页"最近浏览"行直接读 `recentBooks`，最大 10 本，最新的在最前
+- 跨服务隔离：每个 `serviceId` 独立存储，互不干扰
+
+## Service drawer back-button handling
+
+`ServiceDrawer` 自身必须监听 BackHandler：visible=false 时 `return false` 放行，visible=true 时关抽屉并 `return true`。**严禁**在外层 Screen 中拦截抽屉状态（会产生焦点冲突）。

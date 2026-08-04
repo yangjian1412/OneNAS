@@ -1,5 +1,6 @@
 import { apiGraphQL, buildUrl, ApiResult } from './client'
 import { Container, DashboardData, VM, UnraidArray, UnraidDisk, ServerConfig } from '@/types'
+import { getDockerCapabilities, RESTART_FALLBACK_DELAY_MS, invalidateDockerCapabilities } from './unraidCapabilities'
 
 const DASHBOARD_QUERY = `{
   info { os { hostname uptime } cpu { brand cores threads speed } }
@@ -10,10 +11,10 @@ const DASHBOARD_QUERY = `{
 }`
 
 const DOCKER_LIST = `{ docker { containers { id names image state status autoStart } } }`
-// Unraid 7.x: startContainer / stopContainer 需要 wait 参数；restartContainer 不需要
-const START = `mutation($id: PrefixedID!, $wait: Boolean!) { docker { startContainer(id: $id, wait: $wait) { state } } }`
-const STOP = `mutation($id: PrefixedID!, $wait: Boolean!) { docker { stopContainer(id: $id, wait: $wait) { state } } }`
-const RESTART = `mutation($id: PrefixedID!) { docker { restartContainer(id: $id) { state } } }`
+// Unraid API 4.32+: start/stop/pause/unpause 已重命名（无 Container 后缀）；4.35+ 新增 restart
+const START = `mutation($id: PrefixedID!) { docker { start(id: $id) { state } } }`
+const STOP = `mutation($id: PrefixedID!) { docker { stop(id: $id) { state } } }`
+const RESTART = `mutation($id: PrefixedID!) { docker { restart(id: $id) { state } } }`
 const VM_START = `mutation($id: String!) { vm { start(id: $id) } }`
 const VM_STOP = `mutation($id: String!) { vm { stop(id: $id) } }`
 const VM_RESTART = `mutation($id: String!) { vm { reboot(id: $id) } }`
@@ -122,15 +123,47 @@ export async function fetchContainers(server: ServerConfig): Promise<ApiResult<C
   return { ok: true, data: (result.data?.docker?.containers ?? []).map(mapContainer) }
 }
 
-async function containerMutation(server: ServerConfig, query: string, id: string, wait?: boolean): Promise<ApiResult<any>> {
-  const variables: Record<string, unknown> = { id }
-  if (wait !== undefined) variables.wait = wait
-  return apiGraphQL(buildUnraidUrl(server), query, variables, server.apiKey)
+async function containerMutation(server: ServerConfig, query: string, id: string): Promise<ApiResult<any>> {
+  return apiGraphQL(buildUnraidUrl(server), query, { id }, server.apiKey)
 }
 
-export function startContainer(server: ServerConfig, id: string) { return containerMutation(server, START, id, false) }
-export function stopContainer(server: ServerConfig, id: string) { return containerMutation(server, STOP, id, false) }
-export function restartContainer(server: ServerConfig, id: string) { return containerMutation(server, RESTART, id) }
+function isMissingFieldError(err: string | undefined): boolean {
+  if (!err) return false
+  return /Cannot query field|Unknown field/i.test(err)
+}
+
+export async function startContainer(server: ServerConfig, id: string): Promise<ApiResult<any>> {
+  const caps = await getDockerCapabilities(server)
+  if (!caps.hasStart) return { ok: false, error: '当前 Unraid API 版本不支持 start 容器，请升级 Unraid API 插件至 ≥ 4.35' }
+  const r = await containerMutation(server, START, id)
+  if (!r.ok && isMissingFieldError(r.error)) {
+    invalidateDockerCapabilities(server.id)
+  }
+  return r
+}
+
+export async function stopContainer(server: ServerConfig, id: string): Promise<ApiResult<any>> {
+  const caps = await getDockerCapabilities(server)
+  if (!caps.hasStop) return { ok: false, error: '当前 Unraid API 版本不支持 stop 容器，请升级 Unraid API 插件至 ≥ 4.35' }
+  const r = await containerMutation(server, STOP, id)
+  if (!r.ok && isMissingFieldError(r.error)) {
+    invalidateDockerCapabilities(server.id)
+  }
+  return r
+}
+
+export async function restartContainer(server: ServerConfig, id: string): Promise<ApiResult<any>> {
+  const caps = await getDockerCapabilities(server)
+  if (caps.hasRestart) {
+    const r = await containerMutation(server, RESTART, id)
+    if (!r.ok && isMissingFieldError(r.error)) invalidateDockerCapabilities(server.id)
+    return r
+  }
+  const stopRes = await stopContainer(server, id)
+  if (!stopRes.ok) return stopRes
+  await new Promise((r) => setTimeout(r, RESTART_FALLBACK_DELAY_MS))
+  return startContainer(server, id)
+}
 
 async function vmMutation(server: ServerConfig, query: string, id: string): Promise<ApiResult<any>> {
   return apiGraphQL(buildUnraidUrl(server), query, { id: id.replace('v/', '') }, server.apiKey)

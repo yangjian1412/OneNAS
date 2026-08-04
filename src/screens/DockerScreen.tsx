@@ -4,6 +4,7 @@ import { useIsFocused } from '@react-navigation/native'
 import { useAppStore } from '@/stores/appStore'
 import { ServerConfig, DashboardData } from '@/types'
 import { fetchDashboard, startContainer, stopContainer, restartContainer, startVM, stopVM, restartVM, pauseVM, resumeVM, fetchContainerDetail } from '@/lib/api/unraid'
+import { getDockerCapabilities } from '@/lib/api/unraidCapabilities'
 import ContainerCard from '@/components/ContainerCard'
 import CircularProgress from '@/components/CircularProgress'
 import Icon from '@/components/Icon'
@@ -122,6 +123,10 @@ export default function DockerScreen() {
   useEffect(() => {
     if (unraidServers.length === 1 && !selectedServer) load(unraidServers[0])
   }, [unraidServers, selectedServer, load])
+
+  useEffect(() => {
+    unraidServers.forEach((s) => { void getDockerCapabilities(s) })
+  }, [unraidServers])
 
   useEffect(() => {
     if (!selectedServer || !autoRefresh) {
