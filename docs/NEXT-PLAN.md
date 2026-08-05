@@ -1,105 +1,73 @@
 # 下一步计划
 
 > 记录接下来要做的事项，按优先级排序。
-> 最近更新：2026-08-04（更新 OpenList/qB/Aria2/Unraid docker mutation 修复、原生 splash 文字、WebDAV 等阶段性完成项）
+> 最近更新：2026-08-05（基础开发完成，进入第三轮功能完善阶段）
 
 ---
 
 ## 阶段划分（按优先级从高到低）
 
 > 原则：三轮迭代
-> - **第一轮（当前）**：补齐未完成服务的页面
-> - **第二轮**：新增服务 + 核心体验（导入导出 / 主题 / 开屏图标）
-> - **第三轮（最后）**：已阶段完成服务的功能完善提升
+> - **第一轮 + 第二轮**：**已完成** ✅
+> - **第三轮（当前）**：已阶段完成服务的功能完善提升
 
 ---
 
-## 第一轮：未完成服务的服务页面（优先）
+## 第一轮 + 第二轮：已完成记录
 
-目标：让设置里能选到的服务都至少有可用的页面，不再停留在 ServiceCard 占位。
+### aria2 / openlist / qbittorrent — 服务页面 ✅
 
-### 1. aria2 / openlist / qbittorrent — 服务页面 ✅ 已完成基础
-
-当前状态：**已完成专属 Screen + Store + 配置 + 顶栏卡片**，剩余深度完善归入第三轮。
-
-| 服务 | 现状 | 已做 |
-|------|------|------|
-| **aria2** | icon 用通用 `downloadCloud`（无 SVG） | ✅ Store + Screen + ConfigModal 字段 + 任务管理 + 全局选项 + 顶栏卡片 + 返回键处理 |
-| **openlist** | 有 selfhst SVG | ✅ Store + Screen + ConfigModal + 文件浏览 + 推 aria2 + 顶栏卡片 + 返回键处理 |
-| **qbittorrent** | 有 selfhst SVG | ✅ Store + Screen + ConfigModal + 任务管理 + 过滤 + 顶栏卡片 + 返回键处理 |
+| 服务 | 已做 |
+|------|------|
+| **aria2** | ✅ Store + Screen + ConfigModal 字段 + 任务管理 + 全局选项 + 顶栏卡片 + 返回键处理 |
+| **openlist** | ✅ Store + Screen + ConfigModal + 文件浏览 + 推 aria2 + 顶栏卡片 + 返回键处理 |
+| **qbittorrent** | ✅ Store + Screen + ConfigModal + 任务管理 + 过滤 + 顶栏卡片 + 返回键处理 |
 
 完成时间：2026-08-03 批次
 
-**仍待办（轻量）：** 补齐 aria2 专用 SVG / Icon 路径；3 个服务 WebView 内嵌页（注入认证）。
+### WebDAV 文件管理协议 ✅
 
----
+- 与 FileBrowser 并列，Basic auth + PROPFIND/PUT/MKCOL/DELETE/MOVE/COPY
+- 路径编码（RFC 3986）、UTF-8→Base64（Hermes 无 btoa）、目录尾斜杠修复（Apache 301→401）
+- 完成时间：2026-08-04
 
-## 第二轮：新增服务 + 核心体验完善
+### Emby 服务界面 ✅
 
-按先后顺序：
+- 独立 service type，复用 Jellyfin Store/Screen，缓存隔离（cacheNs）
+- 完成时间：2026-08-03 批次
 
-### 1. WebDAV 文件管理协议（与 FileBrowser 并列）✅ 已完成
-
-WebDAV 与 FileBrowser 是并列关系（不是子集），两者都是"文件管理"后端协议。
-
-- **配置位置**：FileBrowser 服务器设置入口 → 切换 FileBrowser / WebDAV
-- **实现位置**：
-  - `src/lib/api/webdav.ts` — WebDAV 协议封装（PROPFIND/PUT/MKCOL/DELETE/MOVE/COPY）
-  - `src/lib/api/fileManager.ts` — 后端路由
-  - `FileScreen.tsx` — 按 `fileBackend` 路由到不同实现
-  - `ConfigModal.tsx` / `SettingsScreen.tsx` — 切换 UI
-- **状态字段**：`appStore.fileBackend: 'filebrowser' | 'webdav'` + `webdavServer`
-- **注意事项**（详见 `src/lib/api/webdav.ts`）：
-  - UTF-8 → Base64 自实现（Hermes 无 `btoa`）
-  - PROPFIND XML 兼容命名空间前缀 (`<D:href>`)
-  - 所有 API 入参用相对路径
-
-完成时间：2026-08-04
-
-### 2. 新增 Emby 服务界面（与 Jellyfin 并列）✅ 已完成
-
-- `ServiceType` 增加 `emby`
-- `lib/api/jellyfin.ts` 抽象为可配置 baseURL（`jellyfin` 或 `emby`）
-- Store 增加 `serviceId` + `resetForService(serviceId)`，缓存 key 加 `service.id` 前缀（避免 Jellyfin/Emby 串味）
-- JellyfinItemDetail 接受 `cacheNs` prop
-- `screens/JellyfinScreen.tsx` loadServer 切服务时先 reset
-
-完成时间：2026-08-03 批次
-
-### 3. 导入导出完善 ✅ 已完成
+### 导入导出完善 ✅
 
 - 配置文件 AES 加密导出/导入（SettingsScreen 两步流程）
 - 完成时间：2026-08-02
 
-### 4. 主题（Theme）完善
+### App 开屏画面（Splash）完善 ✅
 
-- 主色 / 强调色可定制
-- 6-8 个预设色块（点击即用）
-- 自定义：色板或十六进制输入
-- 浅色 / 深色 / 跟随系统切换不影响主色
+- 纯原生 splash + 文字位图，移除 JS SplashView 减少 ~400ms 启动延迟
+- 文字位置：底部约 1/4 区域（深蓝 `#1b3a8c` / 夜浅蓝 `#64b5f6`）
+- 完成时间：2026-08-04
 
-### 5. App 开屏画面（Splash）完善 ✅ 已完成（2026-08-04）
+### ServiceBar 横向自由滚动 ✅
 
-- 改用**纯原生 splash + 文字位图**，移除 JS SplashView 减少 ~400ms 启动延迟
-- Android 12+ 系统 splash 用 `splash_empty.xml`（透明 shape）→ 阶段1 纯底色
-- 窗口背景用 `splash_window.xml`（layer-list：底色 + "One NAS" 位图 340×113dp）→ 阶段2 正常比例
-- 文字位置：底部约 1/4 区域（避免居中显得偏高）
-- 文字色：深蓝 `#1b3a8c` / `drawable-night` 浅蓝 `#64b5f6`
+- 去除"最多 4 个"限制，改为横向 ScrollView 自由滚动
+- 完成时间：2026-08-05（56980f2）
 
-### 6. App 图标（Icon / Logo）完善
+### 仍待办（轻量）
 
-- 统一尺寸约定、跟随主题色、圆角规范
-- 补齐 aria2 等缺失图标
+- **主题颜色自定义**：主色/强调色可定制，预设色块 + 十六进制输入
+- **aria2 专用 SVG 图标**：当前仍用通用 `downloadCloud`
+- **3 个服务 WebView 内嵌页**（注入认证）：aria2/qbittorrent/openlist
 
 ---
 
-## 第三轮（最后）：已阶段完成服务的功能完善 / 提升
+## 第三轮（当前）：已阶段完成服务的功能完善 / 提升
 
-> 分批最后做，与"未完成项目的功能完善提升"合并一并处理。
+按优先级从高到低：
 
-- **filebrowser** / **jellyfin** / **emby** / **navidrome** / **audiobookshelf** / **talebook** / **immich** / **aria2** / **qbittorrent** / **openlist**（十个阶段性完成）的功能完善与体验提升
-- **Unraid docker 管理兼容性**（已完成）：introspection 探测 server capabilities，兼容 4.32-4.34 → 4.35+
-- 未完成项目的功能完善提升统一归入此轮
+1. **主题颜色自定义** — 主色/强调色可定制，预设色块 + 十六进制输入
+2. **aria2 专用 SVG 图标** — 当前仍用通用 `downloadCloud`
+3. **3 个服务 WebView 内嵌页**（注入认证）— aria2 / qbittorrent / openlist
+4. **filebrowser / jellyfin / emby / navidrome / audiobookshelf / talebook / immich / aria2 / qbittorrent / openlist**（十个服务）功能完善与体验提升
 
 ---
 
@@ -121,10 +89,11 @@ WebDAV 与 FileBrowser 是并列关系（不是子集），两者都是"文件�
 
 - 服务设置、标签设置、主题切换（浅/深/系统）
 - 配置文件 AES 加密导出 / 导入（含口令）
-- 顶部固定服务栏（最多 4 个，支持内嵌卡片 + 跳转 App）
+- 顶部固定服务栏（横向自由滚动，无数量限制）
 - Tab 图标选中态
 - **原生 SplashScreen + Adaptive Icon + "One NAS" 文字位图**
 - Unraid docker 操作兼容 4.32+（introspection 探测）
+- **ServiceBar 横向自由滚动**（2026-08-05，去除最多 4 个限制）
 
 ### 已修复 Bug
 
@@ -132,6 +101,8 @@ WebDAV 与 FileBrowser 是并列关系（不是子集），两者都是"文件�
 - Jellyfin/Emby 缓存串味（共享 cache key）
 - Talebook "最近浏览" 一直为空（服务端无该端点，改本地 AsyncStorage）
 - Unraid docker startContainer/stopContainer/restartContainer 400（字段名错，4.32+ 用 start/stop/restart）
+- WebDAV 子目录 401（Apache 301→http 降级丢 Authorization，补尾斜杠修复）
+- WebDAV 文件夹误判为文件（PROPFIND 需显式 body 含 `<D:resourcetype>`）
 
 ---
 
