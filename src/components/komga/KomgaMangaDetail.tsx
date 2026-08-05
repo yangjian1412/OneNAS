@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Ale
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
 import type { KomgaServerConfig, KomgaSeries, KomgaBook } from '@/types'
-import { komgaThumbUrl, komgaBookThumbUrl, komgaListBooks, komgaMarkRead, komgaMarkUnread } from '@/lib/api/komga'
+import { komgaThumbUrl, komgaBookThumbUrl, komgaGetSeriesBooks, komgaMarkRead, komgaMarkUnread } from '@/lib/api/komga'
 import { komgaCacheBook, clearBookCache as utilClearBookCache } from '@/lib/api/komgaCache'
 
 interface Props {
@@ -25,7 +25,7 @@ export default function KomgaMangaDetail({ server, series, onOpenBook }: Props) 
     let cancelled = false
     setLoading(true)
     setError(null)
-    komgaListBooks(server, { seriesId: [series.id], size: 100, sort: 'metadata.numberSort,asc' })
+    komgaGetSeriesBooks(server, series.id, { size: 100, sort: 'metadata.numberSort,asc' })
       .then((res) => {
         if (cancelled) return
         setBooks(res)
@@ -47,7 +47,7 @@ export default function KomgaMangaDetail({ server, series, onOpenBook }: Props) 
       } else {
         await komgaMarkRead(server, book.id)
       }
-      const res = await komgaListBooks(server, { seriesId: [series.id], size: 100 })
+      const res = await komgaGetSeriesBooks(server, series.id, { size: 100, sort: 'metadata.numberSort,asc' })
       setBooks(res)
     } catch (e: any) {
       Alert.alert('操作失败', e?.message ?? '未知错误')

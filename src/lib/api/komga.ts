@@ -270,6 +270,22 @@ export async function komgaListBooks(server: KomgaServerConfig, search: KomgaBoo
   return page.content ?? []
 }
 
+// 列出某个系列的书（权威接口：series_id query 在部分 Komga 版本被忽略，必须用 /series/{id}/books）
+export async function komgaGetSeriesBooks(
+  server: KomgaServerConfig,
+  seriesId: string,
+  opts: { size?: number; sort?: string; page?: number } = {},
+): Promise<KomgaBook[]> {
+  const params = new URLSearchParams()
+  if (opts.sort) params.set('sort', opts.sort)
+  if (opts.page !== undefined) params.set('page', String(opts.page))
+  if (opts.size !== undefined) params.set('size', String(opts.size))
+  const qs = params.toString()
+  const url = `${normalizeBase(server.url)}/api/v1/series/${seriesId}/books${qs ? '?' + qs : ''}`
+  const page = await getJsonWithAuth<KomgaPageResp<KomgaBook>>(server, url)
+  return page.content ?? []
+}
+
 export async function komgaGetBook(server: KomgaServerConfig, id: string): Promise<KomgaBook> {
   return await getJsonWithAuth<KomgaBook>(server, `${normalizeBase(server.url)}/api/v1/books/${id}`)
 }

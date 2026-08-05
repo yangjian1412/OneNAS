@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { View, Text, Image, TouchableOpacity, Dimensions, ActivityIndicator, StyleSheet, Alert, FlatList, StatusBar } from 'react-native'
+import { View, Text, Image, TouchableOpacity, Dimensions, ActivityIndicator, StyleSheet, Alert, FlatList } from 'react-native'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
+import { useImmersive } from '@/lib/immersive'
 import type { KomgaServerConfig, KomgaBook, KomgaPage } from '@/types'
 import { komgaAuthHeader, komgaGetBookPages, komgaPageUrl, komgaUpdateReadProgress, komgaMarkRead, komgaGetBook } from '@/lib/api/komga'
 import { ensurePageCached, prefetchPage, pageLocalUri, isPageCached } from '@/lib/api/komgaCache'
@@ -16,6 +17,7 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
 
 export default function KomgaReader({ server, book, onClose }: Props) {
   const t = useTheme()
+  useImmersive(true)
   const [pages, setPages] = useState<KomgaPage[]>([])
   const [currentPage, setCurrentPage] = useState<number>(0)
   const [loading, setLoading] = useState(true)
@@ -123,7 +125,6 @@ export default function KomgaReader({ server, book, onClose }: Props) {
 
   return (
     <View style={styles.root}>
-      <StatusBar hidden />
       {loading || pages.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator color="#fff" />
@@ -174,13 +175,13 @@ export default function KomgaReader({ server, book, onClose }: Props) {
                   <TouchableOpacity onPress={() => {
                     if (currentPage > 1) listRef.current?.scrollToIndex({ index: 0, animated: true })
                   }} style={styles.bottomBtn}>
-                    <Icon name="skipBack" size={20} color="#fff" />
+                    <Icon name="skipPrev" size={20} color="#fff" />
                     <Text style={styles.bottomBtnText}>首页</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => {
                     if (currentPage < pages.length) listRef.current?.scrollToIndex({ index: pages.length - 1, animated: true })
                   }} style={styles.bottomBtn}>
-                    <Icon name="skipForward" size={20} color="#fff" />
+                    <Icon name="skipNext" size={20} color="#fff" />
                     <Text style={styles.bottomBtnText}>末页</Text>
                   </TouchableOpacity>
                 </View>

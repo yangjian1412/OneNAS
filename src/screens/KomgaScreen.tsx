@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, Modal, Alert, Platform, StatusBar } from 'react-native'
 import { useIsFocused } from '@react-navigation/native'
 import { useKomgaStore } from '@/stores/komgaStore'
-import { komgaListSeries, komgaListBooks, komgaGlobalSearch } from '@/lib/api/komga'
+import { komgaListSeries, komgaGetSeriesBooks, komgaGlobalSearch } from '@/lib/api/komga'
 import { getCachedBookList } from '@/lib/api/komgaCache'
 import type { ServiceConfig, KomgaSeries, KomgaBook, KomgaLibrary, KomgaSortKey, KomgaSortDir } from '@/types'
 import { useTheme } from '@/lib/theme'
@@ -169,7 +169,7 @@ export default function KomgaScreen({ service, onRequestClose }: Props) {
 
   const handleCloseReader = () => {
     if (readingBook && server) {
-      void komgaListBooks(server, { seriesId: [readingBook.seriesId], size: 1 }).catch(() => {})
+      void komgaGetSeriesBooks(server, readingBook.seriesId, { size: 1 }).catch(() => {})
     }
     setReadingBook(null)
     popView()
