@@ -29,6 +29,7 @@ import FileBookSvg from '@/icos/twemoji--blue-book.svg'
 import DownloadRoundedSvg from '@/icos/material-symbols--download-rounded.svg'
 import ShareManageSvg from '@/icos/jam--share.svg'
 
+import DockerLogo from '@/icos/material-icon-theme--docker.svg'
 import FilebrowserLogo from '@/icos/filebrowser.svg'
 import JellyfinLogo from '@/icos/selfhst--jellyfin.svg'
 import EmbyLogo from '@/icos/selfhst--emby.svg'
@@ -131,6 +132,7 @@ const SVG_COMPONENTS = {
   downloadRounded: DownloadRoundedSvg,
   shareManage: ShareManageSvg,
 
+  docker: DockerLogo,
   filebrowser: FilebrowserLogo,
   jellyfin: JellyfinLogo,
   emby: EmbyLogo,

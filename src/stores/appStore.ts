@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { ServerConfig, ServiceConfig, Container, SystemInfo, ThemeMode, DownloadTask, ExportPayloadV2, WebDavConfig, FileBackend } from '@/types'
+import { ServerConfig, ServiceConfig, Container, SystemInfo, ThemeMode, DownloadTask, ExportPayloadV2, WebDavConfig, FileBackend, NasManagementBackend, PortainerConfig } from '@/types'
 import { loadItem, saveItem } from '@/lib/storage'
 import { STORAGE_KEYS } from '@/lib/constants'
 import CryptoJS from 'crypto-js'
@@ -22,6 +22,8 @@ interface PersistPayload {
   fileSort: FileSort
   fileBackend: FileBackend
   webdavServer: WebDavConfig | null
+  nasManagementBackend: NasManagementBackend
+  portainerServer: PortainerConfig | null
   downloads: DownloadTask[]
 }
 
@@ -35,6 +37,8 @@ async function persist(s: AppState, extra?: Partial<PersistPayload>) {
     fileSort: extra?.fileSort ?? s.fileSort,
     fileBackend: extra?.fileBackend ?? s.fileBackend,
     webdavServer: extra?.webdavServer !== undefined ? extra.webdavServer : s.webdavServer,
+    nasManagementBackend: extra?.nasManagementBackend ?? s.nasManagementBackend,
+    portainerServer: extra?.portainerServer !== undefined ? extra.portainerServer : s.portainerServer,
   }
   await saveItem(STORAGE_KEYS.CONFIG, JSON.stringify(payload))
 }
@@ -104,6 +108,8 @@ export interface AppState {
   setFileSort: (sort: FileSort) => void
   setFileBackend: (b: FileBackend) => void
   setWebDavServer: (cfg: WebDavConfig | null) => void
+  setNasManagementBackend: (b: NasManagementBackend) => void
+  setPortainerServer: (cfg: PortainerConfig | null) => void
   addDownload: (task: DownloadTask) => void
   updateDownload: (task: DownloadTask) => void
   removeDownload: (id: number) => void
@@ -125,6 +131,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   fileSort: { by: 'name', dir: 'asc' },
   fileBackend: 'filebrowser',
   webdavServer: null,
+  nasManagementBackend: 'unraid',
+  portainerServer: null,
   downloads: [],
 
   init: async () => {
@@ -144,6 +152,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const fileSort = cfg.fileSort ?? { by: 'name', dir: 'asc' }
       const fileBackend = cfg.fileBackend ?? 'filebrowser'
       const webdavServer = cfg.webdavServer ?? null
+      const nasManagementBackend = cfg.nasManagementBackend ?? 'unraid'
+      const portainerServer = cfg.portainerServer ?? null
       set({
         loaded: true,
         servers,
@@ -154,9 +164,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         fileSort,
         fileBackend,
         webdavServer,
+        nasManagementBackend,
+        portainerServer,
       })
       // 落盘：真正把残留（如空 url 的 calibre 占位）从磁盘清除
-      void persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer })
+      void persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer, nasManagementBackend, portainerServer })
     } catch {
       set({ loaded: true })
     }
@@ -189,7 +201,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setFileSort: (fileSort) => { set({ fileSort }); persist(get(), { fileSort }) },
   setFileBackend: (fileBackend) => { set({ fileBackend }); persist(get(), { fileBackend }) },
   setWebDavServer: (webdavServer) => { set({ webdavServer }); persist(get(), { webdavServer }) },
-  setFileSort: (fileSort) => { set({ fileSort }); persist(get(), { fileSort }) },
+  setNasManagementBackend: (nasManagementBackend) => { set({ nasManagementBackend }); persist(get(), { nasManagementBackend }) },
+  setPortainerServer: (portainerServer) => { set({ portainerServer }); persist(get(), { portainerServer }) },
   addDownload: (task) => set((state) => ({ downloads: [...state.downloads, task] })),
   updateDownload: (task) => set((state) => ({ downloads: state.downloads.map((item) => item.id === task.id ? task : item) })),
   removeDownload: (id) => set((state) => ({ downloads: state.downloads.filter((item) => item.id !== id) })),
@@ -228,8 +241,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const fileSort = cfg.fileSort ?? { by: 'name', dir: 'asc' }
     const fileBackend = cfg.fileBackend ?? 'filebrowser'
     const webdavServer = cfg.webdavServer ?? null
-    set({ servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer })
-    await persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer })
+    const nasManagementBackend = cfg.nasManagementBackend ?? 'unraid'
+    const portainerServer = cfg.portainerServer ?? null
+    set({ servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer, nasManagementBackend, portainerServer })
+    await persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer, nasManagementBackend, portainerServer })
     return { ok: true }
   },
 
@@ -244,6 +259,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       fileSort: s.fileSort,
       fileBackend: s.fileBackend,
       webdavServer: s.webdavServer,
+      nasManagementBackend: s.nasManagementBackend,
+      portainerServer: s.portainerServer,
     })
     // v2 加密格式：密钥（默认 "0"）AES 加密，导出含密码也行，但不含明文
     const cipher = CryptoJS.AES.encrypt(cfg, key || '0').toString()

@@ -47,6 +47,48 @@ export interface WebDavConfig {
   password: string
 }
 
+// NAS 管理后端：unraid（GraphQL docker mutations）或 portainer（Portainer REST API）
+export type NasManagementBackend = 'unraid' | 'portainer'
+
+// Portainer 独立配置（与 Unraid ServerConfig 并列，不共享字段）
+export interface PortainerConfig {
+  id: string
+  name: string
+  url: string         // e.g. http://nas-host:9000
+  apiToken: string    // Portainer "Access Token" (X-Api-Key header)，永不过期
+}
+
+// Portainer 容器（映射 Docker API /containers/json 响应）
+export interface PortainerContainer {
+  Id: string
+  Names: string[]
+  Image: string
+  ImageID?: string
+  Command?: string
+  Created: number
+  State: string       // running / exited / paused / restarting / dead / created
+  Status: string      // human-readable, e.g. "Up 5 minutes"
+  Ports: Array<{ IP: string; PrivatePort: number; PublicPort: number; Type: string }>
+  Labels: Record<string, string> | null
+  NetworkSettings?: { Networks: Record<string, any> }
+  Mounts?: Array<{ Name?: string; Source: string; Destination: string; Mode?: string; RW?: boolean; Type?: string }>
+}
+
+export interface PortainerEndpoint {
+  Id: number
+  Name: string
+  Type: number        // 1=Docker, 2=Kubernetes, 3=AgentOnDocker, 4=AgentOnKubernetes
+  Status: number      // 1=up, 2=down
+  Url: string
+}
+
+export interface PortainerDashboardData {
+  endpointId: number
+  endpointName: string
+  endpointUrl: string
+  containers: PortainerContainer[]
+}
+
 // 导出配置格式
 // - v1: 旧版明文（无 v/format 标记，服务/服务器数组直接暴露，含密码）
 // - v2: 加密格式 { v, format:'enc-aes', cipher }

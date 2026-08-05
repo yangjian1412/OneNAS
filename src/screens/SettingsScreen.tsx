@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Alert, Modal, StyleSheet, Swit
 import { useIsFocused } from '@react-navigation/native'
 import { NestableScrollContainer, NestableDraggableFlatList, RenderItemParams } from 'react-native-draggable-flatlist'
 import { useAppStore } from '@/stores/appStore'
-import { ServerConfig, ServiceConfig, ServiceType, WebDavConfig } from '@/types'
+import { ServerConfig, ServiceConfig, ServiceType, WebDavConfig, NasManagementBackend, PortainerConfig } from '@/types'
 import { generateId } from '@/lib/crypto'
 import { SERVICE_TYPE_LABELS, SERVICE_TYPE_ICONS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
@@ -69,6 +69,7 @@ export default function SettingsScreen() {
   const [modalServer, setModalServer] = useState<ServerConfig | null>(null)
   const [modalService, setModalService] = useState<ServiceConfig | null>(null)
   const [webdavModalVisible, setWebDavModalVisible] = useState(false)
+  const [portainerModalVisible, setPortainerModalVisible] = useState(false)
   const [tagPickerSlot, setTagPickerSlot] = useState<'tab2' | 'tab3' | null>(null)
   const [exportText, setExportText] = useState<string | null>(null)
   const [exportKeyOpen, setExportKeyOpen] = useState(false)
@@ -153,6 +154,10 @@ export default function SettingsScreen() {
   const setFileBackend = useAppStore((s) => s.setFileBackend)
   const webdavServer = useAppStore((s) => s.webdavServer)
   const setWebDavServer = useAppStore((s) => s.setWebDavServer)
+  const nasManagementBackend = useAppStore((s) => s.nasManagementBackend)
+  const setNasManagementBackend = useAppStore((s) => s.setNasManagementBackend)
+  const portainerServer = useAppStore((s) => s.portainerServer)
+  const setPortainerServer = useAppStore((s) => s.setPortainerServer)
 
   const openServerModal = (type: 'filebrowser' | 'unraid') => {
     setModalType(type)
@@ -306,14 +311,27 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
         <View style={[styles.serverCard, { backgroundColor: t.card, borderColor: t.border }]}>
-          <Icon name="unraid" size={32} style={styles.serviceIcon} />
+          <Icon name={nasManagementBackend === 'portainer' ? 'docker' : 'unraid'} size={32} style={styles.serviceIcon} />
           <View style={styles.serviceInfo}>
             <Text style={[styles.serviceName, { color: t.text }]}>NAS 管理</Text>
-            <Text style={[styles.serviceHint, { color: unraidServer ? t.success : t.textMuted }]} numberOfLines={1}>
-              {unraidServer ? '已配置' : '请配置 Unraid API Key'}
+            <View style={styles.fileBackendRow}>
+              {(['unraid', 'portainer'] as const).map((b) => (
+                <TouchableOpacity key={b} style={[styles.backendBtn, { borderColor: t.border },
+                  nasManagementBackend === b && { backgroundColor: t.primary, borderColor: t.primary }]}
+                  onPress={() => setNasManagementBackend(b)}>
+                  <Text style={[styles.backendBtnText, { color: nasManagementBackend === b ? '#fff' : t.textSecondary }]}>
+                    {b === 'unraid' ? 'Unraid' : 'Docker (Portainer)'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={[styles.serviceHint, { color: (nasManagementBackend === 'portainer' ? portainerServer : unraidServer) ? t.success : t.textMuted }]} numberOfLines={1}>
+              {nasManagementBackend === 'portainer'
+                ? (portainerServer ? '已配置' : '请配置 Portainer API Token')
+                : (unraidServer ? '已配置' : '请配置 Unraid API Key')}
             </Text>
           </View>
-          <TouchableOpacity style={[styles.configButton, { borderColor: t.border }]} onPress={() => openServerModal('unraid')}>
+          <TouchableOpacity style={[styles.configButton, { borderColor: t.border }]} onPress={() => nasManagementBackend === 'portainer' ? setPortainerModalVisible(true) : openServerModal('unraid')}>
             <Text style={[styles.configText, { color: t.primary }]}>配置</Text>
           </TouchableOpacity>
         </View>
@@ -522,6 +540,14 @@ export default function SettingsScreen() {
         onClear={() => { setWebDavServer(null); setWebDavModalVisible(false) }}
         t={t}
       />
+      <PortainerConfigModal
+        visible={portainerModalVisible}
+        onClose={() => setPortainerModalVisible(false)}
+        initial={portainerServer}
+        onSave={(cfg) => { setPortainerServer(cfg); setPortainerModalVisible(false) }}
+        onClear={() => { setPortainerServer(null); setPortainerModalVisible(false) }}
+        t={t}
+      />
       <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
         <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
           <Text style={styles.toastText}>再按一次退出</Text>
@@ -614,6 +640,126 @@ function WebDavConfigModal({ visible, onClose, initial, onSave, onClear, t }: We
               </TouchableOpacity>
             ) : <View />}
             <View style={{ flexDirection: 'row', gap: 24 }}>
+              <TouchableOpacity onPress={onClose}>
+                <Text style={[styles.clearText, { color: t.textMuted }]}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSave} disabled={saving}>
+                <Text style={[styles.clearText, { color: t.primary }]}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  )
+}
+
+interface PortainerConfigModalProps {
+  visible: boolean
+  onClose: () => void
+  initial: PortainerConfig | null
+  onSave: (cfg: PortainerConfig) => void
+  onClear: () => void
+  t: any
+}
+
+function PortainerConfigModal({ visible, onClose, initial, onSave, onClear, t }: PortainerConfigModalProps) {
+  const [name, setName] = useState('')
+  const [url, setUrl] = useState('')
+  const [apiToken, setApiToken] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+
+  useEffect(() => {
+    if (visible) {
+      setName(initial?.name ?? 'Portainer')
+      setUrl(initial?.url ?? '')
+      setApiToken(initial?.apiToken ?? '')
+    }
+  }, [visible, initial])
+
+  const handleSave = async () => {
+    if (!url.trim()) { Alert.alert('提示', '请输入 Portainer 地址'); return }
+    if (!apiToken.trim()) { Alert.alert('提示', '请输入 API Token'); return }
+    setSaving(true)
+    const cfg: PortainerConfig = {
+      id: initial?.id ?? generateId(),
+      name: name.trim() || 'Portainer',
+      url: url.trim().replace(/\/+$/, ''),
+      apiToken: apiToken.trim(),
+    }
+    setSaving(false)
+    onSave(cfg)
+  }
+
+  const handleTest = async () => {
+    if (!url.trim() || !apiToken.trim()) {
+      Alert.alert('提示', '请先填写地址和 API Token')
+      return
+    }
+    setTesting(true)
+    try {
+      const { portainerPing } = await import('@/lib/api/portainer')
+      const res = await portainerPing({ id: 'test', name: 'test', url: url.trim().replace(/\/+$/, ''), apiToken: apiToken.trim() })
+      if (res.ok) {
+        const eps = res.endpoints ?? []
+        const dockerCount = eps.filter((e) => e.Type === 1).length
+        Alert.alert('连接成功', `找到 ${eps.length} 个 endpoint${dockerCount > 0 ? `（${dockerCount} 个 Docker）` : ''}`)
+      } else {
+        Alert.alert('连接失败', res.error ?? '未知错误')
+      }
+    } catch (e: any) {
+      Alert.alert('连接失败', e?.message ?? '未知错误')
+    }
+    setTesting(false)
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+        <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={styles.sheetHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.sheetTitle, { color: t.text }]}>Portainer 配置</Text>
+              <Text style={[styles.sheetSubtitle, { color: t.textMuted }]}>Docker 容器管理（通过 Portainer REST API）</Text>
+            </View>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={[styles.clearText, { color: t.primary }]}>关闭</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ maxHeight: 480 }} contentContainerStyle={{ paddingBottom: 12 }}>
+            <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>名称</Text>
+            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={name} onChangeText={setName} placeholder="Portainer" placeholderTextColor={t.textMuted} />
+
+            <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Portainer URL</Text>
+            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false}
+              placeholder="http://host:9000" placeholderTextColor={t.textMuted} />
+
+            <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Access Token (API Token)</Text>
+            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+              value={apiToken} onChangeText={setApiToken} autoCapitalize="none" autoCorrect={false} secureTextEntry
+              placeholder="ptr_xxxxxxxxxx" placeholderTextColor={t.textMuted} />
+
+            <Text style={[styles.ioHint, { color: t.textMuted }]}>
+              在 Portainer 网页 → 用户头像 → Access Tokens 生成，永不过期。
+            </Text>
+          </ScrollView>
+
+          <View style={styles.sheetActions}>
+            {initial ? (
+              <TouchableOpacity onPress={onClear}>
+                <Text style={[styles.clearText, { color: '#c0392b' }]}>清除配置</Text>
+              </TouchableOpacity>
+            ) : <View />}
+            <View style={{ flexDirection: 'row', gap: 24 }}>
+              <TouchableOpacity onPress={handleTest} disabled={testing || saving}>
+                <Text style={[styles.clearText, { color: testing ? t.textMuted : t.primary }]}>{testing ? '测试中...' : '测试连接'}</Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={onClose}>
                 <Text style={[styles.clearText, { color: t.textMuted }]}>取消</Text>
               </TouchableOpacity>

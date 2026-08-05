@@ -7,7 +7,7 @@ import { SERVICE_TYPE_ICONS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
 import FileScreen from '@/screens/FileScreen'
 import ServiceScreen from '@/screens/ServiceScreen'
-import DockerScreen from '@/screens/DockerScreen'
+import NasManagementScreen from '@/screens/NasManagementScreen'
 import SettingsScreen from '@/screens/SettingsScreen'
 import Icon from '@/components/Icon'
 
@@ -17,6 +17,7 @@ export default function TabNavigator() {
   const services = useAppStore((s) => s.services)
   const hideNasManagement = useAppStore((s) => s.hideNasManagement)
   const hideTabLabels = useAppStore((s) => s.hideTabLabels)
+  const nasManagementBackend = useAppStore((s) => s.nasManagementBackend)
   const tab2 = getTab2Service(services)
   const tab3 = getTab3Service(services)
   const t = useTheme()
@@ -29,7 +30,7 @@ export default function TabNavigator() {
       if (routeName === 'Files') return <Icon name="folderEmpty" size={27} color={color} />
       if (routeName === 'Tab2') return tab2 ? <Icon name={SERVICE_TYPE_ICONS[tab2.type] ?? 'folderEmpty'} size={27} color={color} /> : null
       if (routeName === 'Tab3') return tab3 ? <Icon name={SERVICE_TYPE_ICONS[tab3.type] ?? 'folderEmpty'} size={27} color={color} /> : null
-      if (routeName === 'NasManagement') return <Icon name="unraid" size={27} color={color} />
+      if (routeName === 'NasManagement') return <Icon name={nasManagementBackend === 'portainer' ? 'docker' : 'unraid'} size={27} color={color} />
       if (routeName === 'Settings') return <Icon name="settings" size={27} color={color} />
       return null
     }
@@ -80,7 +81,7 @@ export default function TabNavigator() {
           </Tab.Screen>
         )}
         {!hideNasManagement && (
-          <Tab.Screen name="NasManagement" component={DockerScreen} options={{ tabBarLabel: 'NAS 系统管理' }} />
+          <Tab.Screen name="NasManagement" component={NasManagementScreen} options={{ tabBarLabel: 'NAS 系统管理' }} />
         )}
         <Tab.Screen name="Settings" component={SettingsScreen} options={{ tabBarLabel: '设置' }} />
       </Tab.Navigator>
