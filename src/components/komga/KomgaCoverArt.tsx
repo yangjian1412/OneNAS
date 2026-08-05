@@ -60,18 +60,23 @@ interface SeriesCardProps {
   series: KomgaSeries
   onPress: () => void
   size?: number
+  hideText?: boolean
 }
 
-export function KomgaSeriesCard({ server, series, onPress, size = 100 }: SeriesCardProps) {
+export function KomgaSeriesCard({ server, series, onPress, size = 100, hideText }: SeriesCardProps) {
   const t = useTheme()
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
       <KomgaCoverArt server={server} seriesId={series.id} size={size} />
-      <Text style={[styles.title, { color: t.text }]} numberOfLines={1}>{series.metadata.title || series.name}</Text>
-      {series.booksCount > 0 && (
-        <Text style={[styles.subtitle, { color: t.textMuted }]} numberOfLines={1}>
-          {series.booksReadCount}/{series.booksCount}
-        </Text>
+      {!hideText && (
+        <>
+          <Text style={[styles.title, { color: t.text }]} numberOfLines={1}>{series.metadata.title || series.name}</Text>
+          {series.booksCount > 0 && (
+            <Text style={[styles.subtitle, { color: t.textMuted }]} numberOfLines={1}>
+              {series.booksReadCount}/{series.booksCount}
+            </Text>
+          )}
+        </>
       )}
     </TouchableOpacity>
   )

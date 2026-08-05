@@ -1,7 +1,7 @@
 import { File, Paths, Directory } from 'expo-file-system'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { KomgaServerConfig, KomgaPage } from '@/types'
-import { komgaAuthHeader, komgaGetBookPages, komgaPageUrl } from '@/lib/api/komga'
+import { KomgaServerConfig, KomgaPage, KomgaSeries } from '@/types'
+import { komgaAuthHeader, komgaGetBookPages, komgaGetSeriesBooks, komgaPageUrl } from '@/lib/api/komga'
 
 const INDEX_KEY = 'komga:cache:index:v1'
 
@@ -156,8 +156,38 @@ export async function cacheBook(
   }
 }
 
-// ── 清除缓存 ────────────────────────────────────────────────────────────────
+// ── 整部缓存（系列） ─────────────────────────────────────────────────────────
 
+export async function cacheSeries(
+  server: KomgaServerConfig,
+  serverId: string,
+  series: KomgaSeries,
+  onProgress?: (current: number, total: number, bookTitle?: string) => void,
+): Promise<{ ok: boolean; error?: string; sizeBytes: number; books: number }> {
+  try {
+    const books = await komgaGetSeriesBooks(server, series.id, { size: 1000, sort: 'metadata.numberSort,asc' })
+    if (!books || books.length === 0) return { ok: false, error: '系列没有章节', sizeBytes: 0, books: 0 }
+    let sizeBytes = 0
+    for (let i = 0; i < books.length; i++) {
+      const b = books[i]
+      const res = await cacheBook(
+        server,
+        serverId,
+        b.id,
+        series.metadata?.title || series.name,
+        b.metadata?.title || b.name,
+      )
+      if (!res.ok) return { ok: false, error: `${b.metadata?.title || b.name} 缓存失败: ${res.error}`, sizeBytes, books: i }
+      sizeBytes += res.sizeBytes
+      onProgress?.(i + 1, books.length, b.metadata?.title || b.name)
+    }
+    return { ok: true, sizeBytes, books: books.length }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? '缓存失败', sizeBytes: 0, books: 0 }
+  }
+}
+
+// ── 清除缓存 ────────────────────────────────────────────────────────────────
 export async function clearBookCache(serverId: string, bookId: string): Promise<void> {
   const dir = bookDir(serverId, bookId)
   if (dir.exists) {

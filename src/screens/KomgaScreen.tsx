@@ -3,7 +3,8 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandle
 import { useIsFocused } from '@react-navigation/native'
 import { useKomgaStore } from '@/stores/komgaStore'
 import { komgaListSeries, komgaGetSeriesBooks, komgaGlobalSearch } from '@/lib/api/komga'
-import { getCachedBookList } from '@/lib/api/komgaCache'
+import { getCachedBookList, cacheSeries as utilCacheSeries } from '@/lib/api/komgaCache'
+import { getFavSeries, toggleFavSeries, getRecentSeries, addRecentSeries } from '@/lib/komgaLocal'
 import type { ServiceConfig, KomgaSeries, KomgaBook, KomgaLibrary, KomgaSortKey, KomgaSortDir } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
@@ -52,14 +53,32 @@ export default function KomgaScreen({ service, onRequestClose }: Props) {
   const [searchResults, setSearchResults] = useState<{ series: KomgaSeries[]; books: KomgaBook[] } | null>(null)
   const [searchLoading, setSearchLoading] = useState(false)
 
-  const [drawerOpen, setDrawerOpen] = useState(false)
+const [drawerOpen, setDrawerOpen] = useState(false)
   const [cacheSettingsOpen, setCacheSettingsOpen] = useState(false)
 
   const [cachedEntries, setCachedEntries] = useState<Array<{ bookId: string; seriesTitle: string; bookTitle: string; pages: number; sizeBytes: number; cachedAt: number }>>([])
 
+  const [favItems, setFavItems] = useState<KomgaSeries[]>([])
+  const [recentItems, setRecentItems] = useState<KomgaSeries[]>([])
+  const [favIds, setFavIds] = useState<Set<string>>(new Set())
+  const [cachingSeriesId, setCachingSeriesId] = useState<string | null>(null)
+  const [cacheSeriesProgress, setCacheSeriesProgress] = useState<{ current: number; total: number } | null>(null)
+
+  const loadLocal = async () => {
+    if (!server) return
+    const [fav, recent] = await Promise.all([getFavSeries(server.id), getRecentSeries(server.id)])
+    setFavItems(fav)
+    setRecentItems(recent)
+    setFavIds(new Set(fav.map((s) => s.id)))
+  }
+
   useEffect(() => {
     void getCachedBookList().then(setCachedEntries)
   }, [])
+
+  useEffect(() => {
+    void loadLocal()
+  }, [server?.id])
 
   useEffect(() => {
     if (!server || server.id !== service.id) {
@@ -159,7 +178,36 @@ export default function KomgaScreen({ service, onRequestClose }: Props) {
 
   const openSeries = (s: KomgaSeries) => {
     setSelectedSeries(s)
+    if (server) void addRecentSeries(server.id, s).then(() => loadLocal())
     pushView('series')
+  }
+
+  const toggleFav = async (s: KomgaSeries) => {
+    if (!server) return
+    const nowFav = await toggleFavSeries(server.id, s)
+    setFavIds((prev) => {
+      const next = new Set(prev)
+      if (nowFav) next.add(s.id); else next.delete(s.id)
+      return next
+    })
+    void loadLocal()
+  }
+
+  const cacheWholeSeries = async (s: KomgaSeries) => {
+    if (!server || cachingSeriesId) return
+    setCachingSeriesId(s.id)
+    setCacheSeriesProgress({ current: 0, total: 0 })
+    const res = await utilCacheSeries(
+      server,
+      server.id,
+      s,
+      (current, total) => setCacheSeriesProgress({ current, total }),
+    )
+    setCachingSeriesId(null)
+    setCacheSeriesProgress(null)
+    if (!res.ok) Alert.alert('缓存失败', res.error ?? '未知错误')
+    else Alert.alert('缓存完成', `${s.metadata?.title || s.name} 已缓存 ${res.books} 章${res.sizeBytes > 0 ? '，' + (res.sizeBytes / 1024 / 1024).toFixed(1) + ' MB' : ''}`)
+    void getCachedBookList().then(setCachedEntries)
   }
 
   const openBook = (b: KomgaBook) => {
@@ -256,12 +304,30 @@ export default function KomgaScreen({ service, onRequestClose }: Props) {
                 />
               )}
 
-              <KomgaBookRow
+<KomgaBookRow
                 title="继续阅读"
                 server={server}
                 items={continueReadingMerged}
                 onItemPress={openBook}
               />
+
+              {recentItems.length > 0 && (
+                <KomgaSeriesRow
+                  title="最近浏览"
+                  server={server}
+                  items={recentItems}
+                  onItemPress={openSeries}
+                />
+              )}
+
+              {favItems.length > 0 && (
+                <KomgaSeriesRow
+                  title="我的书架"
+                  server={server}
+                  items={favItems}
+                  onItemPress={openSeries}
+                />
+              )}
 
               {libraries
                 .filter((lib) => !lib.unavailable)
@@ -319,7 +385,7 @@ export default function KomgaScreen({ service, onRequestClose }: Props) {
                 onPress={() => openSeries(s)}
                 activeOpacity={0.7}
               >
-                <KomgaSeriesCard server={server} series={s} onPress={() => openSeries(s)} size={70} />
+                <KomgaSeriesCard server={server} series={s} onPress={() => openSeries(s)} size={70} hideText />
                 <View style={styles.seriesRowMeta}>
                   <Text style={[styles.seriesRowTitle, { color: t.text }]} numberOfLines={2}>
                     {s.metadata?.title || s.name}
@@ -327,6 +393,31 @@ export default function KomgaScreen({ service, onRequestClose }: Props) {
                   <Text style={[styles.seriesRowSub, { color: t.textMuted }]} numberOfLines={1}>
                     {s.booksCount} 本 · {s.booksReadCount} 已读
                   </Text>
+                  <View style={styles.seriesRowActions}>
+                    <TouchableOpacity
+                      style={[styles.seriesActionBtn, { backgroundColor: t.bg, borderColor: t.border }]}
+                      onPress={() => toggleFav(s)}
+                      activeOpacity={0.7}
+                    >
+                      <Icon name={favIds.has(s.id) ? 'favorite' : 'favoriteBorder'} size={13} color={favIds.has(s.id) ? t.danger : t.textSecondary} />
+                      <Text style={[styles.seriesActionText, { color: favIds.has(s.id) ? t.danger : t.textSecondary }]}>
+                        {favIds.has(s.id) ? '已收藏' : '加入书架'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.seriesActionBtn, { backgroundColor: t.bg, borderColor: t.border }]}
+                      onPress={() => cacheWholeSeries(s)}
+                      disabled={cachingSeriesId !== null}
+                      activeOpacity={0.7}
+                    >
+                      <Icon name={cachingSeriesId === s.id ? 'refresh' : 'downloadRounded'} size={13} color={cachingSeriesId === s.id ? t.textMuted : t.primary} />
+                      <Text style={[styles.seriesActionText, { color: cachingSeriesId === s.id ? t.textMuted : t.primary }]}>
+                        {cachingSeriesId === s.id && cacheSeriesProgress
+                          ? `缓存中 ${cacheSeriesProgress.current}/${cacheSeriesProgress.total}`
+                          : '缓存整本'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </TouchableOpacity>
             ))}
@@ -365,7 +456,15 @@ export default function KomgaScreen({ service, onRequestClose }: Props) {
     return (
       <View style={[styles.root, { backgroundColor: t.bg }]}>
         {header}
-        <KomgaMangaDetail key={selectedSeries.id} server={server} series={selectedSeries} onOpenBook={openBook} />
+        <KomgaMangaDetail
+          key={selectedSeries.id}
+          server={server}
+          series={selectedSeries}
+          onOpenBook={openBook}
+          fav={favIds.has(selectedSeries.id)}
+          onToggleFav={() => toggleFav(selectedSeries)}
+          onCacheDone={() => void getCachedBookList().then(setCachedEntries)}
+        />
         <ServiceDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} userInfo={{ name: server.name, url: server.url, avatar: server.username }} items={drawerItems} t={t} />
         <KomgaCacheSettings visible={cacheSettingsOpen} onClose={() => setCacheSettingsOpen(false)} t={t} />
       </View>
@@ -374,9 +473,11 @@ export default function KomgaScreen({ service, onRequestClose }: Props) {
 
   if (view === 'reader' && readingBook) {
     return (
-      <View style={[styles.root, { backgroundColor: '#000' }]}>
-        <KomgaReader server={server} book={readingBook} onClose={handleCloseReader} />
-      </View>
+      <Modal visible animationType="fade" onRequestClose={handleCloseReader} statusBarTranslucent>
+        <View style={[styles.root, { backgroundColor: '#000' }]}>
+          <KomgaReader server={server} book={readingBook} onClose={handleCloseReader} />
+        </View>
+      </Modal>
     )
   }
 
@@ -460,7 +561,14 @@ const styles = StyleSheet.create({
     marginHorizontal: 16, marginBottom: 10, padding: 10,
     borderRadius: 10, borderWidth: StyleSheet.hairlineWidth,
   },
-  seriesRowMeta: { flex: 1, marginLeft: 12 },
+seriesRowMeta: { flex: 1, marginLeft: 12 },
   seriesRowTitle: { fontSize: 14, fontWeight: '600' },
   seriesRowSub: { fontSize: 11, marginTop: 4 },
+  seriesRowActions: { flexDirection: 'row', marginTop: 8, gap: 8, flexWrap: 'wrap' },
+  seriesActionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: 4, paddingHorizontal: 8,
+    borderRadius: 6, borderWidth: StyleSheet.hairlineWidth,
+  },
+  seriesActionText: { fontSize: 11, fontWeight: '600' },
 })

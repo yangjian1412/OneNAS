@@ -3,21 +3,25 @@ import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Ale
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
 import type { KomgaServerConfig, KomgaSeries, KomgaBook } from '@/types'
-import { komgaThumbUrl, komgaBookThumbUrl, komgaGetSeriesBooks, komgaMarkRead, komgaMarkUnread } from '@/lib/api/komga'
-import { komgaCacheBook, clearBookCache as utilClearBookCache } from '@/lib/api/komgaCache'
+import { komgaThumbUrl, komgaBookThumbUrl, komgaGetSeriesBooks } from '@/lib/api/komga'
+import { cacheBook as utilCacheBook, cacheSeries as utilCacheSeries } from '@/lib/api/komgaCache'
 
 interface Props {
   server: KomgaServerConfig
   series: KomgaSeries
   onOpenBook: (book: KomgaBook) => void
+  fav?: boolean
+  onToggleFav?: () => void
+  onCacheDone?: () => void
 }
 
-export default function KomgaMangaDetail({ server, series, onOpenBook }: Props) {
+export default function KomgaMangaDetail({ server, series, onOpenBook, fav = false, onToggleFav, onCacheDone }: Props) {
   const t = useTheme()
   const [books, setBooks] = useState<KomgaBook[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cachingBookId, setCachingBookId] = useState<string | null>(null)
+  const [cachingSeries, setCachingSeries] = useState(false)
   const [cacheProgress, setCacheProgress] = useState<{ current: number; total: number } | null>(null)
   const [expandedSummary, setExpandedSummary] = useState(false)
 
@@ -40,24 +44,10 @@ export default function KomgaMangaDetail({ server, series, onOpenBook }: Props) 
 
   const summary = series.metadata?.summary ?? ''
 
-  const handleToggleRead = async (book: KomgaBook) => {
-    try {
-      if (book.readProgress?.completed) {
-        await komgaMarkUnread(server, book.id)
-      } else {
-        await komgaMarkRead(server, book.id)
-      }
-      const res = await komgaGetSeriesBooks(server, series.id, { size: 100, sort: 'metadata.numberSort,asc' })
-      setBooks(res)
-    } catch (e: any) {
-      Alert.alert('操作失败', e?.message ?? '未知错误')
-    }
-  }
-
   const handleCacheBook = async (book: KomgaBook) => {
     setCachingBookId(book.id)
     setCacheProgress({ current: 0, total: 0 })
-    const res = await komgaCacheBook(
+    const res = await utilCacheBook(
       server,
       server.id,
       book.id,
@@ -69,11 +59,24 @@ export default function KomgaMangaDetail({ server, series, onOpenBook }: Props) 
     setCacheProgress(null)
     if (!res.ok) Alert.alert('缓存失败', res.error ?? '未知错误')
     else Alert.alert('缓存完成', `${res.sizeBytes > 0 ? (res.sizeBytes / 1024 / 1024).toFixed(1) + ' MB' : ''}`)
+    onCacheDone?.()
   }
 
-  const handleClearCache = async (book: KomgaBook) => {
-    await utilClearBookCache(server.id, book.id)
-    Alert.alert('已清除', `${book.metadata?.title || book.name} 的本地缓存已清除`)
+  const handleCacheSeries = async () => {
+    if (cachingSeries) return
+    setCachingSeries(true)
+    setCacheProgress({ current: 0, total: 0 })
+    const res = await utilCacheSeries(
+      server,
+      server.id,
+      series,
+      (current, total) => setCacheProgress({ current, total }),
+    )
+    setCachingSeries(false)
+    setCacheProgress(null)
+    if (!res.ok) Alert.alert('缓存失败', res.error ?? '未知错误')
+    else Alert.alert('缓存完成', `${series.metadata?.title || series.name} 已缓存 ${res.books} 章${res.sizeBytes > 0 ? '，' + (res.sizeBytes / 1024 / 1024).toFixed(1) + ' MB' : ''}`)
+    onCacheDone?.()
   }
 
   return (
@@ -96,6 +99,29 @@ export default function KomgaMangaDetail({ server, series, onOpenBook }: Props) 
           {series.metadata?.status && (
             <Text style={[styles.metaText, { color: t.textMuted }]}>{series.metadata.status}</Text>
           )}
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={[styles.headerAction, { backgroundColor: t.card, borderColor: t.border }]}
+              onPress={onToggleFav}
+              activeOpacity={0.7}
+            >
+              <Icon name={fav ? 'favorite' : 'favoriteBorder'} size={15} color={fav ? t.danger : t.textSecondary} />
+              <Text style={[styles.headerActionText, { color: fav ? t.danger : t.textSecondary }]}>
+                {fav ? '已收藏' : '加入书架'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.headerAction, { backgroundColor: t.card, borderColor: t.border }]}
+              onPress={handleCacheSeries}
+              disabled={cachingSeries}
+              activeOpacity={0.7}
+            >
+              <Icon name={cachingSeries ? 'refresh' : 'downloadRounded'} size={15} color={cachingSeries ? t.textMuted : t.primary} />
+              <Text style={[styles.headerActionText, { color: cachingSeries ? t.textMuted : t.primary }]}>
+                {cachingSeries ? '缓存中' : '缓存整本'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -133,50 +159,50 @@ export default function KomgaMangaDetail({ server, series, onOpenBook }: Props) 
           const totalPages = book.media?.pagesCount ?? 0
           const percent = totalPages > 0 ? ((pageNum / totalPages) * 100).toFixed(0) : '0'
           return (
-            <View key={book.id} style={[styles.chapterRow, { borderBottomColor: t.border }]}>
-              <TouchableOpacity
-                style={styles.chapterMain}
-                onPress={() => onOpenBook(book)}
-                activeOpacity={0.7}
-              >
-                <SafeImage uri={komgaBookThumbUrl(server, book.id)} style={styles.chapterThumb} />
-                <View style={styles.chapterMeta}>
-                  <Text style={[styles.chapterTitle, { color: t.text }]} numberOfLines={1}>
-                    {book.metadata?.number && book.metadata.number !== '0' ? `第 ${book.metadata.number} 话 ` : ''}
-                    {book.metadata?.title || book.name}
-                  </Text>
-                  {book.metadata?.releaseDate ? (
-                    <Text style={[styles.chapterSub, { color: t.textMuted }]} numberOfLines={1}>
-                      {book.metadata.releaseDate.substring(0, 10)}
+            <View key={book.id} style={styles.chapterWrap}>
+              <View style={[styles.chapterRow, { borderBottomColor: t.border }]}>
+                <TouchableOpacity
+                  style={styles.chapterMain}
+                  onPress={() => onOpenBook(book)}
+                  activeOpacity={0.7}
+                >
+                  <SafeImage uri={komgaBookThumbUrl(server, book.id)} style={styles.chapterThumb} />
+                  <View style={styles.chapterMeta}>
+                    <Text style={[styles.chapterTitle, { color: t.text }]} numberOfLines={1}>
+                      {book.metadata?.number && book.metadata.number !== '0' ? `第 ${book.metadata.number} 话 ` : ''}
+                      {book.metadata?.title || book.name}
                     </Text>
+                    {book.metadata?.releaseDate ? (
+                      <Text style={[styles.chapterSub, { color: t.textMuted }]} numberOfLines={1}>
+                        {book.metadata.releaseDate.substring(0, 10)}
+                      </Text>
+                    ) : null}
+                    <Text style={[styles.chapterSub, { color: t.textMuted }]}>{totalPages} 页</Text>
+                  </View>
+                </TouchableOpacity>
+                {/* 右侧：状态在上，下载图标在下方，不撑高主行 */}
+                <View style={styles.chapterSide}>
+                  {isRead ? <Icon name="check" size={16} color={t.success} /> : null}
+                  {isInProgress ? (
+                    <Text style={[styles.progress, { color: t.primary }]}>{percent}%</Text>
                   ) : null}
-                  <Text style={[styles.chapterSub, { color: t.textMuted }]}>{totalPages} 页</Text>
+                  <View style={styles.chapterActions}>
+                    {isCaching ? (
+                      <Text style={[styles.progress, { color: t.textMuted }]}>缓存中</Text>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => handleCacheBook(book)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Icon name="downloadRounded" size={17} color={t.primary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
-                {isRead ? <Icon name="check" size={18} color={t.success} /> : null}
-                {isInProgress ? (
-                  <Text style={[styles.progress, { color: t.primary }]}>{percent}%</Text>
-                ) : null}
-              </TouchableOpacity>
-              <View style={styles.chapterActions}>
-                <TouchableOpacity
-                  style={[styles.iconBtn, { borderColor: t.border }]}
-                  onPress={() => handleToggleRead(book)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Icon name={isRead ? 'favoriteBorder' : 'favorite'} size={16} color={t.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.iconBtn, { borderColor: t.border }]}
-                  onPress={() => isCaching ? undefined : handleCacheBook(book)}
-                  disabled={isCaching}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Icon name="downloadCloud" size={16} color={isCaching ? t.textMuted : t.primary} />
-                </TouchableOpacity>
               </View>
               {isCaching && cacheProgress ? (
                 <Text style={[styles.cacheProgress, { color: t.textMuted }]}>
-                  缓存中 {cacheProgress.current}/{cacheProgress.total}
+                  {cacheProgress.current}/{cacheProgress.total}
                 </Text>
               ) : null}
             </View>
@@ -227,6 +253,15 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 12, marginBottom: 3,
   },
+  headerActions: {
+    flexDirection: 'row', marginTop: 8, gap: 8,
+  },
+  headerAction: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingVertical: 6, paddingHorizontal: 10,
+    borderRadius: 6, borderWidth: StyleSheet.hairlineWidth,
+  },
+  headerActionText: { fontSize: 12, fontWeight: '600' },
   summary: {
     fontSize: 13, lineHeight: 19,
     paddingHorizontal: 16, marginBottom: 12,
@@ -240,12 +275,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 8, fontSize: 12, fontWeight: '600',
   },
   chapterList: {},
+  chapterWrap: { borderBottomWidth: StyleSheet.hairlineWidth },
   chapterRow: {
-    paddingHorizontal: 16, paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 8,
   },
   chapterMain: {
-    flexDirection: 'row', alignItems: 'center',
+    flex: 1, flexDirection: 'row', alignItems: 'center',
   },
   chapterThumb: {
     width: 44, height: 60, borderRadius: 4, backgroundColor: '#888',
@@ -256,13 +292,14 @@ const styles = StyleSheet.create({
   chapterMeta: { flex: 1, marginLeft: 12 },
   chapterTitle: { fontSize: 14, fontWeight: '600' },
   chapterSub: { fontSize: 11, marginTop: 2 },
-  progress: { fontSize: 11, fontWeight: '700', marginLeft: 8 },
+  progress: { fontSize: 11, fontWeight: '700' },
+  // 右侧列：状态(百分比/已读)在上，操作图标在下，总高=封面高
+  chapterSide: {
+    alignItems: 'flex-end', justifyContent: 'center',
+    marginLeft: 12, gap: 5,
+  },
   chapterActions: {
-    flexDirection: 'row', marginTop: 8, marginLeft: 56, gap: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 13,
   },
-  iconBtn: {
-    width: 32, height: 32, borderRadius: 6,
-    borderWidth: 1, alignItems: 'center', justifyContent: 'center',
-  },
-  cacheProgress: { marginTop: 6, marginLeft: 56, fontSize: 11 },
+  cacheProgress: { marginLeft: 72, fontSize: 11, paddingBottom: 6 },
 })

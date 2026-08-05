@@ -1,11 +1,11 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
-import Icon from '@/components/Icon'
+import Icon, { IconName } from '@/components/Icon'
 
 export interface DrawerItem {
   key: string
   label: string
-  icon?: string
+  icon?: IconName
   destructive?: boolean
   onPress: () => void
 }
