@@ -14,7 +14,7 @@ import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
 import { File, Paths } from 'expo-file-system'
 
-const SERVICE_TYPES: ServiceType[] = ['jellyfin', 'emby', 'navidrome', 'audiobookshelf', 'immich', 'aria2', 'qbittorrent', 'openlist', 'talebook']
+const SERVICE_TYPES: ServiceType[] = ['jellyfin', 'emby', 'navidrome', 'audiobookshelf', 'immich', 'aria2', 'qbittorrent', 'openlist', 'talebook', 'komga']
 
 interface ServiceRow {
   key: string

@@ -41,6 +41,7 @@ import TalebookLogo from '@/icos/selfhst--talebook.svg'
 import QbittorrentLogo from '@/icos/selfhst--qbittorrent.svg'
 import OpenlistLogo from '@/icos/selfhst--openlist.svg'
 import UnraidLogo from '@/icos/selfhst--unraid.svg'
+import KomgaLogo from '@/icos/komga.svg'
 
 import CpuSvg from '@/icos/lucide--cpu.svg'
 import MemoryStickSvg from '@/icos/lucide--memory-stick.svg'
@@ -144,6 +145,7 @@ const SVG_COMPONENTS = {
   qbittorrent: QbittorrentLogo,
   openlist: OpenlistLogo,
   unraid: UnraidLogo,
+  komga: KomgaLogo,
 
   cpu: CpuSvg,
   memory: MemoryStickSvg,

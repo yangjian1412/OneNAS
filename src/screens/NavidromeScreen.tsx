@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
-import { View, Text, ScrollView, FlatList, TouchableOpacity, ActivityIndicator, BackHandler, Modal, StyleSheet } from 'react-native'
+import { View, Text, ScrollView, FlatList, TouchableOpacity, ActivityIndicator, BackHandler, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
 import { useIsFocused } from '@react-navigation/native'
 import { useNavidromeStore, loadNavidromeHome } from '@/stores/navidromeStore'
 import { useNavidromePlaybackStore } from '@/stores/navidromePlaybackStore'
@@ -945,18 +945,20 @@ function SortModal({
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.sortOverlay} activeOpacity={1} onPress={onClose}>
-        <View style={[styles.sortDropdown, { backgroundColor: t.card, borderColor: t.border }]}>
-          {options.map((opt) => (
-            <TouchableOpacity
-              key={opt.value}
-              style={[styles.sortOption, { borderBottomColor: t.border }]}
-              onPress={() => onSelect(opt.value)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.sortOptionText, { color: t.text }]}>{opt.label}</Text>
-              {selected === opt.value && <Icon name="check" size={14} color={t.primary} />}
-            </TouchableOpacity>
-          ))}
+        <View style={{ marginTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 44 : 44, marginRight: 16, alignSelf: 'flex-end' }}>
+          <View style={[styles.sortDropdown, { backgroundColor: t.card, borderColor: t.border }]}>
+            {options.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.sortOption, { borderBottomColor: t.border }]}
+                onPress={() => onSelect(opt.value)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.sortOptionText, { color: t.text }]}>{opt.label}</Text>
+                {selected === opt.value && <Icon name="check" size={14} color={t.primary} />}
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </TouchableOpacity>
     </Modal>
@@ -1017,8 +1019,16 @@ const styles = StyleSheet.create({
   sortRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   sortFieldText: { fontSize: 14, fontWeight: '500' },
   sortArrowBtn: { paddingVertical: 4, paddingHorizontal: 6 },
-  sortOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
-  sortDropdown: { width: 200, borderRadius: 12, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-  sortOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth },
-  sortOptionText: { flex: 1, fontSize: 15 },
+  sortOverlay: { flex: 1 },
+  sortDropdown: {
+    borderRadius: 10, borderWidth: 1, overflow: 'hidden',
+    minWidth: 120, elevation: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8,
+  },
+  sortOption: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 10, paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sortOptionText: { fontSize: 14 },
 })

@@ -26,6 +26,7 @@ import JellyfinScreen from '@/screens/JellyfinScreen'
 import NavidromeScreen from '@/screens/NavidromeScreen'
 import AudiobookshelfScreen from '@/screens/AudiobookshelfScreen'
 import TalebookScreen from '@/screens/TalebookScreen'
+import KomgaScreen from '@/screens/KomgaScreen'
 import Aria2Screen from '@/screens/Aria2Screen'
 import QBitTorrentScreen from '@/screens/QBitTorrentScreen'
 import OpenListScreen from '@/screens/OpenListScreen'
@@ -1261,6 +1262,8 @@ function ActiveServiceView({ service, onClose }: ActiveServiceViewProps) {
           <AudiobookshelfScreen service={service} onRequestClose={handleClose} />
         ) : isTalebookService(service) ? (
           <TalebookScreen service={service} onRequestClose={handleClose} />
+        ) : service.type === 'komga' ? (
+          <KomgaScreen service={service} onRequestClose={handleClose} />
         ) : service.type === 'aria2' ? (
           <Aria2Screen service={service} onRequestClose={handleClose} />
         ) : service.type === 'qbittorrent' ? (

@@ -41,6 +41,7 @@ export const SERVICE_TYPE_LABELS: Record<string, string> = {
   openlist: 'OpenList',
   talebook: 'Talebook',
   calibre: 'Calibre',
+  komga: 'Komga',
 }
 
 export const SERVICE_TYPE_ICONS: Record<string, IconName> = {
@@ -57,4 +58,5 @@ export const SERVICE_TYPE_ICONS: Record<string, IconName> = {
   openlist: 'openlist',
   talebook: 'talebook',
   calibre: 'calibre',
+  komga: 'komga',
 }

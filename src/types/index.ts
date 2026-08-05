@@ -4,6 +4,7 @@ export type ServiceType =
   | 'aria2' | 'qbittorrent' | 'openlist'
   | 'talebook' | 'calibre'
   | 'emby'
+  | 'komga'
 
 type TabAssignment = 'none' | 'tab2' | 'tab3'
 
@@ -952,4 +953,104 @@ export interface OpenListFile {
 
 // ===== WebDAV =====
 // (WebDavConfig 已在文件顶部定义)
+
+// ===== Komga =====
+export interface KomgaServerConfig {
+  id: string
+  name: string
+  url: string
+  username: string
+  password: string
+  userId?: string
+  userName?: string
+  serverVersion?: string
+}
+
+export interface KomgaLibrary {
+  id: string
+  name: string
+  root: string
+  unavailable: boolean
+}
+
+export interface KomgaSeries {
+  id: string
+  libraryId: string
+  name: string
+  url: string
+  booksCount: number
+  booksReadCount: number
+  booksUnreadCount: number
+  booksInProgressCount: number
+  oneshot: boolean
+  created: string
+  lastModified: string
+  metadata: {
+    title: string
+    status?: string
+    summary?: string
+    publisher?: string
+    language?: string
+    genres: string[]
+    tags: string[]
+    ageRating?: number
+    authors: Array<{ name: string; role: string }>
+  }
+}
+
+export interface KomgaBook {
+  id: string
+  seriesId: string
+  seriesTitle: string
+  libraryId: string
+  name: string
+  number: number
+  sortNumber: number
+  url: string
+  sizeBytes: number
+  created: string
+  lastModified: string
+  media: {
+    status: string
+    mediaType: string
+    pagesCount: number
+    comment?: string
+  }
+  metadata: {
+    title: string
+    number: string
+    summary?: string
+    releaseDate?: string
+    authors: Array<{ name: string; role: string }>
+    tags: string[]
+  }
+  readProgress?: {
+    page: number
+    completed: boolean
+    readDate?: string
+    lastModified?: string
+  }
+  oneshot: boolean
+}
+
+export interface KomgaPage {
+  number: number
+  fileName: string
+  mediaType: string
+  width?: number
+  height?: number
+  sizeBytes?: number | null
+  size?: string | null
+}
+
+export interface KomgaBookmark {
+  id: string
+  bookId: string
+  page: number
+  created: string
+  kind?: string
+}
+
+export type KomgaSortKey = 'name' | 'added'
+export type KomgaSortDir = 'asc' | 'desc'
 

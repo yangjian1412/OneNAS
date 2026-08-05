@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { login } from '@/lib/api/filebrowser'
 import { fetchContainers } from '@/lib/api/unraid'
 import { navidromeLogin } from '@/lib/api/navidrome'
+import { komgaLogin } from '@/lib/api/komga'
 import { useAppStore } from '@/stores/appStore'
 
 function parseServerUrl(url: string): { protocol: 'http' | 'https'; host: string; port: number } {
@@ -47,7 +48,7 @@ export default function ConfigModal({
   const insets = useSafeAreaInsets()
   const services = useAppStore((s) => s.services)
   const isServerType = type === 'filebrowser' || type === 'unraid'
-  const isAppType = type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'immich' || type === 'talebook' || type === 'aria2' || type === 'qbittorrent' || type === 'openlist' || type === 'emby'
+  const isAppType = type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'immich' || type === 'talebook' || type === 'aria2' || type === 'qbittorrent' || type === 'openlist' || type === 'emby' || type === 'komga'
   const [testing, setTesting] = useState(false)
 
   const [name, setName] = useState('')
@@ -153,6 +154,9 @@ export default function ConfigModal({
       } else if (type === 'navidrome') {
         const result = await navidromeLogin(url, username, password)
         Alert.alert(result.ok ? 'Success' : 'Failed', result.ok ? `已连接到 ${result.server?.url ?? 'Navidrome'}` : (result.error ?? 'Error'))
+      } else if (type === 'komga') {
+        const result = await komgaLogin({ id: '', name: '', url: url.trim().replace(/\/+$/, ''), username, password })
+        Alert.alert(result.ok ? 'Success' : 'Failed', result.ok ? `已连接到 Komga (${result.userName ?? ''})` : (result.error ?? 'Error'))
       } else {
         Alert.alert('Info', 'Test not available for this service type')
       }
@@ -366,17 +370,17 @@ export default function ConfigModal({
                       提示：保存后到 Talebook 首页抽屉里点「登录」完成登录会话。
                     </Text>
                   </>
-                ) : (type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'emby') ? (
+                ) : (type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'emby' || type === 'komga') ? (
                   <>
                     <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-                      placeholder="http://..." placeholderTextColor={t.textMuted}
-                      value={url} onChangeText={setUrl} />
+                      placeholder={type === 'komga' ? 'http://host:25600' : 'http://...'} placeholderTextColor={t.textMuted}
+                      value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} />
 
                     <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Username</Text>
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
                       placeholder="Username" placeholderTextColor={t.textMuted}
-                      value={username} onChangeText={setUsername} />
+                      value={username} onChangeText={setUsername} autoCapitalize="none" />
 
                     <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Password</Text>
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}

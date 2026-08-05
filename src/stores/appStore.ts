@@ -5,6 +5,7 @@ import { STORAGE_KEYS } from '@/lib/constants'
 import CryptoJS from 'crypto-js'
 import { useQBitStore, loadQBitAutoRefreshPersisted } from '@/stores/qbittorrentStore'
 import { useAria2Store, loadAria2AutoRefreshPersisted } from '@/stores/aria2Store'
+import { useKomgaStore, loadKomgaAutoRefreshPersisted } from '@/stores/komgaStore'
 
 export type FileSortBy = 'name' | 'size' | 'modified'
 export type FileSortDir = 'asc' | 'desc'
@@ -87,6 +88,8 @@ export interface AppState {
   fileSort: FileSort
   fileBackend: FileBackend
   webdavServer: WebDavConfig | null
+  nasManagementBackend: NasManagementBackend
+  portainerServer: PortainerConfig | null
 
   init: () => Promise<void>
 
@@ -178,6 +181,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     useQBitStore.setState({ autoRefresh: qbAutoRefresh })
     const aria2AutoRefresh = await loadAria2AutoRefreshPersisted()
     useAria2Store.setState({ autoRefresh: aria2AutoRefresh })
+    const komgaAutoRefresh = await loadKomgaAutoRefreshPersisted()
+    useKomgaStore.setState({ autoRefresh: komgaAutoRefresh })
   },
 
   setServers: (servers) => { set({ servers }); persist(get(), { servers }) },

@@ -10,6 +10,8 @@ import {
   Modal,
   FlatList,
   BackHandler,
+  Platform,
+  StyleSheet,
 } from 'react-native'
 import { useTheme } from '@/lib/theme'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -469,17 +471,20 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
       {/* Sort field modal */}
       <Modal transparent visible={showSortField} animationType="fade" onRequestClose={() => setShowSortField(false)}>
         <TouchableOpacity style={styles.sortOverlay} activeOpacity={1} onPress={() => setShowSortField(false)}>
-          <View style={[styles.sortDropdown, { backgroundColor: t.card, borderColor: t.border }]}>
-            {ABS_SORT_OPTIONS.map((opt) => (
-              <TouchableOpacity
-                key={opt.value}
-                style={styles.sortOption}
-                onPress={() => handleSortFieldChange(opt.value)}
-              >
-                <Text style={[styles.sortOptionText, { color: t.text }]}>{opt.label}</Text>
-                {sortBy === opt.value && <Icon name="check" size={18} color={t.primary} />}
-              </TouchableOpacity>
-            ))}
+          <View style={{ marginTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 44 : 44, marginRight: 16, alignSelf: 'flex-end' }}>
+            <View style={[styles.sortDropdown, { backgroundColor: t.card, borderColor: t.border }]}>
+              {ABS_SORT_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.sortOption, { borderBottomColor: t.border }]}
+                  onPress={() => handleSortFieldChange(opt.value)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.sortOptionText, { color: t.text }]}>{opt.label}</Text>
+                  {sortBy === opt.value && <Icon name="check" size={14} color={t.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -588,26 +593,18 @@ const styles = {
   cover: { width: '100%' as const, height: '100%' as const },
   libCardTitle: { fontSize: 13, fontWeight: '500' as const, marginTop: 6 },
   libCardSub: { fontSize: 11, marginTop: 2 },
-  sortOverlay: {
-    flex: 1 as const,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
+  sortOverlay: { flex: 1 },
   sortDropdown: {
-    minWidth: 200,
-    borderRadius: 8,
-    borderWidth: 1,
-    overflow: 'hidden' as const,
+    borderRadius: 10, borderWidth: 1, overflow: 'hidden',
+    minWidth: 120, elevation: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8,
   },
   sortOption: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 10, paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sortOptionText: { fontSize: 15 },
+  sortOptionText: { fontSize: 14 },
   searchRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
