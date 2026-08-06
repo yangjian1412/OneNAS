@@ -71,7 +71,6 @@ export default function SettingsScreen() {
   const [webdavModalVisible, setWebDavModalVisible] = useState(false)
   const [portainerModalVisible, setPortainerModalVisible] = useState(false)
   const [tagPickerSlot, setTagPickerSlot] = useState<'tab2' | 'tab3' | null>(null)
-  const [exportText, setExportText] = useState<string | null>(null)
   const [exportKeyOpen, setExportKeyOpen] = useState(false)
   const [exportKey, setExportKey] = useState('0')
   const [importKey, setImportKey] = useState('0')
@@ -92,10 +91,27 @@ export default function SettingsScreen() {
     }, 1500)
   }
 
-  const handleExportConfirm = async () => {
-    const text = await exportConfig(exportKey)
-    setExportKeyOpen(false)
-    setExportText(text)
+  const handleExportClipboard = async () => {
+    try {
+      const text = await exportConfig(exportKey)
+      await Clipboard.setStringAsync(text)
+      setExportKeyOpen(false)
+      Alert.alert('已复制', '配置已复制到剪贴板')
+    } catch (error: any) {
+      console.error('[exportClipboard]', error)
+      Alert.alert('复制失败', error?.message ?? '未知错误')
+    }
+  }
+
+  const handleExportFile = async () => {
+    try {
+      const text = await exportConfig(exportKey)
+      setExportKeyOpen(false)
+      await saveExportFile(text)
+    } catch (error: any) {
+      console.error('[exportFile]', error)
+      Alert.alert('保存失败', error?.message ?? '导出文件失败')
+    }
   }
 
   const handleImportClipboard = async () => {
@@ -428,6 +444,15 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      <Text style={[styles.sectionLabel, { color: t.text }]}>关于</Text>
+      <View style={[styles.card, { backgroundColor: t.card }]}>
+        <View style={{ paddingVertical: 14, paddingHorizontal: 14 }}>
+          <Text style={{ color: t.text, fontSize: 14, fontWeight: '700' }}>One NAS</Text>
+          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版本 v1.0.0beta</Text>
+          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版权所有 © 六分仪</Text>
+        </View>
+      </View>
+
       <Modal visible={!!tagPickerSlot} transparent animationType="fade" onRequestClose={() => setTagPickerSlot(null)}>
         <View style={styles.pickerOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setTagPickerSlot(null)} activeOpacity={1} />
@@ -465,31 +490,21 @@ export default function SettingsScreen() {
               autoCapitalize="none"
               autoCorrect={false}
             />
+            <View style={styles.importPickRow}>
+              <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={handleExportClipboard}>
+                <Text style={styles.ioButtonText}>复制到剪切板</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.ioButton, { backgroundColor: t.primary }]} onPress={handleExportFile}>
+                <Text style={styles.ioButtonText}>下载文件</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.sheetActions}>
               <TouchableOpacity onPress={() => setExportKeyOpen(false)}><Text style={[styles.clearText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
-              <TouchableOpacity onPress={handleExportConfirm}><Text style={[styles.clearText, { color: t.primary }]}>确定导出</Text></TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-      <Modal visible={exportText !== null} transparent animationType="slide" onRequestClose={() => setExportText(null)}>
-        <View style={styles.pickerOverlay}>
-          <TouchableOpacity style={styles.modalBackdrop} onPress={() => setExportText(null)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
-            <Text style={[styles.pickerTitle, { color: t.text }]}>已导出配置（AES 加密）</Text>
-            <TextInput multiline editable={false} style={[styles.exportBox, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]} value={exportText ?? ''} />
-            <View style={styles.sheetActions}>
-              <TouchableOpacity onPress={async () => { if (exportText) { await Clipboard.setStringAsync(exportText); Alert.alert('已复制', '配置已复制到剪贴板') } }}>
-                <Text style={[styles.clearText, { color: t.primary }]}>一键复制</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={async () => { if (exportText) { await saveExportFile(exportText); setExportText(null) } }}>
-                <Text style={[styles.clearText, { color: t.primary }]}>下载JSON</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setExportText(null)}><Text style={[styles.clearText, { color: t.textMuted }]}>关闭</Text></TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      
       <Modal visible={importOpen} transparent animationType="slide" onRequestClose={() => setImportOpen(false)}>
         <View style={styles.pickerOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setImportOpen(false)} activeOpacity={1} />

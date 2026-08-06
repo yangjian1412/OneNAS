@@ -1,5 +1,7 @@
 import { registerRootComponent } from 'expo';
 
+import './src/lib/cryptoPolyfill';
+
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

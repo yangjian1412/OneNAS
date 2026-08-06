@@ -41,6 +41,8 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   const [currentBook, setCurrentBook] = useState<KomgaBook>(book)
   const [mode, setMode] = useState<ReaderMode>('paged')
   const [readingDirection, setReadingDirection] = useState<'ltr' | 'rtl'>('ltr')
+  // 模式切换时通过递增 reloadKey 触发 useEffect 重载，整页黑屏 → 重新加载 → 全新 FlatList
+  const [reloadKey, setReloadKey] = useState(0)
   const [bookmarkList, setBookmarkList] = useState<KomgaLocalBookmark[]>([])
   const [bookmarkSheetVisible, setBookmarkSheetVisible] = useState(false)
   const [bookmarkAddedSheetVisible, setBookmarkAddedSheetVisible] = useState(false)
@@ -50,6 +52,9 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   const listRef = useRef<FlatList<KomgaPage>>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sliderWidthRef = useRef(SCREEN_W)
+  // 条漫模式：当前 scroll offset + max offset，用于 prev/nextPage 滚一屏
+  const scrollOffsetRef = useRef(0)
+  const maxOffsetRef = useRef(0)
   // 条漫 item 真实测量高度
   const webtoonHeightsRef = useRef<Map<number, number>>(new Map())
   // 条漫累计偏移缓存
@@ -66,6 +71,8 @@ export default function KomgaReader({ server, book, onClose }: Props) {
     webtoonHeightsRef.current.clear()
     webtoonOffsetsRef.current.clear()
     webtoonContentHeightRef.current = 0
+    scrollOffsetRef.current = 0
+    maxOffsetRef.current = 0
     setWebtoonAspects({})
     Promise.all([
       komgaGetBookPages(server, book.id),
@@ -88,7 +95,7 @@ export default function KomgaReader({ server, book, onClose }: Props) {
       setLoading(false)
     })
     return () => { cancelled = true }
-  }, [server, book.id])
+  }, [server, book.id, reloadKey])
 
   // 持久化 mode + direction
   useEffect(() => {
@@ -135,42 +142,20 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   const goToPage = useCallback((p: number) => {
     const target = Math.max(1, Math.min(p, pages.length))
     if (mode === 'webtoon') {
-      const offset = webtoonOffsetsRef.current.get(target - 1) ?? 0
+      // 优先用累计偏移；未测量时用 SCREEN_H * (target-1) 兜底
+      const offset = webtoonOffsetsRef.current.get(target - 1) ?? (SCREEN_H * (target - 1))
       listRef.current?.scrollToOffset({ offset, animated: true })
     } else {
       listRef.current?.scrollToIndex({ index: target - 1, animated: true })
     }
   }, [pages.length, mode])
 
-  // ── 条漫滚动一屏 ────────────────────────────────────────────
-  const scrollUp = useCallback(() => {
-    const target = webtoonOffsetsRef.current.get(currentPage - 2) ?? 0
-    listRef.current?.scrollToOffset({ offset: Math.max(0, target), animated: true })
-  }, [currentPage])
-
-  const scrollDown = useCallback(() => {
-    const target = webtoonOffsetsRef.current.get(currentPage) ?? 0
-    listRef.current?.scrollToOffset({ offset: target, animated: true })
-  }, [currentPage])
-
-  useEffect(() => {
-    if (!loading && pages.length > 0 && currentPage >= 1) {
-      const timer = setTimeout(() => {
-        if (mode === 'webtoon') {
-          const offset = webtoonOffsetsRef.current.get(currentPage - 1) ?? 0
-          listRef.current?.scrollToOffset({ offset, animated: false })
-        } else {
-          listRef.current?.scrollToIndex({ index: currentPage - 1, animated: false })
-        }
-      }, 80)
-      return () => clearTimeout(timer)
-    }
-  }, [loading, mode, currentPage]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── 翻页 ──────────────────────────────────────────────────────
+  // paged: 跳到对应页（FlatList 自动对齐到页边界）
+  // webtoon: 滚动一屏（用 scrollOffsetRef 实时位置），避免依赖未测量的累计偏移
   const nextPage = useCallback(() => {
     if (mode === 'webtoon') {
-      const target = webtoonOffsetsRef.current.get(currentPage) ?? 0
+      const target = Math.min(maxOffsetRef.current, scrollOffsetRef.current + SCREEN_H)
       listRef.current?.scrollToOffset({ offset: target, animated: true })
     } else if (currentPage < pages.length) {
       goToPage(currentPage + 1)
@@ -181,8 +166,8 @@ export default function KomgaReader({ server, book, onClose }: Props) {
 
   const prevPage = useCallback(() => {
     if (mode === 'webtoon') {
-      const target = webtoonOffsetsRef.current.get(currentPage - 2) ?? 0
-      listRef.current?.scrollToOffset({ offset: Math.max(0, target), animated: true })
+      const target = Math.max(0, scrollOffsetRef.current - SCREEN_H)
+      listRef.current?.scrollToOffset({ offset: target, animated: true })
     } else if (currentPage > 1) {
       goToPage(currentPage - 1)
     }
@@ -215,25 +200,14 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   }
 
   // ── 切换阅读模式/方向（3 态循环：向右翻页 → 向左翻页 → 翻页模式）───
+  // 策略：模式切换 = 强制重载。setMode 持久化新模式，50ms 后递增 reloadKey，
+  // 让 useEffect 重新加载页面/书签/prefs，FlatList 完全卸载重建。
+  // 重载期间 loading=true，UI 全黑，过渡时长 = API 加载耗时。
   const cycleMode = useCallback(() => {
-    // 状态机：
-    // 1) paged + ltr  → paged + rtl
-    // 2) paged + rtl  → webtoon
-    // 3) webtoon      → paged + ltr
-    setTimeout(() => {
-      if (mode === 'webtoon') {
-        // 已经走到 webtoon 之后再点 → 切回 paged+ltr
-        listRef.current?.scrollToIndex({ index: currentPage - 1, animated: false })
-      } else if (readingDirection === 'ltr') {
-        // ltr → rtl，保持当前页
-        listRef.current?.scrollToIndex({ index: currentPage - 1, animated: false })
-      } else {
-        // rtl → webtoon
-        const offset = webtoonOffsetsRef.current.get(currentPage - 1) ?? 0
-        listRef.current?.scrollToOffset({ offset, animated: false })
-      }
-    }, 60)
-
+    // 先强制保存当前进度（不等 600ms debounce），避免重载后回到旧进度
+    if (currentPage >= 1) {
+      void komgaUpdateReadProgress(server, book.id, { page: currentPage }).catch(() => {})
+    }
     if (mode === 'webtoon') {
       setMode('paged')
       setReadingDirection('ltr')
@@ -242,7 +216,8 @@ export default function KomgaReader({ server, book, onClose }: Props) {
     } else {
       setMode('webtoon')
     }
-  }, [currentPage, mode, readingDirection])
+    setTimeout(() => setReloadKey((k) => k + 1), 50)
+  }, [mode, readingDirection, currentPage, server, book.id])
 
   // ── 书签 ────────────────────────────────────────────────────────
   const reloadBookmarks = useCallback(async () => {
@@ -270,8 +245,10 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   }
 
   // ── 进度条 PanResponder ───────────────────────────────────────────
-  const pageFromSlider = (x: number) => {
-    const frac = Math.min(1, Math.max(0, x / Math.max(1, sliderWidthRef.current)))
+  const pageFromSlider = (x: number, width?: number) => {
+    const w = width ?? sliderWidthRef.current
+    if (w <= 0) return 1
+    const frac = Math.min(1, Math.max(0, x / w))
     return Math.max(1, Math.round(frac * (pages.length - 1)) + 1)
   }
 
@@ -293,6 +270,7 @@ export default function KomgaReader({ server, book, onClose }: Props) {
     const isRtl = readingDirection === 'rtl'
     return (
       <FlatList
+        key={`paged-${readingDirection}`}
         ref={listRef}
         data={pages}
         keyExtractor={(p) => String(p.number)}
@@ -325,9 +303,16 @@ export default function KomgaReader({ server, book, onClose }: Props) {
             if (np === pages.length) void komgaMarkRead(server, book.id).catch(() => {})
           }
         }}
-        initialNumToRender={3}
-        maxToRenderPerBatch={3}
-        windowSize={5}
+        onScrollToIndexFailed={({ index, averageItemLength }) => {
+          // 目标 index 还没渲染完时兜底：用 scrollToOffset 近似
+          const offset = Math.max(0, averageItemLength * index)
+          setTimeout(() => {
+            listRef.current?.scrollToOffset({ offset, animated: false })
+          }, 100)
+        }}
+        initialNumToRender={pages.length}
+        maxToRenderPerBatch={pages.length}
+        windowSize={pages.length}
         extraData={book.id}
       />
     )
@@ -336,9 +321,17 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   // ── webtoon FlatList：item 紧贴、image 填宽，按真实 aspect 自适应高 ──
   const renderWebtoon = () => (
     <FlatList
+      key="webtoon"
       ref={listRef}
       data={pages}
       keyExtractor={(p) => String(p.number)}
+      initialScrollIndex={Math.max(0, currentPage - 1)}
+      onScrollToIndexFailed={({ index }) => {
+        // 目标 index 未渲染时兜底：用 SCREEN_H * index 估算后 100ms 重试
+        setTimeout(() => {
+          listRef.current?.scrollToOffset({ offset: Math.max(0, SCREEN_H * index), animated: false })
+        }, 100)
+      }}
       renderItem={({ item, index }) => {
         const aspect = webtoonAspects[item.number] ?? DEFAULT_ASPECT
         return (
@@ -378,6 +371,14 @@ export default function KomgaReader({ server, book, onClose }: Props) {
       }}
       showsVerticalScrollIndicator={false}
       pagingEnabled={false}
+      onScroll={(e) => {
+        scrollOffsetRef.current = e.nativeEvent.contentOffset.y
+        maxOffsetRef.current = Math.max(
+          0,
+          e.nativeEvent.contentSize.height - e.nativeEvent.layoutMeasurement.height,
+        )
+      }}
+      scrollEventThrottle={16}
       onContentSizeChange={() => {
         recomputeWebtoonOffsets()
       }}
@@ -400,7 +401,7 @@ export default function KomgaReader({ server, book, onClose }: Props) {
         }
       }}
       initialNumToRender={3}
-      maxToRenderPerBatch={3}
+      maxToRenderPerBatch={4}
       windowSize={5}
       extraData={book.id}
     />
@@ -433,11 +434,27 @@ export default function KomgaReader({ server, book, onClose }: Props) {
       {loading || pages.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator color="#fff" />
+          {pages.length > 0 && currentPage >= 1 && (
+            <View style={styles.alwaysPageLabel} pointerEvents="none">
+              <Text style={styles.alwaysPageLabelText}>
+                第 {currentPage} / {pages.length} 页
+              </Text>
+            </View>
+          )}
         </View>
       ) : (
         <>
           <View style={StyleSheet.absoluteFill}>
             {mode === 'paged' ? renderPaged() : renderWebtoon()}
+          </View>
+
+          {/* 永久显示的页码指示器（屏幕底部中央） */}
+          <View style={[styles.alwaysPageLabelWrap, { bottom: insets.bottom + 12 }]} pointerEvents="none">
+            <View style={styles.alwaysPageLabel}>
+              <Text style={styles.alwaysPageLabelText}>
+                第 {currentPage} / {pages.length} 页
+              </Text>
+            </View>
           </View>
 
           {showControls && (
@@ -477,13 +494,18 @@ export default function KomgaReader({ server, book, onClose }: Props) {
               {/* 底部栏 */}
               <View style={[styles.bottomBar, { backgroundColor: 'rgba(0,0,0,0.78)' }]}>
                 {/* 页数进度条 */}
-                <View
+                <TouchableOpacity
+                  activeOpacity={1}
                   style={styles.sliderTrack}
                   onLayout={(e) => { sliderWidthRef.current = e.nativeEvent.layout.width }}
+                  onPress={(e) => {
+                    const w = sliderWidthRef.current
+                    if (w > 0) goToPage(pageFromSlider(e.nativeEvent.locationX, w))
+                  }}
                   {...sliderResponder.panHandlers}>
                   <View style={[styles.sliderFill, { width: `${Math.max(0.5, progress * 100)}%`, backgroundColor: t.primary }]} />
                   <View style={[styles.sliderKnob, { backgroundColor: '#fff', left: `${progress * 100}%` }]} />
-                </View>
+                </TouchableOpacity>
                 <View style={styles.pageLabelRow}>
                   <Text style={styles.pageLabel}>
                     {mode === 'webtoon'
@@ -499,64 +521,57 @@ export default function KomgaReader({ server, book, onClose }: Props) {
                     <Text style={styles.funcLabel}>首页</Text>
                   </TouchableOpacity>
 
-                  {/* 上一页：翻页模式方向感知，条漫模式 ▲ + 上一屏 */}
+                  {/* 上一页：条漫 ▲，左右模式 ◀（独立左箭头） */}
                   <TouchableOpacity
                     onPress={() => {
-                      if (mode === 'webtoon') {
-                        scrollUp()
-                      } else if (isLtr) {
+                      if (mode === 'webtoon' || isLtr) {
                         prevPage()
                       } else {
-                        // rtl：视觉左侧 = 阅读下一页
                         nextPage()
                       }
                     }}
                     style={styles.funcBtn}>
-                    <Icon
-                      name={mode === 'webtoon' ? 'chevronUp' : 'chevronLeft'}
-                      size={22}
-                      color="#fff"
-                    />
+                    {mode === 'webtoon' ? (
+                      <Icon name="chevronUp" size={22} color="#fff" />
+                    ) : (
+                      <Icon name="chevronLeft" size={22} color="#fff" />
+                    )}
                     <Text style={styles.funcLabel}>上一页</Text>
                   </TouchableOpacity>
 
-                  {/* 模式按钮：3 态循环 → 向右翻页 / 向左翻页 / 翻页模式 */}
+                  {/* 模式按钮：3 态循环 → 向左翻页 / 向右翻页 / 条漫模式（白色） */}
                   <TouchableOpacity onPress={cycleMode} style={styles.funcBtn}>
                     {mode === 'webtoon' ? (
                       <View style={{ flexDirection: 'column', alignItems: 'center' }}>
-                        <Icon name="chevronUp" size={14} color={t.primary} />
-                        <Icon name="chevronDown" size={14} color={t.primary} />
+                        <Icon name="chevronUp" size={14} color="#fff" />
+                        <Icon name="chevronDown" size={14} color="#fff" />
                       </View>
                     ) : (
-                      <Icon
-                        name={isLtr ? 'chevronRight' : 'chevronLeft'}
-                        size={22}
-                        color={t.primary}
-                      />
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Icon name="chevronLeft" size={18} color="#fff" />
+                        <Icon name="chevronRight" size={18} color="#fff" />
+                      </View>
                     )}
-                    <Text style={[styles.funcLabel, { color: t.primary }]}>
-                      {mode === 'webtoon' ? '翻页模式' : (isLtr ? '向右翻页' : '向左翻页')}
+                    <Text style={styles.funcLabel}>
+                      {mode === 'webtoon' ? '条漫模式' : (isLtr ? '向左翻页' : '向右翻页')}
                     </Text>
                   </TouchableOpacity>
 
-                  {/* 下一页：翻页模式方向感知，条漫模式 ▼ + 下一屏 */}
+                  {/* 下一页：条漫 ▼，左右模式 ▶（独立右箭头） */}
                   <TouchableOpacity
                     onPress={() => {
-                      if (mode === 'webtoon') {
-                        scrollDown()
-                      } else if (isLtr) {
+                      if (mode === 'webtoon' || isLtr) {
                         nextPage()
                       } else {
-                        // rtl：视觉右侧 = 阅读上一页
                         prevPage()
                       }
                     }}
                     style={styles.funcBtn}>
-                    <Icon
-                      name={mode === 'webtoon' ? 'chevronDown' : 'chevronRight'}
-                      size={22}
-                      color="#fff"
-                    />
+                    {mode === 'webtoon' ? (
+                      <Icon name="chevronDown" size={22} color="#fff" />
+                    ) : (
+                      <Icon name="chevronRight" size={22} color="#fff" />
+                    )}
                     <Text style={styles.funcLabel}>下一页</Text>
                   </TouchableOpacity>
 
@@ -657,6 +672,9 @@ export default function KomgaReader({ server, book, onClose }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  alwaysPageLabelWrap: { position: 'absolute', alignSelf: 'center', left: 0, right: 0, alignItems: 'center' },
+  alwaysPageLabel: { backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 14, paddingVertical: 5, borderRadius: 14 },
+  alwaysPageLabelText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   controlsOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'space-between', zIndex: 20 },
   iconBtn: { padding: 8 },
   titleWrap: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
@@ -668,8 +686,8 @@ const styles = StyleSheet.create({
   progressFill: { height: 2 },
   bottomBar: { paddingTop: 12, paddingBottom: 18, paddingHorizontal: 14, borderTopLeftRadius: 14, borderTopRightRadius: 14 },
   sliderTrack: {
-    height: 24, justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, overflow: 'hidden', marginBottom: 8,
+    height: 32, justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 16, overflow: 'hidden', marginBottom: 8,
   },
   sliderFill: { height: '100%', borderRadius: 12 },
   sliderKnob: { position: 'absolute', top: 4, bottom: 4, width: 3, borderRadius: 2 },
