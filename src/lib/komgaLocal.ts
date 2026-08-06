@@ -116,3 +116,36 @@ export async function addRecentSeries(serverId: string, series: KomgaSeries): Pr
   store.recent[serverId] = [series, ...list].slice(0, 20)
   await save(store)
 }
+
+// ── 阅读方式偏好（持久化）───────────────────────────────────────
+
+export interface KomgaReaderPrefs {
+  mode: 'paged' | 'webtoon'
+  direction: 'ltr' | 'rtl'
+}
+
+const DEFAULT_PREFS: KomgaReaderPrefs = { mode: 'paged', direction: 'ltr' }
+
+function prefsKey(serverId: string): string {
+  return `komga:reader:${serverId}`
+}
+
+export async function getReaderPrefs(serverId: string): Promise<KomgaReaderPrefs> {
+  try {
+    const raw = await AsyncStorage.getItem(prefsKey(serverId))
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      return {
+        mode: parsed.mode === 'webtoon' ? 'webtoon' : 'paged',
+        direction: parsed.direction === 'rtl' ? 'rtl' : 'ltr',
+      }
+    }
+  } catch {}
+  return DEFAULT_PREFS
+}
+
+export async function setReaderPrefs(serverId: string, prefs: KomgaReaderPrefs): Promise<void> {
+  try {
+    await AsyncStorage.setItem(prefsKey(serverId), JSON.stringify(prefs))
+  } catch {}
+}
