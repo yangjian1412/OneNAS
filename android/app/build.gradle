@@ -111,9 +111,9 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Configure your own keystore here for release builds.
-            // See https://reactnative.dev/docs/signed-apk-android.
-            // signingConfig signingConfigs.release
+            // Reuse debug.keystore so release APK has the same signing cert as debug build,
+            // enabling direct `adb install -r` over-install without uninstalling.
+            signingConfig signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
