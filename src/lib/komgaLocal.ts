@@ -24,8 +24,10 @@ async function save(store: LocalStore): Promise<void> {
 // ── 本地书签（Komga ≥ 1.25 移除服务端书签 API）─────────────────────────────────
 
 export interface KomgaLocalBookmark {
+  id: string
   bookId: string
   page: number
+  title?: string
   created: string
 }
 
@@ -49,30 +51,31 @@ export async function getBookmarks(serverId: string): Promise<KomgaLocalBookmark
   return loadBookmarks(serverId)
 }
 
-export async function isBookmarked(serverId: string, bookId: string): Promise<boolean> {
+export async function getBookmarksForBook(serverId: string, bookId: string): Promise<KomgaLocalBookmark[]> {
   const list = await loadBookmarks(serverId)
-  return list.some((b) => b.bookId === bookId)
+  return list
+    .filter((b) => b.bookId === bookId)
+    .sort((a, b) => a.page - b.page)
 }
 
-export async function getBookmarkPage(serverId: string, bookId: string): Promise<number | null> {
-  const list = await loadBookmarks(serverId)
-  const bm = list.find((b) => b.bookId === bookId)
-  return bm?.page ?? null
+function makeId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export async function setBookmark(serverId: string, bookId: string, page: number): Promise<void> {
+export async function addBookmark(serverId: string, bookId: string, page: number, title?: string): Promise<KomgaLocalBookmark> {
   const list = await loadBookmarks(serverId)
-  const idx = list.findIndex((b) => b.bookId === bookId)
-  const entry: KomgaLocalBookmark = { bookId, page, created: new Date().toISOString() }
-  if (idx >= 0) {
-    list[idx] = entry
-  } else {
-    list.unshift(entry)
-  }
+  const entry: KomgaLocalBookmark = { id: makeId(), bookId, page, title, created: new Date().toISOString() }
+  list.unshift(entry)
   await saveBookmarks(serverId, list)
+  return entry
 }
 
-export async function removeBookmark(serverId: string, bookId: string): Promise<void> {
+export async function removeBookmarkById(serverId: string, id: string): Promise<void> {
+  const list = await loadBookmarks(serverId)
+  await saveBookmarks(serverId, list.filter((b) => b.id !== id))
+}
+
+export async function removeAllBookmarksForBook(serverId: string, bookId: string): Promise<void> {
   const list = await loadBookmarks(serverId)
   await saveBookmarks(serverId, list.filter((b) => b.bookId !== bookId))
 }
