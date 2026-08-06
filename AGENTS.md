@@ -82,6 +82,16 @@ Unraid API 不同版本的 `DockerMutations` 字段集不同（**严禁**带 `Co
 
 VM mutations (`vm { start/stop/reboot/pause/resume/forceStop/reset }`) schema 稳定，无需特殊处理。
 
+## NAS 管理双后端（Unraid / Portainer）
+
+- 设置 → 服务设置 → NAS 管理 可切换 `unraid` 或 `portainer`（`appStore.nasManagementBackend`，默认 `unraid`，持久化）
+- `NasManagementScreen` 是路由壳：`backend === 'portainer'` 时渲染 `PortainerScreen`，否则渲染 `DockerScreen`（Tab4 图标也随后端切换：`docker` / `unraid`）
+- **Portainer 与 Unraid 配置完全独立**：Unraid 走 `servers[]`（type `unraid`），Portainer 走 `appStore.portainerServer`（`PortainerConfig`：`{ id, name, url, apiToken }`），不共享字段
+- `src/lib/api/portainer.ts`：认证头按版本分支 —— Portainer v1.x 用 `X-Api-Key`，v2.x 用 `Authorization: Bearer <Access Token>`（`getJson`/`fetchPortainerDashboard` 内部处理）
+- `portainerPing` 先 `GET /api/endpoints` 拿端点列表，`pickDefaultEndpoint` 取第一个；仪表盘数据 = endpoint 信息 + `GET /api/endpoints/{id}/docker/containers/json?all=1`
+- 容器操作 POST `/api/endpoints/{id}/docker/containers/{cid}/{action}`（start/stop/restart/pause/unpause/kill）
+- 空态文案："未配置 Portainer" → 设置 → 服务设置 → NAS 管理 切换为 Docker（Portainer）并配置服务器
+
 ## FileBrowser file details
 
 - Long-press / three-dot menu → "详细信息" (between 移动到... and 删除)
