@@ -77,7 +77,7 @@
 
 ## 截图
 
-> 设置页（`docs/settings-screenshot.jpg`）
+![设置页](docs/settings-screenshot.jpg)
 
 ---
 
