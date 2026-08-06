@@ -21,6 +21,62 @@ async function save(store: LocalStore): Promise<void> {
   await AsyncStorage.setItem('komga:local:v1', JSON.stringify(store))
 }
 
+// ── 本地书签（Komga ≥ 1.25 移除服务端书签 API）─────────────────────────────────
+
+export interface KomgaLocalBookmark {
+  bookId: string
+  page: number
+  created: string
+}
+
+function bmKey(serverId: string): string {
+  return `komga:bookmarks:${serverId}`
+}
+
+async function loadBookmarks(serverId: string): Promise<KomgaLocalBookmark[]> {
+  try {
+    const raw = await AsyncStorage.getItem(bmKey(serverId))
+    return raw ? JSON.parse(raw) : []
+  } catch {}
+  return []
+}
+
+async function saveBookmarks(serverId: string, list: KomgaLocalBookmark[]): Promise<void> {
+  await AsyncStorage.setItem(bmKey(serverId), JSON.stringify(list))
+}
+
+export async function getBookmarks(serverId: string): Promise<KomgaLocalBookmark[]> {
+  return loadBookmarks(serverId)
+}
+
+export async function isBookmarked(serverId: string, bookId: string): Promise<boolean> {
+  const list = await loadBookmarks(serverId)
+  return list.some((b) => b.bookId === bookId)
+}
+
+export async function getBookmarkPage(serverId: string, bookId: string): Promise<number | null> {
+  const list = await loadBookmarks(serverId)
+  const bm = list.find((b) => b.bookId === bookId)
+  return bm?.page ?? null
+}
+
+export async function setBookmark(serverId: string, bookId: string, page: number): Promise<void> {
+  const list = await loadBookmarks(serverId)
+  const idx = list.findIndex((b) => b.bookId === bookId)
+  const entry: KomgaLocalBookmark = { bookId, page, created: new Date().toISOString() }
+  if (idx >= 0) {
+    list[idx] = entry
+  } else {
+    list.unshift(entry)
+  }
+  await saveBookmarks(serverId, list)
+}
+
+export async function removeBookmark(serverId: string, bookId: string): Promise<void> {
+  const list = await loadBookmarks(serverId)
+  await saveBookmarks(serverId, list.filter((b) => b.bookId !== bookId))
+}
+
 export async function getFavSeries(serverId: string): Promise<KomgaSeries[]> {
   const store = await load()
   return store.fav[serverId] ?? []

@@ -3,9 +3,11 @@ import { View, Text, Image, TouchableOpacity, Dimensions, ActivityIndicator, Sty
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
 import { useImmersive } from '@/lib/immersive'
-import type { KomgaServerConfig, KomgaBook, KomgaPage, KomgaBookmark } from '@/types'
-import { komgaAuthHeader, komgaGetBookPages, komgaPageUrl, komgaUpdateReadProgress, komgaMarkRead, komgaGetBook, komgaListBookmarks, komgaAddBookmark, komgaDeleteBookmark } from '@/lib/api/komga'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import type { KomgaServerConfig, KomgaBook, KomgaPage } from '@/types'
+import { komgaAuthHeader, komgaGetBookPages, komgaPageUrl, komgaUpdateReadProgress, komgaMarkRead, komgaGetBook } from '@/lib/api/komga'
 import { ensurePageCached, prefetchPage, pageLocalUri, isPageCached } from '@/lib/api/komgaCache'
+import { isBookmarked as localIsBookmarked, getBookmarkPage, setBookmark, removeBookmark } from '@/lib/komgaLocal'
 
 interface Props {
   server: KomgaServerConfig
@@ -21,6 +23,7 @@ const DEFAULT_ASPECT = 0.66
 export default function KomgaReader({ server, book, onClose }: Props) {
   const t = useTheme()
   useImmersive(true)
+  const insets = useSafeAreaInsets()
 
   const [pages, setPages] = useState<KomgaPage[]>([])
   const [currentPage, setCurrentPage] = useState<number>(0)
@@ -30,7 +33,6 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   const [mode, setMode] = useState<'paged' | 'webtoon'>('paged')
   const [readingDirection, setReadingDirection] = useState<'ltr' | 'rtl'>('ltr')
   const [isBookmarked, setIsBookmarked] = useState(false)
-  const [bookmarkId, setBookmarkId] = useState<string | null>(null)
   const [pageAspects, setPageAspects] = useState<Record<number, number>>({})
 
   const listRef = useRef<FlatList<KomgaPage>>(null)
@@ -48,15 +50,14 @@ export default function KomgaReader({ server, book, onClose }: Props) {
     Promise.all([
       komgaGetBookPages(server, book.id),
       komgaGetBook(server, book.id),
-      komgaListBookmarks(server).catch(() => [] as KomgaBookmark[]),
-    ]).then(([pageList, fresh, bookmarks]) => {
+      localIsBookmarked(server.id, book.id),
+      getBookmarkPage(server.id, book.id),
+    ]).then(([pageList, fresh, bookmarked, bmPage]) => {
       if (cancelled) return
       setPages(pageList)
       setCurrentBook(fresh)
-      setCurrentPage(fresh.readProgress?.page ?? 1)
-      const bm = bookmarks.find((b) => b.bookId === book.id)
-      setIsBookmarked(!!bm)
-      setBookmarkId(bm?.id ?? null)
+      setCurrentPage(bmPage ?? fresh.readProgress?.page ?? 1)
+      setIsBookmarked(bookmarked)
       setLoading(false)
     }).catch((e) => {
       if (cancelled) return
@@ -138,12 +139,12 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   const toggleBookmark = async () => {
     try {
       if (isBookmarked) {
-        if (bookmarkId) await komgaDeleteBookmark(server, bookmarkId)
-        setIsBookmarked(false); setBookmarkId(null)
+        await removeBookmark(server.id, book.id)
+        setIsBookmarked(false)
         Alert.alert('已移除书签', '', [{ text: '好的', onPress: () => {} }])
       } else {
-        const bm = await komgaAddBookmark(server, book.id, Math.max(1, currentPage))
-        setIsBookmarked(true); setBookmarkId(bm.id)
+        await setBookmark(server.id, book.id, Math.max(1, currentPage))
+        setIsBookmarked(true)
       }
     } catch (e: any) {
       Alert.alert('书签失败', e?.message ?? '未知错误')
@@ -203,6 +204,7 @@ export default function KomgaReader({ server, book, onClose }: Props) {
 
   const renderPaged = () => (
     <FlatList
+      ref={listRef}
       data={pages}
       keyExtractor={(p) => String(p.number)}
       renderItem={({ item }) => (
@@ -232,6 +234,7 @@ export default function KomgaReader({ server, book, onClose }: Props) {
 
   const renderWebtoon = () => (
     <FlatList
+      ref={listRef}
       data={pages}
       keyExtractor={(p) => String(p.number)}
       renderItem={({ item }) => (
@@ -245,6 +248,14 @@ export default function KomgaReader({ server, book, onClose }: Props) {
       )}
       showsVerticalScrollIndicator={false}
       pagingEnabled={false}
+      getItemLayout={(_, index) => {
+        const aspect = pageAspects[index + 1] ?? DEFAULT_ASPECT
+        const h = Math.max(200, Math.min(SCREEN_H, SCREEN_W / aspect))
+        return { length: h, offset: h * index, index }
+      }}
+      onScrollToIndexFailed={({ index, averageItemLength }) => {
+        listRef.current?.scrollToOffset({ offset: averageItemLength * index, animated: false })
+      }}
       onViewableItemsChanged={({ viewableItems }) => {
         if (viewableItems.length > 0) {
           const first = viewableItems[0].item
@@ -280,7 +291,7 @@ export default function KomgaReader({ server, book, onClose }: Props) {
           {showControls && (
             <View style={styles.controlsOverlay} pointerEvents="box-none">
               {/* 顶部栏 */}
-              <View style={[styles.topBar, { backgroundColor: 'rgba(0,0,0,0.75)' }]}>
+              <View style={[styles.topBar, { backgroundColor: 'rgba(0,0,0,0.75)', paddingTop: insets.top + 12 }]}>
                 <View style={styles.topRow}>
                   <TouchableOpacity onPress={onClose} style={styles.iconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Icon name="x" size={22} color="#fff" />
@@ -321,13 +332,13 @@ export default function KomgaReader({ server, book, onClose }: Props) {
 
                 {/* 底部功能按钮 */}
                 <View style={styles.bottomBtns}>
-                  <TouchableOpacity onPress={prevPage} style={styles.funcBtn}>
-                    <Icon name="skipPrev" size={22} color="#fff" />
-                    <Text style={styles.funcLabel}>上一页</Text>
-                  </TouchableOpacity>
                   <TouchableOpacity onPress={() => goToPage(1)} style={styles.funcBtn}>
-                    <Icon name="chevronLeft" size={22} color="#fff" />
+                    <Icon name="skipPrev" size={22} color="#fff" />
                     <Text style={styles.funcLabel}>首页</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={prevPage} style={styles.funcBtn}>
+                    <Icon name="chevronLeft" size={22} color="#fff" />
+                    <Text style={styles.funcLabel}>上一页</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setMode((m) => (m === 'paged' ? 'webtoon' : 'paged'))}
@@ -344,13 +355,13 @@ export default function KomgaReader({ server, book, onClose }: Props) {
                     </View>
                     <Text style={styles.funcLabel}>{readingDirection === 'ltr' ? '右→左' : '左→右'}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => goToPage(pages.length)} style={styles.funcBtn}>
-                    <Icon name="chevronRight" size={22} color="#fff" />
-                    <Text style={styles.funcLabel}>末页</Text>
-                  </TouchableOpacity>
                   <TouchableOpacity onPress={nextPage} style={styles.funcBtn}>
-                    <Icon name="skipNext" size={22} color="#fff" />
+                    <Icon name="chevronRight" size={22} color="#fff" />
                     <Text style={styles.funcLabel}>下一页</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => goToPage(pages.length)} style={styles.funcBtn}>
+                    <Icon name="skipNext" size={22} color="#fff" />
+                    <Text style={styles.funcLabel}>末页</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -370,7 +381,7 @@ const styles = StyleSheet.create({
   titleWrap: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
   seriesTitle: { color: '#ccc', fontSize: 11, fontWeight: '600' },
   chapterTitle: { color: '#fff', fontSize: 15, fontWeight: '700', marginTop: 2 },
-  topBar: { paddingTop: 12, paddingBottom: 6 },
+  topBar: { paddingBottom: 6 },
   topRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 6 },
   progressBg: { height: 2, width: '100%', backgroundColor: 'rgba(255,255,255,0.15)' },
   progressFill: { height: 2 },
