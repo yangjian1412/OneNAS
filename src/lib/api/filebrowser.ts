@@ -94,7 +94,7 @@ export async function deleteResource(server: ServerConfig, token: string, path: 
 export async function renameResource(server: ServerConfig, token: string, path: string, destination: string) {
   try {
     const query = `?action=rename&destination=${encodeURIComponent(destination)}`
-    await requestResource(server, token, `${path}${query}`)
+    await requestResource(server, token, `${path}${query}`, { method: 'PATCH' })
     return { ok: true as const }
   } catch (err: any) {
     return { ok: false as const, error: err.message ?? 'Rename failed' }
@@ -104,7 +104,7 @@ export async function renameResource(server: ServerConfig, token: string, path: 
 export async function copyResource(server: ServerConfig, token: string, path: string, destination: string) {
   try {
     const query = `?action=copy&destination=${encodeURIComponent(destination)}`
-    await requestResource(server, token, `${path}${query}`)
+    await requestResource(server, token, `${path}${query}`, { method: 'PATCH' })
     return { ok: true as const }
   } catch (err: any) {
     return { ok: false as const, error: err.message ?? 'Copy failed' }

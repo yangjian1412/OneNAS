@@ -22,6 +22,7 @@ import { getRawFileUrl, getAuthHeaders } from '@/lib/api/fileManager'
 import { webDavAuthHeader } from '@/lib/api/webdav'
 import { getFileCategory } from '@/lib/fileTypes'
 import FilePreviewModal from '@/components/FilePreviewModal'
+import FolderPickerModal from '@/components/FolderPickerModal'
 import JellyfinScreen from '@/screens/JellyfinScreen'
 import NavidromeScreen from '@/screens/NavidromeScreen'
 import AudiobookshelfScreen from '@/screens/AudiobookshelfScreen'
@@ -64,6 +65,9 @@ export default function FileScreen() {
   const [editMode, setEditMode] = useState<EditMode>(null)
   const [editText, setEditText] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerMode, setPickerMode] = useState<'copy' | 'move'>('copy')
+  const [pickerExclude, setPickerExclude] = useState<string | undefined>(undefined)
   const [multiSelect, setMultiSelect] = useState(false)
   const [selectedPaths, setSelectedPaths] = useState<string[]>([])
   const [sortOpen, setSortOpen] = useState(false)
@@ -338,8 +342,45 @@ export default function FileScreen() {
   const openEdit = (mode: EditMode, item?: FileItem) => {
     setActionItem(null)
     if (item) setSelectedPaths([item.path])
+    if (mode === 'copy' || mode === 'move') {
+      setPickerMode(mode)
+      const exclude = (item?.isDirectory && item?.path) ? item.path : undefined
+      setPickerExclude(exclude)
+      setPickerOpen(true)
+      return
+    }
     setEditMode(mode)
     setEditText(mode === 'folder' ? '' : item?.name ?? '')
+  }
+
+  const closePicker = () => {
+    setPickerOpen(false)
+    setActionItem(null)
+    cancelSelection()
+  }
+
+  const submitPicker = async (dstPath: string) => {
+    if (!selectedServer || !token) return
+    const targets = selectedItems()
+    if (!targets.length) { setPickerOpen(false); return }
+    setActionLoading(true)
+    const normalizedDst = dstPath.endsWith('/') ? dstPath.slice(0, -1) : dstPath
+    const results = await Promise.all(targets.map((target) => {
+      const targetName = target.path.split('/').filter(Boolean).pop() ?? ''
+      // FileBrowser API 与 WebDAV 的 copy/move 都要求 destination 是**完整路径**（含目标文件名/文件夹名）
+      // WebDAV 对目录目标需要尾斜杠，避免 mod_dav 301 降级丢 Authorization
+      const fullDst = target.isDirectory
+        ? `${normalizedDst}/${targetName}/`
+        : `${normalizedDst}/${targetName}`
+      return pickerMode === 'copy'
+        ? fmCopy(selectedServer!, token!, target.path, fullDst, fileBackend, webdavServer)
+        : fmRename(selectedServer!, token!, target.path, fullDst, fileBackend, webdavServer)
+    }))
+    const failed = results.find((r) => !r.ok)
+    setActionLoading(false)
+    setPickerOpen(false)
+    if (failed) Alert.alert(pickerMode === 'copy' ? '复制失败' : '移动失败', failed.error ?? '未知错误')
+    else { cancelSelection(); await loadDir(currentPath) }
   }
 
   const toggleSelection = (item: FileItem) => {
@@ -409,14 +450,7 @@ export default function FileScreen() {
         result = await fmRename(selectedServer, token, target.path, `/${parent ? `${parent}/` : ''}${editText.trim()}`, fileBackend, webdavServer)
       }
     } else {
-      const targets = selectedItems()
-      if (!targets.length) result = { ok: false, error: '未选择文件' }
-      else {
-        const results = await Promise.all(targets.map((target) => editMode === 'copy'
-          ? fmCopy(selectedServer!, token!, target.path, editText.trim(), fileBackend, webdavServer)
-          : fmRename(selectedServer!, token!, target.path, editText.trim(), fileBackend, webdavServer)))
-        result = results.find((item) => !item.ok) ?? { ok: true }
-      }
+      result = { ok: false, error: '请使用目录选择器' }
     }
     setActionLoading(false)
     if (!result.ok) Alert.alert('操作失败', result.error ?? '未知错误')
@@ -802,12 +836,32 @@ export default function FileScreen() {
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setEditMode(null)} activeOpacity={1} />
           <View style={[styles.editSheet, { backgroundColor: t.card }]}>
-            <Text style={[styles.actionTitle, { color: t.text }]}>{editMode === 'folder' ? '新建文件夹' : editMode === 'rename' ? '重命名' : editMode === 'copy' ? '复制到' : '移动到'}</Text>
-            <TextInput autoFocus style={[styles.editInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]} value={editText} onChangeText={setEditText} placeholder={editMode === 'folder' || editMode === 'rename' ? '名称' : '/目标路径'} placeholderTextColor={t.textMuted} />
+            <Text style={[styles.actionTitle, { color: t.text }]}>{editMode === 'folder' ? '新建文件夹' : editMode === 'rename' ? '重命名' : ''}</Text>
+            <TextInput autoFocus style={[styles.editInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]} value={editText} onChangeText={setEditText} placeholder={'名称'} placeholderTextColor={t.textMuted} />
             <View style={styles.editActions}><TouchableOpacity onPress={() => setEditMode(null)}><Text style={[styles.actionText, { color: t.textMuted }]}>取消</Text></TouchableOpacity><TouchableOpacity onPress={submitEdit} disabled={actionLoading}><Text style={[styles.actionText, { color: t.primary, fontWeight: '700' }]}>{actionLoading ? '处理中...' : '确定'}</Text></TouchableOpacity></View>
           </View>
         </View>
       </Modal>
+      <FolderPickerModal
+        visible={pickerOpen && !!selectedServer && !!token}
+        title={pickerMode === 'copy' ? '复制到' : '移动到'}
+        initialPath="/"
+        excludePathPrefix={pickerExclude}
+        listFolders={async (path: string) => {
+          if (!selectedServer || !token) return { ok: false, error: '未连接服务器' }
+          const r = await fmListDir(selectedServer, token, path, fileBackend, webdavServer)
+          if (!r.ok) return { ok: false, error: r.error }
+          const names = (r.files ?? []).filter((f) => f.isDirectory).map((f) => f.name)
+          return { ok: true, folders: names }
+        }}
+        createFolder={async (parentPath: string, name: string) => {
+          if (!selectedServer || !token) return { ok: false, error: '未连接服务器' }
+          const full = parentPath.endsWith('/') ? `${parentPath}${name}` : `${parentPath}/${name}`
+          return await fmMkdir(selectedServer, token, full, fileBackend, webdavServer)
+        }}
+        onConfirm={submitPicker}
+        onClose={closePicker}
+      />
       {activeService && (
         <ActiveServiceView
           service={activeService}

@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAppStore, getTab2Service, getTab3Service } from '@/stores/appStore'
-import { SERVICE_TYPE_ICONS } from '@/lib/constants'
+import { SERVICE_TYPE_ICONS, SERVICE_TYPE_LABELS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
 import FileScreen from '@/screens/FileScreen'
 import ServiceScreen from '@/screens/ServiceScreen'
@@ -71,12 +71,12 @@ export default function TabNavigator() {
       >
         <Tab.Screen name="Files" component={FileScreen} options={{ tabBarLabel: '文件' }} />
         {tab2 && (
-          <Tab.Screen name="Tab2" options={{ tabBarLabel: tab2.name }}>
+          <Tab.Screen name="Tab2" options={{ tabBarLabel: tab2.name || SERVICE_TYPE_LABELS[tab2.type] }}>
             {() => <ServiceScreen serviceId={tab2.id} />}
           </Tab.Screen>
         )}
         {tab3 && (
-          <Tab.Screen name="Tab3" options={{ tabBarLabel: tab3.name }}>
+          <Tab.Screen name="Tab3" options={{ tabBarLabel: tab3.name || SERVICE_TYPE_LABELS[tab3.type] }}>
             {() => <ServiceScreen serviceId={tab3.id} />}
           </Tab.Screen>
         )}

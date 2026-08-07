@@ -184,7 +184,7 @@ android/app/src/main/java/com/unraiddash/app/
 
 ## 下一步计划
 
-v1.0.0 beta 功能开发已完成，欢迎提出改进建议与新增服务页面的需求。
+v1.0.0 beta2 功能开发已完成，欢迎提出改进建议与新增服务页面的需求。
 
 ---
 

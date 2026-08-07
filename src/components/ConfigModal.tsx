@@ -206,7 +206,7 @@ export default function ConfigModal({
       const saveApiKey = (isTalebook || normalizedType === 'openlist') ? undefined : (apiKey || undefined)
       onSaveService({
         id: service?.id ?? '',
-        name,
+        name: name || SERVICE_TYPE_LABELS[type],
         type: normalizedType,
         url,
         category: service?.category ?? 'tools',

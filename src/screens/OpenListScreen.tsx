@@ -5,7 +5,7 @@ import * as DocumentPicker from 'expo-document-picker'
 import { useOpenListStore, joinOpenListPath } from '@/stores/openlistStore'
 import { useAppStore } from '@/stores/appStore'
 import type { OpenListFile, ServiceConfig } from '@/types'
-import { openListGetFileUrl, openListGet } from '@/lib/api/openlist'
+import { openListGetFileUrl, openListGet, openListList, openListMkdir } from '@/lib/api/openlist'
 import { aria2Ping } from '@/lib/api/aria2'
 import { checkStoragePermission, openAllFilesSettings, enqueueDownload } from '@/lib/downloadManager'
 import { useTheme } from '@/lib/theme'
@@ -13,6 +13,7 @@ import Icon, { IconName } from '@/components/Icon'
 import ServiceHeader from '@/components/ServiceHeader'
 import ServiceDrawer, { DrawerItem } from '@/components/ServiceDrawer'
 import OpenListPreviewModal from '@/components/openlist/OpenListPreviewModal'
+import FolderPickerModal from '@/components/FolderPickerModal'
 import { getFileCategory } from '@/lib/fileTypes'
 
 interface Props {
@@ -71,6 +72,9 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
   const [editTarget, setEditTarget] = useState<OpenListFile | null>(null)
   const [editText, setEditText] = useState('')
   const [editBusy, setEditBusy] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerMode, setPickerMode] = useState<'copy' | 'move'>('copy')
+  const [pickerExclude, setPickerExclude] = useState<string | undefined>(undefined)
 
   const [detailItem, setDetailItem] = useState<OpenListFile | null>(null)
   const [detailInfo, setDetailInfo] = useState<OpenListFile | null>(null)
@@ -333,15 +337,35 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
   }, [selectedPaths, files, filePathOf, path, remove])
 
   const openEdit = useCallback((mode: Exclude<EditMode, null>, f?: OpenListFile) => {
-    if (mode === 'rename' && f) {
-      setEditText(f.name)
-    } else {
-      setEditText('')
-    }
     setEditTarget(f ?? null)
     setActionItem(null)
+    if (mode === 'copy' || mode === 'move') {
+      setPickerMode(mode)
+      const exclude = (f?.is_dir && f?.name) ? joinOpenListPath(path, f.name) : undefined
+      setPickerExclude(exclude)
+      setPickerOpen(true)
+      return
+    }
+    setEditText(mode === 'rename' && f ? f.name : '')
     setEditMode(mode)
+  }, [path])
+
+  const closePicker = useCallback(() => {
+    setPickerOpen(false)
+    setActionItem(null)
   }, [])
+
+  const submitPicker = useCallback(async (dstPath: string) => {
+    if (!editTarget) { setPickerOpen(false); return }
+    const names = [editTarget.name]
+    setEditBusy(true)
+    const ok = pickerMode === 'move'
+      ? await move(path, names, dstPath)
+      : await copy(path, names, dstPath)
+    setEditBusy(false)
+    setPickerOpen(false)
+    if (!ok) Alert.alert(pickerMode === 'move' ? '移动失败' : '复制失败', latestError() ?? '未知错误')
+  }, [pickerMode, editTarget, path, move, copy])
 
   const submitEdit = useCallback(async () => {
     const val = editText.trim()
@@ -351,18 +375,8 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       const ok = await rename(filePathOf(editTarget), val)
       if (ok) setEditMode(null)
       else Alert.alert('重命名失败', latestError() ?? '未知错误')
-      return
     }
-    const dst = val.startsWith('/') ? val : '/' + val.replace(/\/+$/, '')
-    if (!editTarget) return
-    setEditBusy(true)
-    const ok = editMode === 'move'
-      ? await move(path, [editTarget.name], dst)
-      : await copy(path, [editTarget.name], dst)
-    setEditBusy(false)
-    if (ok) setEditMode(null)
-    else Alert.alert(editMode === 'move' ? '移动失败' : '复制失败', latestError() ?? '未知错误')
-  }, [editMode, editText, editTarget, filePathOf, rename, move, copy, path])
+  }, [editMode, editText, editTarget, filePathOf, rename])
 
   const openDetails = useCallback(async (f: OpenListFile) => {
     setActionItem(null)
@@ -575,20 +589,17 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
         <View style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setEditMode(null)} activeOpacity={1} />
           <View style={[styles.sheet, { backgroundColor: t.card }]}>
-            <Text style={[styles.sheetTitle, { color: t.text }]}>{editMode === 'rename' ? '重命名' : editMode === 'copy' ? '复制到' : '移动到'}</Text>
+            <Text style={[styles.sheetTitle, { color: t.text }]}>{'重命名'}</Text>
             <TextInput
               autoFocus
               style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
               value={editText}
               onChangeText={setEditText}
-              placeholder={editMode === 'rename' ? '新名称' : '/目标目录路径'}
+              placeholder={'新名称'}
               placeholderTextColor={t.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
             />
-            {editMode !== 'rename' ? (
-              <Text style={[styles.hint, { color: t.textMuted }]}>目标目录例如 /downloads</Text>
-            ) : null}
             <View style={styles.sheetActions}>
               <TouchableOpacity onPress={() => setEditMode(null)}><Text style={[styles.actionText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
               <TouchableOpacity onPress={() => { void submitEdit() }} disabled={editBusy}>
@@ -598,6 +609,32 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
           </View>
         </View>
       </Modal>
+      <FolderPickerModal
+        visible={pickerOpen}
+        title={pickerMode === 'copy' ? '复制到' : '移动到'}
+        initialPath="/"
+        excludePathPrefix={pickerExclude}
+        listFolders={async (targetPath: string) => {
+          if (!server) return { ok: false, error: '未配置 OpenList' }
+          try {
+            const list = await openListList(server, targetPath)
+            return { ok: true, folders: list.filter((f) => f.is_dir).map((f) => f.name) }
+          } catch (e: any) {
+            return { ok: false, error: e?.message ?? '加载失败' }
+          }
+        }}
+        createFolder={async (parentPath: string, name: string) => {
+          if (!server) return { ok: false, error: '未配置 OpenList' }
+          try {
+            await openListMkdir(server, parentPath.endsWith('/') ? `${parentPath}${name}` : `${parentPath}/${name}`)
+            return { ok: true }
+          } catch (e: any) {
+            return { ok: false, error: e?.message ?? '新建失败' }
+          }
+        }}
+        onConfirm={submitPicker}
+        onClose={closePicker}
+      />
 
       {/* 详细信息 */}
       <Modal visible={!!detailItem} transparent animationType="slide" onRequestClose={() => setDetailItem(null)}>

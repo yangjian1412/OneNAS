@@ -1,7 +1,7 @@
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native'
 import { useAppStore, getTopBarServices } from '@/stores/appStore'
 import { ServiceConfig } from '@/types'
-import { SERVICE_TYPE_ICONS } from '@/lib/constants'
+import { SERVICE_TYPE_ICONS, SERVICE_TYPE_LABELS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
 
@@ -25,7 +25,7 @@ export default function ServiceBar({ onServicePress }: Props) {
               <View style={[styles.iconWrap, { backgroundColor: t.card }]}>
                 <Icon name={SERVICE_TYPE_ICONS[svc.type] ?? 'folderEmpty'} size={32} />
               </View>
-              <Text style={[styles.label, { color: t.textSecondary }]} numberOfLines={1}>{svc.name}</Text>
+              <Text style={[styles.label, { color: t.textSecondary }]} numberOfLines={1}>{svc.name || SERVICE_TYPE_LABELS[svc.type]}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>

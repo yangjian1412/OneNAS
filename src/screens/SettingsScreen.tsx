@@ -58,6 +58,8 @@ export default function SettingsScreen() {
   const updateService = useAppStore((s) => s.updateService)
   const deleteService = useAppStore((s) => s.deleteService)
   const setServices = useAppStore((s) => s.setServices)
+  const typeOrder = useAppStore((s) => s.typeOrder)
+  const setTypeOrder = useAppStore((s) => s.setTypeOrder)
   const setTheme = useAppStore((s) => s.setTheme)
   const setHideNasManagement = useAppStore((s) => s.setHideNasManagement)
   const importConfig = useAppStore((s) => s.importConfig)
@@ -162,7 +164,7 @@ export default function SettingsScreen() {
       type,
       service: serviceByType(services, type) ?? null,
     }))
-    .sort((a, b) => (a.service?.sortOrder ?? 10000) - (b.service?.sortOrder ?? 10000))
+    .sort((a, b) => (typeOrder[a.type] ?? SERVICE_TYPES.indexOf(a.type)) - (typeOrder[b.type] ?? SERVICE_TYPES.indexOf(b.type)))
 
   const fileServer = serverByType(servers, 'filebrowser')
   const unraidServer = serverByType(servers, 'unraid')
@@ -246,10 +248,12 @@ export default function SettingsScreen() {
   }
 
   const handleDragEnd = ({ data }: { data: ServiceRow[] }) => {
-    const position = new Map(data.map((row, index) => [row.service?.id, index]))
+    const newTypeOrder: Record<string, number> = {}
+    data.forEach((row, index) => { newTypeOrder[row.type] = index })
+    setTypeOrder(newTypeOrder)
     setServices(services.map((service) => ({
       ...service,
-      sortOrder: position.get(service.id) ?? service.sortOrder,
+      sortOrder: newTypeOrder[service.type] ?? service.sortOrder,
     })))
   }
 
@@ -448,7 +452,7 @@ export default function SettingsScreen() {
       <View style={[styles.card, { backgroundColor: t.card }]}>
         <View style={{ paddingVertical: 14, paddingHorizontal: 14 }}>
           <Text style={{ color: t.text, fontSize: 14, fontWeight: '700' }}>One NAS</Text>
-          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版本 v1.0.0beta</Text>
+          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版本 v1.0.0beta2</Text>
           <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版权所有 © 六分仪</Text>
         </View>
       </View>

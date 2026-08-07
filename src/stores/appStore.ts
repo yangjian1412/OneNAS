@@ -17,6 +17,7 @@ export interface FileSort {
 interface PersistPayload {
   servers: ServerConfig[]
   services: ServiceConfig[]
+  typeOrder: Record<string, number>
   theme: ThemeMode
   hideNasManagement: boolean
   hideTabLabels: boolean
@@ -32,6 +33,7 @@ async function persist(s: AppState, extra?: Partial<PersistPayload>) {
   const payload: PersistPayload = {
     servers: extra?.servers ?? s.servers,
     services: extra?.services ?? s.services,
+    typeOrder: extra?.typeOrder ?? s.typeOrder,
     theme: extra?.theme ?? s.theme,
     hideNasManagement: extra?.hideNasManagement ?? s.hideNasManagement,
     hideTabLabels: extra?.hideTabLabels ?? s.hideTabLabels,
@@ -80,6 +82,7 @@ export interface AppState {
   loaded: boolean
   servers: ServerConfig[]
   services: ServiceConfig[]
+  typeOrder: Record<string, number>
   containers: Container[]
   systemInfo: SystemInfo | null
   theme: ThemeMode
@@ -102,6 +105,7 @@ export interface AppState {
   addService: (service: ServiceConfig) => void
   updateService: (id: string, partial: Partial<ServiceConfig>) => void
   deleteService: (id: string) => void
+  setTypeOrder: (order: Record<string, number>) => void
 
   setContainers: (containers: Container[]) => void
   setSystemInfo: (info: SystemInfo | null) => void
@@ -126,6 +130,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loaded: false,
   servers: [],
   services: [],
+  typeOrder: {},
   containers: [],
   systemInfo: null,
   theme: 'system',
@@ -149,6 +154,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const cfg = JSON.parse(raw)
       const servers = cfg.servers ?? []
       const services = normalizeServices(cfg.services ?? [])
+      const typeOrder = cfg.typeOrder ?? {}
       const theme = cfg.theme ?? 'system'
       const hideNasManagement = cfg.hideNasManagement ?? false
       const hideTabLabels = cfg.hideTabLabels ?? true
@@ -157,10 +163,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const webdavServer = cfg.webdavServer ?? null
       const nasManagementBackend = cfg.nasManagementBackend ?? 'unraid'
       const portainerServer = cfg.portainerServer ?? null
-      set({
+set({
         loaded: true,
         servers,
         services,
+        typeOrder,
         theme,
         hideNasManagement,
         hideTabLabels,
@@ -170,8 +177,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         nasManagementBackend,
         portainerServer,
       })
-      // 落盘：真正把残留（如空 url 的 calibre 占位）从磁盘清除
-      void persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer, nasManagementBackend, portainerServer })
+      void persist(get(), { servers, services, typeOrder, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer, nasManagementBackend, portainerServer })
     } catch {
       set({ loaded: true })
     }
@@ -197,6 +203,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ services }); persist(get(), { services })
   },
   deleteService: (id) => { const services = get().services.filter((s) => s.id !== id); set({ services }); persist(get(), { services }) },
+  setTypeOrder: (typeOrder) => { set({ typeOrder }); persist(get(), { typeOrder }) },
 
   setContainers: (containers) => set({ containers }),
   setSystemInfo: (systemInfo) => set({ systemInfo }),
@@ -240,6 +247,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const servers = cfg.servers ?? []
     const services = normalizeServices(cfg.services ?? [])
+    const typeOrder = cfg.typeOrder ?? {}
     const theme = cfg.theme ?? 'light'
     const hideNasManagement = cfg.hideNasManagement ?? false
     const hideTabLabels = cfg.hideTabLabels ?? true
@@ -248,8 +256,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const webdavServer = cfg.webdavServer ?? null
     const nasManagementBackend = cfg.nasManagementBackend ?? 'unraid'
     const portainerServer = cfg.portainerServer ?? null
-    set({ servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer, nasManagementBackend, portainerServer })
-    await persist(get(), { servers, services, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer, nasManagementBackend, portainerServer })
+    set({ servers, services, typeOrder, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer, nasManagementBackend, portainerServer })
+    await persist(get(), { servers, services, typeOrder, theme, hideNasManagement, hideTabLabels, fileSort, fileBackend, webdavServer, nasManagementBackend, portainerServer })
     return { ok: true }
   },
 
@@ -258,6 +266,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cfg = JSON.stringify({
       servers: s.servers,
       services: s.services,
+      typeOrder: s.typeOrder,
       theme: s.theme,
       hideNasManagement: s.hideNasManagement,
       hideTabLabels: s.hideTabLabels,

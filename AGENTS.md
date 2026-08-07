@@ -92,6 +92,15 @@ VM mutations (`vm { start/stop/reboot/pause/resume/forceStop/reset }`) schema �
 - 容器操作 POST `/api/endpoints/{id}/docker/containers/{cid}/{action}`（start/stop/restart/pause/unpause/kill）
 - 空态文案："未配置 Portainer" → 设置 → 服务设置 → NAS 管理 切换为 Docker（Portainer）并配置服务器
 
+## FileBrowser copy/rename 必须 PATCH
+
+- 路由：`PATCH /api/resources/{path}?action=copy&destination=...` / `?action=rename&destination=...`（**不能 GET**！）
+- 参考实现 `ref-src/filebrowser-src/filebrowser-2.63.18/http/resource.go:212` `resourcePatchHandler` + `patchAction`（line 340）
+- `destination` 是**目标完整路径**（含新文件名/文件夹名），不是目标目录；目录目标需要尾斜杠（避免 mod_dav 301 降级同 WebDAV）
+- 早期实现漏传 `method`，默认 GET 请求被路由到 `resourceGetHandler` → 返回目录列表 → `requestResource` 看到 200 OK 静默成功 → 用户感觉"没反应"
+- `src/lib/api/filebrowser.ts` 的 `copyResource` / `renameResource` 必须显式 `{ method: 'PATCH' }`
+- WebDAV 后端不受影响（用 `MOVE`/`COPY` 方法，单独的 `webDavMove`/`webDavCopy` 函数）
+
 ## FileBrowser file details
 
 - Long-press / three-dot menu → "详细信息" (between 移动到... and 删除)
