@@ -291,12 +291,23 @@ export interface JellyfinMediaSource {
   Bitrate?: number
 }
 
+export interface JellyfinClientCapabilities {
+  SupportsMediaControl?: boolean
+  PlayableMediaTypes?: string[]
+  SupportedCommands?: string[]
+  SupportsPersistentIdentifier?: boolean
+  SupportsSync?: boolean
+}
+
 export interface JellyfinSession {
   Id: string
   UserId: string
   UserName: string
   Client: string
   DeviceName: string
+  DeviceId?: string
+  DeviceType?: string
+  Capabilities?: JellyfinClientCapabilities
   NowPlayingItem?: {
     Id: string
     Name: string
@@ -304,6 +315,7 @@ export interface JellyfinSession {
     SeriesName?: string
     SeasonName?: string
     EpisodeTitle?: string
+    RunTimeTicks?: number
   }
   PlayState?: {
     PositionTicks?: number

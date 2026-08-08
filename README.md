@@ -41,8 +41,8 @@
 
 | 服务 | Screen | Store | 缓存 | 说明 |
 |---|---|---|---|---|
-| **Jellyfin** | `JellyfinScreen` | `jellyfinStore` + `jellyfinPlaybackStore` | `jellyfinCache` (5min) | 季/剧集/详情/直链播放 |
-| **Emby** | 复用 Jellyfin | 复用 | 复用 | 同 Jellyfin 协议，独立 service type |
+| **Jellyfin** | `JellyfinScreen` | `jellyfinStore` + `jellyfinPlaybackStore` | `jellyfinCache` (5min) | 季/剧集/详情/直链播放 / **DLNA 投屏** |
+| **Emby** | 复用 Jellyfin | 复用 | 复用 | 同 Jellyfin 协议，独立 service type，同样支持 **DLNA 投屏** |
 | **Navidrome** | `NavidromeScreen` | `navidromeStore` + `navidromePlaybackStore` + `navidromeLyricsStore` | `navidromeCache` | 专辑/歌曲/播放器/歌词/后台播放 |
 | **Audiobookshelf** | `AudiobookshelfScreen` | `audiobookshelfStore` + `audiobookshelfPlaybackStore` | - | 章节/书签/后台播放 |
 | **Talebook** | `TalebookScreen` | `talebookStore` + 本地浏览历史 | `talebookCache` | 服务页/书架/搜索/阅读，本地"最近浏览"列表 |
@@ -60,6 +60,18 @@
 - 启用的服务在 FileScreen 顶部以图标形式**横向自由滚动**显示，无数量限制
 - 点击展开为**内嵌卡片**（复用 Store）或**跳转原生 App**
 - 内嵌卡片与对应 Tab 共享同一 Store 单例
+
+### DLNA 投屏（Jellyfin / Emby）
+
+- 播放器底部控制栏点击投屏图标，弹出**设备列表**（服务端 `/Sessions` 中支持 `SupportsMediaControl` 且可播放视频的 UPnP/DLNA 设备）
+- 选中设备后由 **Jellyfin/Emby 服务端自带的 DLNA server 推流**，本 App 转为**遥控页面**：进度条（5s 轮询）、暂停/恢复、上下一集、退出投屏
+- **设备无需安装任何客户端** —— 只需与服务器同一局域网、支持 DLNA（SSDP 自动发现）即可
+- 未发现设备时提示"未发现可投屏设备"
+
+### 设置页服务排序
+
+- 服务列表中**长按**任意服务项即可拖拽调整顺序，拖动中的项以主题色描边高亮
+- 列表常驻显示"长按可拖拽更改排序"提示
 
 ### 主题 & 配置
 
@@ -123,7 +135,7 @@ cd android && .\gradlew.bat assembleRelease
 adb install -r android/app/build/outputs/apk/release/app-release.apk
 ```
 
-APK 产物：`android/app/build/outputs/apk/release/app-release.apk`（约 39 MB，仅 arm64-v8a）
+APK 产物：`android/app/build/outputs/apk/release/app-release.apk`（约 38 MB，仅 arm64-v8a）
 
 ---
 
@@ -184,7 +196,7 @@ android/app/src/main/java/com/unraiddash/app/
 
 ## 下一步计划
 
-v1.0.0 beta2 功能开发已完成，欢迎提出改进建议与新增服务页面的需求。
+v1.0.1 beta 功能开发已完成，欢迎提出改进建议与新增服务页面的需求。
 
 ---
 

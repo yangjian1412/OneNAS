@@ -27,6 +27,7 @@ import JellyfinEpisodeList from '@/components/jellyfin/JellyfinEpisodeList'
 import JellyfinItemDetail from '@/components/jellyfin/JellyfinItemDetail'
 import JellyfinDrawer from '@/components/jellyfin/JellyfinDrawer'
 import JellyfinPlayer from '@/components/jellyfin/JellyfinPlayer'
+import CastRemotePage from '@/components/CastRemotePage'
 import JellyfinServerSettings from '@/components/jellyfin/JellyfinServerSettings'
 import JellyfinPlaybackSettings from '@/components/jellyfin/JellyfinPlaybackSettings'
 
@@ -490,6 +491,10 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
           server={server!}
           onClose={() => setPlaying(null)}
         />
+      )}
+
+      {(
+        <CastRemotePage onClose={() => setPlaying(null)} />
       )}
     </View>
   )

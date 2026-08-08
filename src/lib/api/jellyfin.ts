@@ -154,6 +154,80 @@ export async function jellyfinGetSessions(
   return { ok: true, sessions: result.data ?? [] }
 }
 
+// ===== Cast / Remote control =====
+// Jellyfin 服务端内置 DLNA server，把流推给电视等 UPnP 设备。
+// 本 App 作为"控制端"，通过 /Sessions/{targetId}/Playing 让目标 session 接管播放。
+// 客户端不需要实现任何 UPnP/DLNA 协议。
+
+export interface JellyfinCastOptions {
+  itemId: string
+  startPositionTicks?: number
+  mediaSourceId?: string
+  audioStreamIndex?: number
+  subtitleStreamIndex?: number
+}
+
+export async function jellyfinCast(
+  server: JellyfinServerConfig,
+  targetSessionId: string,
+  options: JellyfinCastOptions,
+): Promise<{ ok: boolean; error?: string }> {
+  const params = new URLSearchParams()
+  params.set('ItemIds', options.itemId)
+  params.set('PlayCommand', 'PlayNow')
+  if (options.startPositionTicks != null) params.set('StartPositionTicks', String(options.startPositionTicks))
+  if (options.mediaSourceId) params.set('MediaSourceId', options.mediaSourceId)
+  if (options.audioStreamIndex != null) params.set('AudioStreamIndex', String(options.audioStreamIndex))
+  if (options.subtitleStreamIndex != null) params.set('SubtitleStreamIndex', String(options.subtitleStreamIndex))
+  const r = await jellyfinFetch<unknown>(server, `/Sessions/${encodeURIComponent(targetSessionId)}/Playing?${params.toString()}`, { method: 'POST' })
+  if (!r.ok) return { ok: false, error: r.error }
+  return { ok: true }
+}
+
+export type JellyfinPlaystateCommand =
+  | 'Stop'
+  | 'Pause'
+  | 'Unpause'
+  | 'NextTrack'
+  | 'PreviousTrack'
+  | 'Seek'
+  | 'Rewind'
+  | 'FastForward'
+  | 'PlayPause'
+  | 'Mute'
+  | 'Unmute'
+  | 'SetVolume'
+  | 'SetAudioStreamIndex'
+  | 'SetSubtitleStreamIndex'
+
+export async function jellyfinSendPlaystate(
+  server: JellyfinServerConfig,
+  targetSessionId: string,
+  command: JellyfinPlaystateCommand,
+  seekPositionTicks?: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const params = new URLSearchParams()
+  if (seekPositionTicks != null && (command === 'Seek' || command === 'Rewind' || command === 'FastForward')) {
+    params.set('SeekPositionTicks', String(seekPositionTicks))
+  }
+  const qs = params.toString()
+  const url = `/Sessions/${encodeURIComponent(targetSessionId)}/Playing/${command}${qs ? `?${qs}` : ''}`
+  const r = await jellyfinFetch<unknown>(server, url, { method: 'POST' })
+  if (!r.ok) return { ok: false, error: r.error }
+  return { ok: true }
+}
+
+export async function jellyfinGetSessionById(
+  server: JellyfinServerConfig,
+  sessionId: string,
+): Promise<{ ok: boolean; session?: JellyfinSession; error?: string }> {
+  const r = await jellyfinGetSessions(server)
+  if (!r.ok) return { ok: false, error: r.error }
+  const target = (r.sessions ?? []).find((s) => s.Id === sessionId)
+  if (!target) return { ok: false, error: 'session 已离线' }
+  return { ok: true, session: target }
+}
+
 export async function jellyfinRefreshLibrary(
   server: JellyfinServerConfig,
 ): Promise<{ ok: boolean; error?: string }> {

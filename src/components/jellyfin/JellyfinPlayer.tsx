@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { View, Text, TouchableOpacity, Modal, StyleSheet, Dimensions, ActivityIndicator, Platform, StatusBar, Animated, Alert } from 'react-native'
+import { View, Text, TouchableOpacity, Modal, StyleSheet, Dimensions, ActivityIndicator, Platform, StatusBar, Animated, Alert, AppState } from 'react-native'
 import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video'
 import * as ScreenOrientation from 'expo-screen-orientation'
 import type { Orientation } from 'expo-screen-orientation'
@@ -26,6 +26,8 @@ import { useImmersive } from '@/lib/immersive'
 import Icon from '@/components/Icon'
 import PlayerTrackSheet from './PlayerTrackSheet'
 import PlayerSpeedSheet from './PlayerSpeedSheet'
+import CastDeviceListModal from '@/components/CastDeviceListModal'
+import { useJellyfinCastStore } from '@/stores/jellyfinCastStore'
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
 const HIDE_CONTROLS_MS = 3000
@@ -56,6 +58,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const playSessionIdRef = useRef<string>(generatePlaySessionId())
   const reportedStoppedRef = useRef(false)
   const initialBrightnessRef = useRef<number | null>(null)
+  const lastBrightnessRef = useRef<number | null>(null)
   const initialVolumeRatioRef = useRef<number | null>(null)
   const initialOrientationRef = useRef<Orientation | null>(null)
   const fastScrubIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -89,6 +92,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
 
   const [trackSheetVisible, setTrackSheetVisible] = useState(false)
   const [speedSheetVisible, setSpeedSheetVisible] = useState(false)
+  const [castPickerVisible, setCastPickerVisible] = useState(false)
 
   const [brightnessPct, setBrightnessPct] = useState<number | null>(null)
   const [volumePct, setVolumePct] = useState<number | null>(null)
@@ -193,6 +197,8 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     }
   }, [item.Id, server, durationMs, playMethod, mediaSourceId, currentAudioIndex, currentSubtitleIndex, prefs.markPlayedThresholdPct, prefs.resetPositionThresholdPct])
 
+  useEffect(() => { handleCloseInternalRef.current = handleCloseInternal }, [handleCloseInternal])
+
   useEffect(() => {
     if (!visible) return
     const setup = async () => {
@@ -237,9 +243,23 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     let cancelled = false
     void (async () => {
       try {
-        const b = await Brightness.getBrightnessAsync()
-        if (!cancelled) initialBrightnessRef.current = b
-      } catch {}
+        const b =
+          typeof Brightness.getSystemBrightnessAsync === 'function'
+            ? await Brightness.getSystemBrightnessAsync()
+            : await Brightness.getBrightnessAsync()
+        if (!cancelled) {
+          initialBrightnessRef.current = b
+          lastBrightnessRef.current = b
+        }
+      } catch {
+        try {
+          const b = await Brightness.getBrightnessAsync()
+          if (!cancelled) {
+            initialBrightnessRef.current = b
+            lastBrightnessRef.current = b
+          }
+        } catch {}
+      }
       try {
         const [cur, max] = await Promise.all([getSystemCurrentVolume(), getSystemMaxVolume()])
         if (!cancelled) {
@@ -253,10 +273,14 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     })()
     return () => {
       cancelled = true
-      // Restore brightness/volume when leaving player
-      if (initialBrightnessRef.current != null) {
-        void Brightness.setBrightnessAsync(initialBrightnessRef.current).catch(() => {})
-      }
+      // Restore brightness/volume when leaving player: drop the window override so
+      // the app follows the system brightness again (incl. adaptive brightness).
+      void Brightness.restoreSystemBrightnessAsync().catch(() => {
+        if (initialBrightnessRef.current != null) {
+          return Brightness.setBrightnessAsync(initialBrightnessRef.current)
+        }
+        return Promise.resolve()
+      })
       if (initialVolumeRatioRef.current != null) {
         void setSystemVolume(initialVolumeRatioRef.current).catch(() => {})
       }
@@ -267,6 +291,22 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
       if (fastScrubIntervalRef.current) clearInterval(fastScrubIntervalRef.current)
     }
+  }, [visible])
+
+  // When the app goes to background, follow system brightness again for that moment;
+  // on foreground while still in player, re-apply the last user-selected brightness.
+  useEffect(() => {
+    if (!visible) return
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        void Brightness.restoreSystemBrightnessAsync().catch(() => {})
+      } else if (state === 'active') {
+        if (lastBrightnessRef.current != null) {
+          void Brightness.setBrightnessAsync(lastBrightnessRef.current).catch(() => {})
+        }
+      }
+    })
+    return () => sub.remove()
   }, [visible])
 
   const toggleLandscape = useCallback(async () => {
@@ -442,6 +482,24 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     showControls()
   }, [showControls])
 
+  const handleCloseInternalRef = useRef<() => void>(() => {})
+  const handleCastPick = useCallback((target: { Id: string; DeviceName: string; Client: string; [k: string]: unknown }) => {
+    if (!item?.Id) return
+    void useJellyfinCastStore.getState().startCast(server, target as any, item.Id, item.Name, {
+      startPositionTicks: msToTicks(positionMs),
+      mediaSourceId,
+      audioStreamIndex: currentAudioIndex >= 0 ? currentAudioIndex : undefined,
+      subtitleStreamIndex: currentSubtitleIndex >= 0 ? currentSubtitleIndex : undefined,
+    }).then((r) => {
+      if (!r.ok) {
+        Alert.alert('投屏失败', r.error ?? '未知错误')
+        return
+      }
+      setCastPickerVisible(false)
+      handleCloseInternalRef.current?.()
+    })
+  }, [server, item, positionMs, mediaSourceId, currentAudioIndex, currentSubtitleIndex])
+
   const onSelectAudio = useCallback((index: number) => {
     setCurrentAudioIndex(index)
     if (playerRef.current) {
@@ -562,6 +620,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
             // Brightness (up = brighter), relative to start
             const delta = -(e.translationY / brightnessVolumeRangePx)
             const ratio = Math.max(0, Math.min(1, startBrightnessRef.current + delta))
+            lastBrightnessRef.current = ratio
             void Brightness.setBrightnessAsync(ratio)
             setBrightnessPct(ratio)
             showOverlay(`亮度 ${Math.round(ratio * 100)}%`, ratio)
@@ -782,6 +841,9 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
                   </Text>
                 )}
               </View>
+              <TouchableOpacity onPress={() => { setCastPickerVisible(true); showControls() }} style={styles.topBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Icon name="connectedTv" size={22} color="#fff" />
+              </TouchableOpacity>
               <TouchableOpacity onPress={toggleLandscape} style={styles.topBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Icon name="rotate" size={22} color="#fff" />
               </TouchableOpacity>
@@ -865,6 +927,13 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
         player={playerRef.current}
         onClose={() => setSpeedSheetVisible(false)}
         onSelectSpeed={(s) => { setPlaybackRate(s); if (playerRef.current) playerRef.current.playbackRate = s }}
+      />
+
+      <CastDeviceListModal
+        visible={castPickerVisible}
+        server={server}
+        onClose={() => setCastPickerVisible(false)}
+        onPick={handleCastPick}
       />
       </GestureHandlerRootView>
     </Modal>

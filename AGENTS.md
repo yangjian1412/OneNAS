@@ -92,6 +92,22 @@ VM mutations (`vm { start/stop/reboot/pause/resume/forceStop/reset }`) schema �
 - 容器操作 POST `/api/endpoints/{id}/docker/containers/{cid}/{action}`（start/stop/restart/pause/unpause/kill）
 - 空态文案："未配置 Portainer" → 设置 → 服务设置 → NAS 管理 切换为 Docker（Portainer）并配置服务器
 
+## Jellyfin / Emby 投屏（DLNA via 服务端）
+
+- **本 App 是控制端，不实现 DLNA 协议**。Jellyfin/Emby 服务端内置 DLNA server，会自动发现 UPnP 设备并把流推给电视/盒子。客户端只负责选设备 + 转发控制指令
+- **API（`src/lib/api/jellyfin.ts`）**：
+  - `jellyfinGetSessions(server)`：拉 `/Sessions`，过滤 `Capabilities.SupportsMediaControl === true && PlayableMediaTypes.includes('Video')` 的设备
+  - `jellyfinCast(server, targetSessionId, { itemId, startPositionTicks?, mediaSourceId?, audioStreamIndex?, subtitleStreamIndex? })`：`POST /Sessions/{targetId}/Playing?ItemIds=...&PlayCommand=PlayNow&...`
+  - `jellyfinSendPlaystate(server, targetId, command, seekPositionTicks?)`：`POST /Sessions/{targetId}/Playing/{command}`（`Stop`/`Unpause`/`Pause`/`Seek`/`NextTrack`/`PreviousTrack`/...）
+  - `jellyfinGetSessionById(server, targetId)`：轮询 `/Sessions` 拉目标 session 的 `PlayState.PositionTicks`、`NowPlayingItem.RunTimeTicks` 与 `IsPaused`
+- **状态层（`src/stores/jellyfinCastStore.ts`）**：
+  - `useJellyfinCastStore` 单例，`castTarget / castItem / castPosition / castDuration / castPaused`
+  - 投屏时启动 5s 轮询；停止时调 `Stop` 并清空 store
+- **UI**：
+  - 入口：`JellyfinPlayer` 底部控制栏 `connectedTv` 图标按钮 → `CastDeviceListModal`（`src/components/CastDeviceListModal.tsx`）
+  - 投屏成功 → 关闭本地播放器 → `CastRemotePage`（`src/components/CastRemotePage.tsx`）接管显示，含进度条（5s 轮询刷新）+ 暂停/恢复/上下一集 + 退出投屏
+- **限制**：仅单集投屏；不注册本 App 为可被控 session（单向）；不实现 UPnP/DLNA 原生协议。**设备不需要安装 Jellyfin/Emby 客户端** —— 服务端自带的 DLNA server 通过 SSDP 在局域网发现 UPnP 播放设备（如电视/盒子），它们会作为普通 session 出现在 `/Sessions`（`Client: "DLNA"`）。前提是设备支持 DLNA 且与服务器**同一局域网**（SSDP 组播不能跨 VLAN/子网）
+
 ## FileBrowser copy/rename 必须 PATCH
 
 - 路由：`PATCH /api/resources/{path}?action=copy&destination=...` / `?action=rename&destination=...`（**不能 GET**！）
@@ -163,6 +179,13 @@ Alternative file backend. Switch via Settings → 服务设置 → 文件管理 
 ## Service page conventions (drawer + screen + store)
 
 Every service page (jellyfin, emby, navidrome, audiobookshelf, talebook, aria2, qbittorrent, openlist) MUST follow these conventions.
+
+## react-native-draggable-flatlist 使用注意
+
+- **整个页面只用一个 `NestableScrollContainer`** 包住整页内容，`NestableDraggableFlatList` 作为其后代直接渲染（不要再套一层 `NestableScrollContainer`）
+- **切忌嵌套第二个 `NestableScrollContainer`**：每个容器都创建独立的 Provider（`useSetupNestableScrollContextValue` 每次实例化独立 state/sharedValue），`NestableDraggableFlatList` 的 `setOuterScrollEnabled(false)` 只禁用它所在的**最近一层** ScrollView。若再套内层容器，内层 list 的 drag 把 scroll 禁用在内层，外层页面 ScrollView 仍可滚动 → 长按拖拽时**屏幕滚、目标不跟随**
+- 库自身语义：`NestableScrollContainer` 即 RNGH `ScrollView` + Provider，`NestableDraggableFlatList` 通过同一 context 读取 `outerScrollOffset/containerSize/scrollViewSize` 做 autoscroll，并切 `outerScrollEnabled` 协调外层 scroll。所以必须让列表与外层 ScrollView 共享同一个 Provider
+- 示例：`src/screens/SettingsScreen.tsx` 服务排序：整个 `header`/页面内容放进**一个** `<NestableScrollContainer>`，`sortMode` 时直接渲染 `<NestableDraggableFlatList data={rows} .../>`（无内层 ScrollView 包裹）
 
 ### Store contract (zustand)
 

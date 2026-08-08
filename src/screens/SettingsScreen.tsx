@@ -77,7 +77,6 @@ export default function SettingsScreen() {
   const [exportKey, setExportKey] = useState('0')
   const [importKey, setImportKey] = useState('0')
   const [importOpen, setImportOpen] = useState(false)
-  const [sortMode, setSortMode] = useState(false)
   const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -279,9 +278,8 @@ export default function SettingsScreen() {
     const isImmich = item.type === 'immich'
     return (
       <TouchableOpacity
-        activeOpacity={sortMode ? 0.7 : 0.85}
-        onLongPress={sortMode ? drag : undefined}
-        disabled={!sortMode && false}
+        activeOpacity={0.85}
+        onLongPress={drag}
         style={[styles.serviceRow, { backgroundColor: t.card, borderColor: isActive ? t.primary : t.border }]}
       >
         <Icon name={SERVICE_TYPE_ICONS[item.type] ?? 'folderEmpty'} size={28} style={styles.serviceIcon} />
@@ -358,40 +356,16 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.sortHeaderRow}>
-        <Text style={[styles.hint, { color: t.textMuted }]}>{sortMode ? '拖动调整顺序' : '点击右侧开关以调整顺序'}</Text>
-        <View style={styles.sortModeRow}>
-          <Text style={[styles.sortModeLabel, { color: t.textMuted }]}>排序</Text>
-          <Switch value={sortMode} onValueChange={setSortMode} trackColor={{ false: t.border, true: t.primary }} thumbColor="#fff" />
-        </View>
+        <Text style={[styles.hint, { color: t.textMuted }]}>长按可拖拽更改排序</Text>
       </View>
       <View style={styles.sectionGroup}>
-        {sortMode ? (
-          <NestableDraggableFlatList
-            data={rows}
-            keyExtractor={(item) => item.key}
-            renderItem={renderService}
-            onDragEnd={handleDragEnd}
-            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          />
-        ) : (
-          rows.map((item) => (
-            <View key={item.key} style={[styles.serviceRow, { backgroundColor: t.card, borderColor: t.border, marginBottom: 8 }]}>
-              <Icon name={SERVICE_TYPE_ICONS[item.type] ?? 'folderEmpty'} size={28} style={styles.serviceIcon} />
-              <View style={styles.serviceInfo}>
-                <Text style={[styles.serviceName, { color: t.text }]} numberOfLines={1}>{item.service?.name || SERVICE_TYPE_LABELS[item.type]}</Text>
-                <Text style={[styles.serviceHint, { color: t.textMuted }]}>{(item.service?.showInTopBar ?? false) ? '顶部栏已显示' : '顶部栏已隐藏'}</Text>
-              </View>
-              {item.type === 'immich' ? (
-                <View style={styles.configButtonPlaceholder} />
-              ) : (
-                <TouchableOpacity style={[styles.configButton, { borderColor: t.border }]} onPress={() => openServiceModal(item)}>
-                  <Text style={[styles.configText, { color: t.primary }]}>配置</Text>
-                </TouchableOpacity>
-              )}
-              <Switch value={item.service?.showInTopBar ?? false} onValueChange={() => toggleTopBar(item)} trackColor={{ false: t.border, true: t.primary }} thumbColor="#fff" />
-            </View>
-          ))
-        )}
+        <NestableDraggableFlatList
+          data={rows}
+          keyExtractor={(item) => item.key}
+          renderItem={renderService}
+          onDragEnd={handleDragEnd}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+        />
       </View>
 
       <Text style={[styles.sectionLabel, { color: t.text }]}>标签设置</Text>
@@ -452,7 +426,7 @@ export default function SettingsScreen() {
       <View style={[styles.card, { backgroundColor: t.card }]}>
         <View style={{ paddingVertical: 14, paddingHorizontal: 14 }}>
           <Text style={{ color: t.text, fontSize: 14, fontWeight: '700' }}>One NAS</Text>
-          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版本 v1.0.0beta2</Text>
+          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版本 v1.0.1beta</Text>
           <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版权所有 © 六分仪</Text>
         </View>
       </View>
@@ -804,9 +778,7 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 16, fontWeight: '700', paddingHorizontal: 16, marginTop: 24, marginBottom: 10 },
   sectionGroup: { paddingHorizontal: 16, marginBottom: 4 },
   hint: { fontSize: 12, flex: 1, marginRight: 8 },
-  sortHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 8 },
-  sortModeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sortModeLabel: { fontSize: 12, fontWeight: '600' },
+  sortHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8 },
   card: { marginHorizontal: 16, marginBottom: 12, borderRadius: 14, padding: 14 },
   serverCard: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, minHeight: 64, marginBottom: 8 },
   serviceRow: { borderWidth: 1, borderRadius: 12, minHeight: 64, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' },
