@@ -1,27 +1,38 @@
 import { create } from 'zustand'
-import { JellyfinServerConfig, JellyfinSession } from '@/types'
-import { jellyfinCast, jellyfinSendPlaystate, jellyfinGetSessionById } from '@/lib/api/jellyfin'
+import { JellyfinServerConfig } from '@/types'
+import type { UpnpDevice, PositionInfo, PlaybackState } from '@/lib/upnp/types'
+import { setAVTransportURI, play as upnpPlay, pause as upnpPause, stop as upnpStop, seek as upnpSeek, getPositionInfo, getTransportInfo } from '@/lib/upnp/discovery'
+import { buildStreamUrl } from '@/lib/upnp/streamUrl'
+import { buildDidlLite, formatDuration } from '@/lib/upnp/didl'
 
 interface CastState {
   server: JellyfinServerConfig | null
-  target: JellyfinSession | null
+  /** 当前投屏到的电视（UPnP MediaRenderer） */
+  target: UpnpDevice | null
   itemId: string | null
   itemName: string | null
-  positionTicks: number
-  durationTicks: number
+  itemDurationSeconds: number
+  /** 当前位置（秒） */
+  positionSeconds: number
+  /** 当前是否暂停 */
   paused: boolean
   error: string | null
   startedAt: number
 
-  startCast: (server: JellyfinServerConfig, target: JellyfinSession, itemId: string, itemName: string, opts?: { startPositionTicks?: number; mediaSourceId?: string; audioStreamIndex?: number; subtitleStreamIndex?: number }) => Promise<{ ok: boolean; error?: string }>
+  /** 调 setAVTransportURI + Play 让电视开始播放 Jellyfin 流 */
+  startCast: (server: JellyfinServerConfig, target: UpnpDevice, itemId: string, itemName: string, opts?: {
+    startPositionSeconds?: number
+    durationSeconds?: number
+  }) => Promise<{ ok: boolean; error?: string }>
+  /** 停止投屏（电视端 Stop + 清 store） */
   stopCast: () => Promise<void>
+  /** 轮询位置/状态 */
   refresh: () => Promise<void>
   pause: () => Promise<void>
   unpause: () => Promise<void>
-  stop: () => Promise<void>
-  seek: (positionTicks: number) => Promise<void>
-  next: () => Promise<void>
-  previous: () => Promise<void>
+  seek: (positionSeconds: number) => Promise<void>
+  /** 切换到另一项（同一 itemId 内章节/上下集：再次 setAVTransportURI） */
+  switchItem: (itemId: string, itemName: string, startPositionSeconds?: number, durationSeconds?: number) => Promise<void>
   clear: () => void
 }
 
@@ -37,97 +48,150 @@ export const useJellyfinCastStore = create<CastState>((set, get) => ({
   target: null,
   itemId: null,
   itemName: null,
-  positionTicks: 0,
-  durationTicks: 0,
+  itemDurationSeconds: 0,
+  positionSeconds: 0,
   paused: false,
   error: null,
   startedAt: 0,
 
   startCast: async (server, target, itemId, itemName, opts) => {
-    set({ server, target, itemId, itemName, error: null, positionTicks: 0, durationTicks: 0, paused: false, startedAt: Date.now() })
-    const r = await jellyfinCast(server, target.Id, {
-      itemId,
-      startPositionTicks: opts?.startPositionTicks,
-      mediaSourceId: opts?.mediaSourceId,
-      audioStreamIndex: opts?.audioStreamIndex,
-      subtitleStreamIndex: opts?.subtitleStreamIndex,
+    set({
+      server, target, itemId, itemName,
+      itemDurationSeconds: opts?.durationSeconds ?? 0,
+      error: null, positionSeconds: opts?.startPositionSeconds ?? 0, paused: false,
+      startedAt: Date.now(),
     })
-    if (!r.ok) {
-      set({ error: r.error ?? '投屏失败' })
-      return { ok: false, error: r.error }
+    try {
+      const streamUrl = buildStreamUrl(server, itemId)
+      const metadata = buildDidlLite({
+        itemId,
+        title: itemName,
+        itemClass: 'object.item.videoItem.movie',
+        duration: formatDuration(opts?.durationSeconds ?? 0),
+      })
+      await setAVTransportURI(target.controlUrl, streamUrl, metadata)
+      await upnpPlay(target.controlUrl)
+      // 起轮询
+      startPolling(get().refresh)
+      return { ok: true }
+    } catch (e: any) {
+      const msg = e?.message ?? '投屏失败'
+      set({ error: msg })
+      get().clear()
+      return { ok: false, error: msg }
     }
-    startPolling(get().refresh)
-    return { ok: true }
+  },
+
+  switchItem: async (itemId, itemName, startPositionSeconds, durationSeconds) => {
+    const s = get()
+    if (!s.server || !s.target) return
+    try {
+      const streamUrl = buildStreamUrl(s.server, itemId)
+      const metadata = buildDidlLite({
+        itemId,
+        title: itemName,
+        itemClass: 'object.item.videoItem.movie',
+        duration: formatDuration(durationSeconds ?? s.itemDurationSeconds),
+      })
+      await setAVTransportURI(s.target.controlUrl, streamUrl, metadata)
+      await upnpPlay(s.target.controlUrl)
+      set({
+        itemId, itemName,
+        itemDurationSeconds: durationSeconds ?? s.itemDurationSeconds,
+        positionSeconds: startPositionSeconds ?? 0,
+        paused: false,
+        error: null,
+        startedAt: Date.now(),
+      })
+    } catch (e: any) {
+      set({ error: e?.message ?? '切换失败' })
+    }
   },
 
   stopCast: async () => {
     const s = get()
-    if (s.server && s.target) {
-      try { await jellyfinSendPlaystate(s.server, s.target.Id, 'Stop') } catch { /* ignore */ }
+    if (s.target) {
+      try { await upnpStop(s.target.controlUrl) } catch { /* ignore */ }
     }
     stopPolling()
     get().clear()
   },
 
-  clear: () => set({ server: null, target: null, itemId: null, itemName: null, positionTicks: 0, durationTicks: 0, paused: false, error: null, startedAt: 0 }),
+  clear: () => set({
+    server: null, target: null, itemId: null, itemName: null,
+    itemDurationSeconds: 0, positionSeconds: 0, paused: false, error: null, startedAt: 0,
+  }),
 
   refresh: async () => {
     const s = get()
-    if (!s.server || !s.target) return
-    const r = await jellyfinGetSessionById(s.server, s.target.Id)
-    if (!r.ok || !r.session) {
-      // session 已离线，保留 last state 以提示用户
-      set({ error: r.error ?? 'session 已离线' })
-      return
+    if (!s.target) return
+    try {
+      const [pos, info] = await Promise.all([
+        getPositionInfo(s.target.controlUrl).catch(() => null),
+        getTransportInfo(s.target.controlUrl).catch(() => null),
+      ])
+      const updates: Partial<CastState> = { error: null }
+      if (pos) {
+        updates.positionSeconds = pos.positionSeconds
+        if (pos.durationSeconds > 0 && (s.itemDurationSeconds === 0 || Math.abs(pos.durationSeconds - s.itemDurationSeconds) > 2)) {
+          updates.itemDurationSeconds = pos.durationSeconds
+        }
+      }
+      if (info) {
+        const mapped = mapPlaybackState(info.state)
+        updates.paused = mapped === 'PAUSED'
+      }
+      set(updates)
+    } catch (e: any) {
+      // 单次轮询失败不打断
     }
-    const session = r.session
-    const ps = session.PlayState
-    set({
-      target: session,
-      positionTicks: ps?.PositionTicks ?? 0,
-      paused: ps?.IsPaused ?? false,
-      durationTicks: session.NowPlayingItem?.RunTimeTicks ?? s.durationTicks,
-      error: null,
-    })
   },
 
   pause: async () => {
     const s = get()
-    if (!s.server || !s.target) return
-    await jellyfinSendPlaystate(s.server, s.target.Id, 'Pause')
-    set({ paused: true })
+    if (!s.target) return
+    try {
+      await upnpPause(s.target.controlUrl)
+      set({ paused: true })
+    } catch (e: any) {
+      set({ error: e?.message ?? '暂停失败' })
+    }
   },
 
   unpause: async () => {
     const s = get()
-    if (!s.server || !s.target) return
-    await jellyfinSendPlaystate(s.server, s.target.Id, 'Unpause')
-    set({ paused: false })
+    if (!s.target) return
+    try {
+      await upnpPlay(s.target.controlUrl)
+      set({ paused: false })
+    } catch (e: any) {
+      set({ error: e?.message ?? '继续失败' })
+    }
   },
 
-  stop: async () => {
-    await get().stopCast()
-  },
-
-  seek: async (positionTicks) => {
+  seek: async (positionSeconds) => {
     const s = get()
-    if (!s.server || !s.target) return
-    await jellyfinSendPlaystate(s.server, s.target.Id, 'Seek', positionTicks)
-    set({ positionTicks })
-  },
-
-  next: async () => {
-    const s = get()
-    if (!s.server || !s.target) return
-    await jellyfinSendPlaystate(s.server, s.target.Id, 'NextTrack')
-  },
-
-  previous: async () => {
-    const s = get()
-    if (!s.server || !s.target) return
-    await jellyfinSendPlaystate(s.server, s.target.Id, 'PreviousTrack')
+    if (!s.target) return
+    try {
+      await upnpSeek(s.target.controlUrl, positionSeconds)
+      set({ positionSeconds })
+    } catch (e: any) {
+      set({ error: e?.message ?? '跳转失败' })
+    }
   },
 }))
+
+function mapPlaybackState(s: string): PlaybackState {
+  switch ((s ?? '').toUpperCase()) {
+    case 'PLAYING': return 'PLAYING'
+    case 'PAUSED_PLAYBACK':
+    case 'PAUSED': return 'PAUSED'
+    case 'STOPPED': return 'STOPPED'
+    case 'TRANSITIONING': return 'TRANSITIONING'
+    case 'NO_MEDIA_PRESENT': return 'NO_MEDIA_PRESENT'
+    default: return 'UNKNOWN'
+  }
+}
 
 export function clearJellyfinCastOnLogout() {
   stopPolling()

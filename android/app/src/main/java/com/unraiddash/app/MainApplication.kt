@@ -27,6 +27,8 @@ class MainApplication : Application(), ReactApplication {
           add(SystemVolumePackage())
           add(PackageManagerPackage())
           add(NavidromeLyricsPackage())
+          add(UpnpPackage())
+          add(QbAuthPackage())
         }
     )
   }

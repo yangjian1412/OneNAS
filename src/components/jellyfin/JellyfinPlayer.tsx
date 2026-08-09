@@ -28,6 +28,7 @@ import PlayerTrackSheet from './PlayerTrackSheet'
 import PlayerSpeedSheet from './PlayerSpeedSheet'
 import CastDeviceListModal from '@/components/CastDeviceListModal'
 import { useJellyfinCastStore } from '@/stores/jellyfinCastStore'
+import type { UpnpDevice } from '@/lib/upnp/types'
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
 const HIDE_CONTROLS_MS = 3000
@@ -483,13 +484,11 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   }, [showControls])
 
   const handleCloseInternalRef = useRef<() => void>(() => {})
-  const handleCastPick = useCallback((target: { Id: string; DeviceName: string; Client: string; [k: string]: unknown }) => {
+  const handleCastPick = useCallback((target: UpnpDevice) => {
     if (!item?.Id) return
-    void useJellyfinCastStore.getState().startCast(server, target as any, item.Id, item.Name, {
-      startPositionTicks: msToTicks(positionMs),
-      mediaSourceId,
-      audioStreamIndex: currentAudioIndex >= 0 ? currentAudioIndex : undefined,
-      subtitleStreamIndex: currentSubtitleIndex >= 0 ? currentSubtitleIndex : undefined,
+    void useJellyfinCastStore.getState().startCast(server, target, item.Id, item.Name, {
+      startPositionSeconds: positionMs / 1000,
+      durationSeconds: durationMs / 1000,
     }).then((r) => {
       if (!r.ok) {
         Alert.alert('投屏失败', r.error ?? '未知错误')
@@ -498,7 +497,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       setCastPickerVisible(false)
       handleCloseInternalRef.current?.()
     })
-  }, [server, item, positionMs, mediaSourceId, currentAudioIndex, currentSubtitleIndex])
+  }, [server, item, positionMs, durationMs])
 
   const onSelectAudio = useCallback((index: number) => {
     setCurrentAudioIndex(index)

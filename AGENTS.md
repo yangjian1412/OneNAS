@@ -92,21 +92,33 @@ VM mutations (`vm { start/stop/reboot/pause/resume/forceStop/reset }`) schema �
 - 容器操作 POST `/api/endpoints/{id}/docker/containers/{cid}/{action}`（start/stop/restart/pause/unpause/kill）
 - 空态文案："未配置 Portainer" → 设置 → 服务设置 → NAS 管理 切换为 Docker（Portainer）并配置服务器
 
-## Jellyfin / Emby 投屏（DLNA via 服务端）
+## Jellyfin / Emby 投屏（原生 SSDP + UPnP，不依赖服务端 DLNA 插件）
 
-- **本 App 是控制端，不实现 DLNA 协议**。Jellyfin/Emby 服务端内置 DLNA server，会自动发现 UPnP 设备并把流推给电视/盒子。客户端只负责选设备 + 转发控制指令
-- **API（`src/lib/api/jellyfin.ts`）**：
-  - `jellyfinGetSessions(server)`：拉 `/Sessions`，过滤 `Capabilities.SupportsMediaControl === true && PlayableMediaTypes.includes('Video')` 的设备
-  - `jellyfinCast(server, targetSessionId, { itemId, startPositionTicks?, mediaSourceId?, audioStreamIndex?, subtitleStreamIndex? })`：`POST /Sessions/{targetId}/Playing?ItemIds=...&PlayCommand=PlayNow&...`
-  - `jellyfinSendPlaystate(server, targetId, command, seekPositionTicks?)`：`POST /Sessions/{targetId}/Playing/{command}`（`Stop`/`Unpause`/`Pause`/`Seek`/`NextTrack`/`PreviousTrack`/...）
-  - `jellyfinGetSessionById(server, targetId)`：轮询 `/Sessions` 拉目标 session 的 `PlayState.PositionTicks`、`NowPlayingItem.RunTimeTicks` 与 `IsPaused`
+- **本 App 是控制端 + 客户端 UPnP controller**，不再走 Jellyfin/Emby 服务端的 DLNA server。即使 Jellyfin 与电视在不同网段（SSDP 组播不能跨 VLAN），只要手机与电视在同一 LAN 即可投屏。
+- **原生模块（`android/app/src/main/java/com/unraiddash/app/UpnpModule.kt`）**：
+  - `discoverRenderers(timeoutMs)`：UDP 组播 `M-SEARCH * HTTP/1.1 / ST:ssdp:all`（端口 1900，目标组播 `239.255.255.250`），收集 SSDP 响应里 `Location` 指向的 UPnP device description URL，逐个 GET XML 解析出 `friendlyName`、`manufacturer`、`modelName`、`UDN`、`AVTransport` service 的 `controlURL`（拼上 `URLBase` 拿到绝对 URL）
+  - `setAVTransportURI(controlUrl, currentUri, metadataXml?)` → SOAP `SetAVTransportURI`
+  - `play/pause/stop/seek(controlUrl, [targetSeconds])` → 对应 SOAP action
+  - `getTransportInfo(controlUrl)` → SOAP `GetTransportInfo`，返回 `CurrentTransportState`
+  - `getPositionInfo(controlUrl)` → SOAP `GetPositionInfo`，返回 `RelTime` / `TrackDuration`
+  - **必须**在发送组播前 `WifiManager.createMulticastLock("upnp:multicast").acquire()`，否则 Android 默认丢掉 `239.255.255.250` 包
+- **JS 层（`src/lib/upnp/`）**：
+  - `discovery.ts` 包装 `NativeModules.UpnpModule`（自动 fallback 检查 `isAvailable()`）
+  - `didl.ts` 拼 DIDL-Lite XML（`buildDidlLite({ itemId, title, itemClass, duration, albumArtUri })` + `formatDuration(seconds)`）
+  - `streamUrl.ts` 构造 Jellyfin `/Videos/{itemId}/stream?Static=true&DeviceId=one-nas-dlna-tv&api_key={token}` 给电视直连拉流
 - **状态层（`src/stores/jellyfinCastStore.ts`）**：
-  - `useJellyfinCastStore` 单例，`castTarget / castItem / castPosition / castDuration / castPaused`
-  - 投屏时启动 5s 轮询；停止时调 `Stop` 并清空 store
+  - `target: UpnpDevice`（不再存 JellyfinSession）
+  - `startCast(server, target, itemId, itemName, opts?)`：build 流 URL + DIDL-Lite → `setAVTransportURI` → `play` → 启 5s 轮询
+  - `refresh()` 轮询 `getPositionInfo` + `getTransportInfo` 同步位置/暂停状态
+  - `pause / unpause / seek / stopCast` 直接调 SOAP；`stopCast` 同时停电视并清 store
 - **UI**：
-  - 入口：`JellyfinPlayer` 底部控制栏 `connectedTv` 图标按钮 → `CastDeviceListModal`（`src/components/CastDeviceListModal.tsx`）
-  - 投屏成功 → 关闭本地播放器 → `CastRemotePage`（`src/components/CastRemotePage.tsx`）接管显示，含进度条（5s 轮询刷新）+ 暂停/恢复/上下一集 + 退出投屏
-- **限制**：仅单集投屏；不注册本 App 为可被控 session（单向）；不实现 UPnP/DLNA 原生协议。**设备不需要安装 Jellyfin/Emby 客户端** —— 服务端自带的 DLNA server 通过 SSDP 在局域网发现 UPnP 播放设备（如电视/盒子），它们会作为普通 session 出现在 `/Sessions`（`Client: "DLNA"`）。前提是设备支持 DLNA 且与服务器**同一局域网**（SSDP 组播不能跨 VLAN/子网）
+  - 入口：`JellyfinPlayer` 顶部 `connectedTv` 图标按钮 → `CastDeviceListModal`（`src/components/CastDeviceListModal.tsx`）mount 时 `discoverRenderers(5000)` 扫电视
+  - 投屏成功 → 关闭本地播放器 → `CastRemotePage`（`src/components/CastRemotePage.tsx`）接管显示，含进度条（5s 轮询刷新）+ 暂停/恢复 + 退出投屏
+- **网络前提**：
+  - 手机与电视**同一 LAN**（手机能 SSDP 发现电视）
+  - 电视能访问 Jellyfin 服务端（通常 Jellyfin 通过 Lucky 公网域名/反代暴露，电视直接走该 URL 拉流）
+- **流 URL 安全**：api_key 作为 query 参数传给电视；仅本机电视/盒子可见（已确认接受此 trade-off）。如未来需要更严隔离可改用 Jellyfin 的"短时 token + X-Emby-Token header"方案，但需要电视支持自定义 HTTP header（多数电视不行）
+- **限制**：不实现 UPnP event subscription（用 polling 代替）；仅控制播放/暂停/跳转，不实现字幕/音轨/码率切换；`api_key` 在 URL 里明文（仅本机 LAN 范围）
 
 ## FileBrowser copy/rename 必须 PATCH
 

@@ -155,78 +155,9 @@ export async function jellyfinGetSessions(
 }
 
 // ===== Cast / Remote control =====
-// Jellyfin 服务端内置 DLNA server，把流推给电视等 UPnP 设备。
-// 本 App 作为"控制端"，通过 /Sessions/{targetId}/Playing 让目标 session 接管播放。
-// 客户端不需要实现任何 UPnP/DLNA 协议。
-
-export interface JellyfinCastOptions {
-  itemId: string
-  startPositionTicks?: number
-  mediaSourceId?: string
-  audioStreamIndex?: number
-  subtitleStreamIndex?: number
-}
-
-export async function jellyfinCast(
-  server: JellyfinServerConfig,
-  targetSessionId: string,
-  options: JellyfinCastOptions,
-): Promise<{ ok: boolean; error?: string }> {
-  const params = new URLSearchParams()
-  params.set('ItemIds', options.itemId)
-  params.set('PlayCommand', 'PlayNow')
-  if (options.startPositionTicks != null) params.set('StartPositionTicks', String(options.startPositionTicks))
-  if (options.mediaSourceId) params.set('MediaSourceId', options.mediaSourceId)
-  if (options.audioStreamIndex != null) params.set('AudioStreamIndex', String(options.audioStreamIndex))
-  if (options.subtitleStreamIndex != null) params.set('SubtitleStreamIndex', String(options.subtitleStreamIndex))
-  const r = await jellyfinFetch<unknown>(server, `/Sessions/${encodeURIComponent(targetSessionId)}/Playing?${params.toString()}`, { method: 'POST' })
-  if (!r.ok) return { ok: false, error: r.error }
-  return { ok: true }
-}
-
-export type JellyfinPlaystateCommand =
-  | 'Stop'
-  | 'Pause'
-  | 'Unpause'
-  | 'NextTrack'
-  | 'PreviousTrack'
-  | 'Seek'
-  | 'Rewind'
-  | 'FastForward'
-  | 'PlayPause'
-  | 'Mute'
-  | 'Unmute'
-  | 'SetVolume'
-  | 'SetAudioStreamIndex'
-  | 'SetSubtitleStreamIndex'
-
-export async function jellyfinSendPlaystate(
-  server: JellyfinServerConfig,
-  targetSessionId: string,
-  command: JellyfinPlaystateCommand,
-  seekPositionTicks?: number,
-): Promise<{ ok: boolean; error?: string }> {
-  const params = new URLSearchParams()
-  if (seekPositionTicks != null && (command === 'Seek' || command === 'Rewind' || command === 'FastForward')) {
-    params.set('SeekPositionTicks', String(seekPositionTicks))
-  }
-  const qs = params.toString()
-  const url = `/Sessions/${encodeURIComponent(targetSessionId)}/Playing/${command}${qs ? `?${qs}` : ''}`
-  const r = await jellyfinFetch<unknown>(server, url, { method: 'POST' })
-  if (!r.ok) return { ok: false, error: r.error }
-  return { ok: true }
-}
-
-export async function jellyfinGetSessionById(
-  server: JellyfinServerConfig,
-  sessionId: string,
-): Promise<{ ok: boolean; session?: JellyfinSession; error?: string }> {
-  const r = await jellyfinGetSessions(server)
-  if (!r.ok) return { ok: false, error: r.error }
-  const target = (r.sessions ?? []).find((s) => s.Id === sessionId)
-  if (!target) return { ok: false, error: 'session 已离线' }
-  return { ok: true, session: target }
-}
+// 原 v1.0.1beta 的 Jellyfin/Emby DLNA 投屏（经服务端 /Sessions）已废弃。
+// 现在改为手机端原生 SSDP + UPnP 直接控制电视（src/lib/upnp/*），
+// 不依赖 Jellyfin/Emby 服务端 DLNA server / 插件，电视与 Jellyfin 跨网段也能投屏。
 
 export async function jellyfinRefreshLibrary(
   server: JellyfinServerConfig,

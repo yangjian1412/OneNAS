@@ -61,9 +61,40 @@ const STATE_LABELS: Record<string, string> = {
   downloading: '下载中',
   uploading: '上传中',
   paused: '已暂停',
+  pausedDL: '已暂停(下载)',
+  pausedUP: '已暂停(上传)',
+  // qB 官方 5.x 的"停止"操作产生这些 state（区别于"暂停"）
+  stopped: '已停止',
+  stoppedDL: '已停止(下载)',
+  stoppedUP: '已停止(上传)',
+  stopping: '停止中',
+  pausing: '暂停中',
+  stalledDL: '等待下载',
+  stalledUP: '等待上传',
+  stalled: '等待中',
+  queuedDL: '排队下载',
+  queuedUP: '排队上传',
+  forcedDL: '强制下载',
+  forcedUP: '强制上传',
+  metaDL: '获取元数据',
+  checkingDL: '校验中',
+  checkingUP: '校验中',
   completed: '已完成',
   error: '错误',
   missingFiles: '文件丢失',
+}
+
+// paused + stopped 都视为"非活跃"，按钮统一显示"开始"
+// 这两种 state 在用户视角都是 task 没在跑，行为上都能 resume
+function isPausedState(s: string): boolean {
+  if (!s) return false
+  const x = s.toLowerCase()
+  return (
+    x === 'paused' ||
+    x === 'pauseddl' || x === 'pausedup' ||
+    x === 'stopped' || x === 'stoppeddl' || x === 'stoppedup' ||
+    x === 'stopping' || x === 'pausing'
+  )
 }
 
 export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
@@ -147,7 +178,7 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
           { key: 'all', label: `全部 (${filter === 'all' ? tasks.length : '...'})` },
           { key: 'downloading', label: `下载 (${filter === 'downloading' ? tasks.length : '...'})` },
           { key: 'completed', label: `完成 (${filter === 'completed' ? tasks.length : '...'})` },
-          { key: 'paused', label: `暂停 (${filter === 'paused' ? tasks.length : '...'})` },
+          { key: 'paused', label: `停止 (${filter === 'paused' ? tasks.length : '...'})` },
         ] as const).map((it) => (
           <TouchableOpacity key={it.key} style={[styles.tab, filter === it.key && { borderBottomColor: t.primary }]} onPress={() => setFilter(it.key as any)}>
             <Text style={[styles.tabText, { color: filter === it.key ? t.primary : t.textMuted }]}>{it.label}</Text>
@@ -304,7 +335,7 @@ function TaskRow({ task, t, onPause, onResume, onDelete, onRecheck }: {
   onRecheck: () => void
 }) {
   const pct = Math.round((task.progress || 0) * 100)
-  const isPaused = task.state === 'paused'
+  const isPaused = isPausedState(task.state)
   return (
     <View style={[styles.taskCard, { backgroundColor: t.card, borderColor: t.border }]}>
       <Text style={[styles.taskName, { color: t.text }]} numberOfLines={2}>{task.name}</Text>
@@ -323,9 +354,11 @@ function TaskRow({ task, t, onPause, onResume, onDelete, onRecheck }: {
       </View>
       <View style={styles.taskActions}>
         {isPaused ? (
-          <TouchableOpacity onPress={onResume} style={[styles.btn, { backgroundColor: t.primary }]}><Text style={[styles.btnText, { color: '#fff' }]}>继续</Text></TouchableOpacity>
+          // paused 或 stopped 状态都显示"开始"按钮（底层都是调 resume API）
+          <TouchableOpacity onPress={onResume} style={[styles.btn, { backgroundColor: t.primary }]}><Text style={[styles.btnText, { color: '#fff' }]}>开始</Text></TouchableOpacity>
         ) : (
-          <TouchableOpacity onPress={onPause} style={[styles.btn, { backgroundColor: t.border }]}><Text style={[styles.btnText, { color: t.text }]}>暂停</Text></TouchableOpacity>
+          // 活跃下载/上传任务显示"停止"按钮（与 qB Web UI 一致）
+          <TouchableOpacity onPress={onPause} style={[styles.btn, { backgroundColor: t.border }]}><Text style={[styles.btnText, { color: t.text }]}>停止</Text></TouchableOpacity>
         )}
         <TouchableOpacity onPress={onRecheck} style={[styles.btn, { backgroundColor: t.border }]}><Text style={[styles.btnText, { color: t.text }]}>校验</Text></TouchableOpacity>
         <TouchableOpacity onPress={onDelete} style={[styles.btn, { backgroundColor: t.border }]}><Text style={[styles.btnText, { color: '#c0392b' }]}>删除</Text></TouchableOpacity>

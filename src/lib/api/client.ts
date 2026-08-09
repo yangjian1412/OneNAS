@@ -56,7 +56,9 @@ export function apiFetch<T>(
           const data = text ? JSON.parse(text) : null
           resolve({ ok: true, data, headers })
         } catch (err: any) {
-          resolve({ ok: false, error: err.message || 'JSON 解析失败', headers })
+          // 2xx 响应 body 不是 JSON（qBittorrent /api/v2/auth/login 返回 "Ok." 等纯文本）时，
+          // 把原始 text 作为 data 返回，让调用方继续走 Set-Cookie / body 校验
+          resolve({ ok: true, data: text ?? null, headers })
         }
       }
 

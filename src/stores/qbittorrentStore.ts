@@ -105,7 +105,7 @@ export const useQBitStore = create<QBitState>((set, get) => {
       if (!server) return
       set({ isLoading: true, error: null })
       const tasks = await qbitList(server, get().filter)
-      set({ tasks, isLoading: false })
+      set({ tasks, isLoading: false, error: null })
     },
 
     refresh: async () => { await get().loadHome() },

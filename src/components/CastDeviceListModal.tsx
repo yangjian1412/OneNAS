@@ -3,46 +3,36 @@ import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } fr
 import FullScreenModal from '@/components/FullScreenModal'
 import Icon from '@/components/Icon'
 import { useTheme } from '@/lib/theme'
-import { JellyfinServerConfig, JellyfinSession } from '@/types'
-import { jellyfinGetSessions } from '@/lib/api/jellyfin'
+import { JellyfinServerConfig } from '@/types'
+import type { UpnpDevice } from '@/lib/upnp/types'
+import { discoverRenderers } from '@/lib/upnp/discovery'
 
 interface Props {
   visible: boolean
   server: JellyfinServerConfig
-  /** 自己的 session id（通常 'one-nas-android'），用于过滤"投屏到自己" */
-  ownSessionId?: string
   onClose: () => void
-  onPick: (target: JellyfinSession) => void
+  onPick: (target: UpnpDevice) => void
 }
 
-export default function CastDeviceListModal({ visible, server, ownSessionId, onClose, onPick }: Props) {
+export default function CastDeviceListModal({ visible, server, onClose, onPick }: Props) {
   const t = useTheme()
   const [loading, setLoading] = useState(false)
-  const [sessions, setSessions] = useState<JellyfinSession[]>([])
+  const [devices, setDevices] = useState<UpnpDevice[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const r = await jellyfinGetSessions(server)
-    if (!r.ok) {
-      setError(r.error ?? '加载设备列表失败')
-      setSessions([])
-    } else {
-      const all = r.sessions ?? []
-      const filtered = all.filter((s) => {
-        if (ownSessionId && s.Id === ownSessionId) return false
-        const caps = s.Capabilities
-        if (!caps) return false
-        if (caps.SupportsMediaControl !== true) return false
-        const playable = caps.PlayableMediaTypes ?? []
-        if (!playable.includes('Video')) return false
-        return true
-      })
-      setSessions(filtered)
+    try {
+      const list = await discoverRenderers(5000)
+      setDevices(list)
+    } catch (e: any) {
+      setError(e?.message ?? 'UPnP 发现失败')
+      setDevices([])
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-  }, [server, ownSessionId])
+  }, [])
 
   useEffect(() => {
     if (visible) { void load() }
@@ -60,8 +50,10 @@ export default function CastDeviceListModal({ visible, server, ownSessionId, onC
             </TouchableOpacity>
           </View>
         ) : loading ? (
-          <View style={styles.center}><ActivityIndicator color={t.primary} /></View>
-        ) : sessions.length === 0 ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={t.primary} />
+          </View>
+        ) : devices.length === 0 ? (
           <View style={styles.center}>
             <Icon name="connectedTv" size={48} color={t.textMuted} />
             <Text style={[styles.emptyTitle, { color: t.text }]}>未发现可投屏设备</Text>
@@ -71,28 +63,25 @@ export default function CastDeviceListModal({ visible, server, ownSessionId, onC
           </View>
         ) : (
           <View style={styles.list}>
-            {sessions.map((s) => {
-              const isPlaying = !!s.NowPlayingItem
-              return (
-                <TouchableOpacity
-                  key={s.Id}
-                  style={[styles.deviceRow, { backgroundColor: t.card, borderColor: t.border }]}
-                  onPress={() => onPick(s)}
-                >
-                  <View style={[styles.iconWrap, { backgroundColor: t.bg }]}>
-                    <Icon name="connectedTv" size={28} color={t.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.deviceName, { color: t.text }]} numberOfLines={1}>{s.DeviceName || s.Id}</Text>
-                    <Text style={[styles.deviceMeta, { color: t.textMuted }]} numberOfLines={1}>
-                      {s.Client}{isPlaying ? ` • 正在播放：${s.NowPlayingItem?.Name ?? ''}` : ''}
-                    </Text>
-                  </View>
-                  <Icon name="chevronRight" size={20} color={t.textMuted} />
-                </TouchableOpacity>
-              )
-            })}
-            <TouchableOpacity style={[styles.refreshBtn]} onPress={load}>
+            {devices.map((d) => (
+              <TouchableOpacity
+                key={d.udn || d.location}
+                style={[styles.deviceRow, { backgroundColor: t.card, borderColor: t.border }]}
+                onPress={() => onPick(d)}
+              >
+                <View style={[styles.iconWrap, { backgroundColor: t.bg }]}>
+                  <Icon name="connectedTv" size={28} color={t.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.deviceName, { color: t.text }]} numberOfLines={1}>{d.friendlyName || d.location}</Text>
+                  <Text style={[styles.deviceMeta, { color: t.textMuted }]} numberOfLines={1}>
+                    {(d.manufacturer || 'DLNA') + (d.modelName ? ` · ${d.modelName}` : '')}
+                  </Text>
+                </View>
+                <Icon name="chevronRight" size={20} color={t.textMuted} />
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={styles.refreshBtn} onPress={load}>
               <Text style={{ color: t.textMuted }}>刷新</Text>
             </TouchableOpacity>
           </View>

@@ -917,7 +917,10 @@ export interface QBittorrentServerConfig {
   cookie?: string     // SID session cookie
 }
 
-export type QBitTorrentState = 'downloading' | 'uploading' | 'paused' | 'completed' | 'error' | 'missingFiles'
+// qBittorrent 实际 state 值很多（downloading/uploading/pausedDL/pausedUP/stalledDL/stalledUP/
+// forcedDL/forcedUP/metaDL/queuedDL/queuedUP/checkingDL/checkingUP/error/missingFiles 等），
+// 这里用 string 兜底，UI 自行按 STATE_LABELS 翻译。
+export type QBitTorrentState = string
 
 export interface QBitTorrentTask {
   hash: string
