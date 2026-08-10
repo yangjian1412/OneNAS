@@ -426,7 +426,7 @@ export default function SettingsScreen() {
       <View style={[styles.card, { backgroundColor: t.card }]}>
         <View style={{ paddingVertical: 14, paddingHorizontal: 14 }}>
           <Text style={{ color: t.text, fontSize: 14, fontWeight: '700' }}>One NAS</Text>
-          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版本 v1.0.1beta</Text>
+          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版本 v1.0.1beta2</Text>
           <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版权所有 © 六分仪</Text>
         </View>
       </View>

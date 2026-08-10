@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  UPnP/DLNA 电视的 device description URL 是局域网明文 HTTP
+  （如 http://192.168.10.115:49152/description.xml）。
+  Android 9+ 默认禁止明文 HTTP，导致拉不到描述、SSDP 响应全废。
+  NetworkSecurityConfig 的 <domain> 只支持精确域名/单 IP，
+  不支持 CIDR，无法表达"所有私网 IP"。
+  唯一可靠方案：base-config cleartextTrafficPermitted="true"。
+  Jellyfin/Emby 公网 HTTPS 仍正常（仅协议偏好，不强制降级）。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

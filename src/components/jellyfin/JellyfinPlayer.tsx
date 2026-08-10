@@ -496,8 +496,13 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       }
       setCastPickerVisible(false)
       handleCloseInternalRef.current?.()
+      // 投屏成功：停本地播放 + 关闭 JellyfinPlayer，让 CastRemotePage 接管
+      if (playerRef.current) {
+        playerRef.current.pause()
+      }
+      onClose()
     })
-  }, [server, item, positionMs, durationMs])
+  }, [server, item, positionMs, durationMs, onClose])
 
   const onSelectAudio = useCallback((index: number) => {
     setCurrentAudioIndex(index)
@@ -930,7 +935,6 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
 
       <CastDeviceListModal
         visible={castPickerVisible}
-        server={server}
         onClose={() => setCastPickerVisible(false)}
         onPick={handleCastPick}
       />

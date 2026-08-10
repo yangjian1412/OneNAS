@@ -68,6 +68,7 @@ export const useJellyfinCastStore = create<CastState>((set, get) => ({
         title: itemName,
         itemClass: 'object.item.videoItem.movie',
         duration: formatDuration(opts?.durationSeconds ?? 0),
+        currentUri: streamUrl,
       })
       await setAVTransportURI(target.controlUrl, streamUrl, metadata)
       await upnpPlay(target.controlUrl)
@@ -92,6 +93,7 @@ export const useJellyfinCastStore = create<CastState>((set, get) => ({
         title: itemName,
         itemClass: 'object.item.videoItem.movie',
         duration: formatDuration(durationSeconds ?? s.itemDurationSeconds),
+        currentUri: streamUrl,
       })
       await setAVTransportURI(s.target.controlUrl, streamUrl, metadata)
       await upnpPlay(s.target.controlUrl)

@@ -1,6 +1,6 @@
 {
   "name": "unraid-dash",
-  "version": "1.0.0",
+  "version": "1.0.1beta2",
   "main": "index.ts",
   "expo": {
     "autolinking": {

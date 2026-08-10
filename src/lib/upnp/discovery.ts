@@ -86,3 +86,43 @@ export async function getPositionInfo(controlUrl: string): Promise<PositionInfo>
 export function isAvailable(): boolean {
   return !!UpnpModule
 }
+
+/**
+ * 手动添加 DLNA 电视（SSDP 发现失败时的兜底）。
+ * 传入电视 IP（可带端口，默认 80），尝试常见 device description 路径，
+ * 拿到 description URL 后直接交给原生解析 AVTransport controlURL。
+ */
+export async function discoverRendererByIp(host: string, port = 80): Promise<UpnpDevice> {
+  const m = ensure()
+  const cleaned = host.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '')
+  const portStr = port > 0 ? `:${port}` : ''
+  const base = `http://${cleaned}${portStr}`
+  // 常见 DLNA device description 路径
+  const candidates = [
+    '/description.xml',
+    '/rootDesc.xml',
+    '/device.xml',
+    '/xml/device_description.xml',
+    '/upnp/description.xml',
+  ]
+  let lastErr: any = null
+  for (const path of candidates) {
+    try {
+      const desc = await m.getDeviceDescription(`${base}${path}`)
+      const ctrlUrl = desc?.controlUrl ?? desc?.avTransportControlUrlsAbsolute?.[0]
+      if (ctrlUrl) {
+        return {
+          location: `${base}${path}`,
+          friendlyName: desc.friendlyName || cleaned,
+          manufacturer: desc.manufacturer || '',
+          modelName: desc.modelName || '',
+          udn: desc.udn || '',
+          controlUrl: ctrlUrl,
+        }
+      }
+    } catch (e: any) {
+      lastErr = e
+    }
+  }
+  throw new Error(`无法从 ${base} 拿到 DLNA 设备描述（尝试 ${candidates.length} 条路径失败）：${lastErr?.message ?? '未知错误'}`)
+}

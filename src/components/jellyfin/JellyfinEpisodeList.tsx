@@ -38,6 +38,12 @@ export default function JellyfinEpisodeList({ server, episodes, onEpisodePress }
       ? Math.round((item.UserData.PlaybackPositionTicks / item.UserData.TotalRuntimeTicks) * 100)
       : 0
 
+    // 剧集通常没有 BackdropImageTags，只有 ImageTags.Primary（截图帧）。
+    // 没有自身 Primary 时 fallback 到 SeriesPrimaryImageTag。
+    const hasOwnPrimary = !!item.ImageTags?.Primary
+    const primaryTag = hasOwnPrimary ? item.ImageTags!.Primary : item.SeriesPrimaryImageTag
+    const thumbImageTags = primaryTag ? { Primary: primaryTag } : null
+
     return (
       <TouchableOpacity
         style={[styles.row, { borderBottomColor: t.border }]}
@@ -48,9 +54,8 @@ export default function JellyfinEpisodeList({ server, episodes, onEpisodePress }
           <JellyfinPoster
             server={server}
             itemId={item.Id}
-            imageTags={item.ImageTags}
-            backdropTag={item.BackdropImageTags?.[0]}
-            imageType="Backdrop"
+            imageTags={thumbImageTags}
+            imageType="Primary"
             width={THUMB_W}
             aspectRatio={16 / 9}
             style={{ borderRadius: 6 }}
