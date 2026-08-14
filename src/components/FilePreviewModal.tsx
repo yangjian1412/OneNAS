@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TextInput, TouchableOpacity, ActivityIndicator,
 import * as FileSystem from 'expo-file-system/legacy'
 import { startActivityAsync } from 'expo-intent-launcher'
 import { VideoView, useVideoPlayer } from 'expo-video'
-import { useAudioPlayer } from 'expo-audio'
+import { useAudioPlayer, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio'
 import { useTheme } from '@/lib/theme'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getFileContent, saveFileContent } from '@/lib/api/filebrowser'
@@ -186,7 +186,7 @@ export default function FilePreviewModal({ visible, file, server, token, backend
         ) : category === 'video' ? (
           <VideoViewer url={rawUrl} headers={authHeaders} />
         ) : category === 'audio' ? (
-          <AudioPlayer url={rawUrl} headers={authHeaders} />
+          <AudioPlayer url={rawUrl} headers={authHeaders} fileName={file.name} filePath={file.path} />
         ) : category === 'html' && !editing ? (
           <HtmlSourceView url={rawUrl} headers={authHeaders} />
         ) : category === 'pdf' || category === 'system' ? (
@@ -369,7 +369,7 @@ function VideoViewer({ url, headers }: { url: string; headers: Record<string, st
   )
 }
 
-function AudioPlayer({ url, headers }: { url: string; headers: Record<string, string> }) {
+function AudioPlayer({ url, headers, fileName, filePath }: { url: string; headers: Record<string, string>; fileName?: string; filePath?: string }) {
   const t = useTheme()
   const player = useAudioPlayer({ uri: url, headers })
   const [playing, setPlaying] = useState(false)
@@ -382,12 +382,56 @@ function AudioPlayer({ url, headers }: { url: string; headers: Record<string, st
   const seekFn = useRef<(pageX: number, doSeek: boolean) => void>(() => {})
 
   useEffect(() => {
+    let cancelled = false
+    // 预览弹窗打开时允许后台播放 + 锁屏控制（Android 13+ 需要通知权限）
+    ;(async () => {
+      if (Platform.OS === 'android' && (Platform.Version as number) >= 33) {
+        try {
+          await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)
+        } catch {}
+      }
+      try {
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          interruptionMode: 'doNotMix',
+          shouldPlayInBackground: true,
+        })
+      } catch {}
+      try {
+        await setIsAudioActiveAsync(true)
+      } catch {}
+      if (cancelled) return
+      try {
+        const parent = (filePath ?? '').replace(/\/+$/, '').split('/').slice(0, -1).join('/').replace(/^\/+/, '') || undefined
+        player.setActiveForLockScreen(true, {
+          title: fileName ?? '',
+          artist: parent,
+          albumTitle: '',
+        })
+      } catch {}
+    })()
+    return () => {
+      cancelled = true
+      try { player.setActiveForLockScreen(false) } catch {}
+      try {
+        void setAudioModeAsync({
+          shouldPlayInBackground: false,
+          interruptionMode: 'mixWithOthers',
+        })
+      } catch {}
+    }
+  }, [player, fileName, filePath])
+
+  useEffect(() => {
     const sub = (player as any).addListener?.('playbackStatusUpdate', (status: any) => {
       if (typeof status.currentTime === 'number') {
         setCurrentTime(status.currentTime)
       }
       if (typeof status.duration === 'number') {
         setDuration(status.duration)
+      }
+      if (typeof status.playing === 'boolean') {
+        setPlaying(status.playing)
       }
       if (typeof status.currentTime === 'number' && typeof status.duration === 'number' && status.duration > 0) {
         setProgress(status.currentTime / status.duration)
