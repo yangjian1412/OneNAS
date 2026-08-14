@@ -90,6 +90,9 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState<number>(-1)
   const [mediaSourceId, setMediaSourceId] = useState<string | undefined>(undefined)
   const [playMethod, setPlayMethod] = useState<PlaybackReportMethod>('DirectPlay')
+  // 当前播放的 item prop 的内部副本；播放下一集时 setCurrentItem(next) 更新（item prop 是父组件传入不可变）
+  const [currentItem, setCurrentItem] = useState<JellyfinItem>(item)
+  useEffect(() => { setCurrentItem(item) }, [item])
 
   const [trackSheetVisible, setTrackSheetVisible] = useState(false)
   const [speedSheetVisible, setSpeedSheetVisible] = useState(false)
@@ -98,6 +101,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const [brightnessPct, setBrightnessPct] = useState<number | null>(null)
   const [volumePct, setVolumePct] = useState<number | null>(null)
   const [horizontalSeekDeltaMs, setHorizontalSeekDeltaMs] = useState<number | null>(null)
+  const [seekPreviewText, setSeekPreviewText] = useState<string | null>(null)
   const [overlayText, setOverlayText] = useState<string>('')
   const [overlayFillPct, setOverlayFillPct] = useState(0)
 
@@ -147,7 +151,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     const posMs = player.currentTime * 1000
     const paused = forcePaused ?? !player.playing
     const payload = {
-      ItemId: item.Id,
+      ItemId: currentItem.Id,
       PositionTicks: msToTicks(posMs),
       CanSeek: true,
       IsPaused: paused,
@@ -163,7 +167,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     if (!r.ok) {
       void enqueueProgress(server, payload)
     }
-  }, [item.Id, server, playMethod, mediaSourceId, currentAudioIndex, currentSubtitleIndex])
+  }, [currentItem.Id, server, playMethod, mediaSourceId, currentAudioIndex, currentSubtitleIndex])
 
   const handleCloseInternal = useCallback(async () => {
     if (reportedStoppedRef.current) return
@@ -173,7 +177,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       const durMs = durationMs > 0 ? durationMs : 1
       const pct = (posMs / durMs) * 100
       const payload = {
-        ItemId: item.Id,
+        ItemId: currentItem.Id,
         PositionTicks: msToTicks(posMs),
         CanSeek: true,
         IsPaused: true,
@@ -190,20 +194,20 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
         void enqueueStop(server, payload)
       }
       if (pct >= prefs.markPlayedThresholdPct) {
-        void markPlayed(server, item.Id, true)
+        void markPlayed(server, currentItem.Id, true)
       } else if (pct < prefs.resetPositionThresholdPct) {
-        void markPlayed(server, item.Id, false)
+        void markPlayed(server, currentItem.Id, false)
       }
       reportedStoppedRef.current = true
     }
-  }, [item.Id, server, durationMs, playMethod, mediaSourceId, currentAudioIndex, currentSubtitleIndex, prefs.markPlayedThresholdPct, prefs.resetPositionThresholdPct])
+  }, [currentItem.Id, server, durationMs, playMethod, mediaSourceId, currentAudioIndex, currentSubtitleIndex, prefs.markPlayedThresholdPct, prefs.resetPositionThresholdPct])
 
   useEffect(() => { handleCloseInternalRef.current = handleCloseInternal }, [handleCloseInternal])
 
   useEffect(() => {
     if (!visible) return
     const setup = async () => {
-      const result = await jellyfinGetStream(server, item.Id, {
+      const result = await jellyfinGetStream(server, currentItem.Id, {
         maxBitrate: prefs.maxBitrate,
         audioStreamIndex: currentAudioIndex >= 0 ? currentAudioIndex : undefined,
         subtitleStreamIndex: currentSubtitleIndex >= 0 ? currentSubtitleIndex : undefined,
@@ -230,7 +234,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       }
     }
     void setup()
-  }, [visible, item.Id, server.url, prefs.maxBitrate, prefs.defaultSubtitleLang])
+  }, [visible, currentItem.Id, server.url, prefs.maxBitrate, prefs.defaultSubtitleLang])
 
   useEffect(() => {
     if (!visible) {
@@ -326,8 +330,11 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
 
   const player = useVideoPlayer({ uri: url }, (p) => {
     playerRef.current = p
+    // expo-video 的 timeUpdateEventInterval 默认 0（事件禁用），会导致进度条不更新
+    // 设为 0.25（4 Hz）开启 timeUpdate，跟 expo-audio 的 playbackStatusUpdate 对齐
+    p.timeUpdateEventInterval = 0.25
     p.playbackRate = prefs.defaultPlaybackSpeed
-    if (!prefs.resumeLastPosition || !item.UserData?.PlaybackPositionTicks) {
+    if (!prefs.resumeLastPosition || !currentItem.UserData?.PlaybackPositionTicks) {
       try { p.play() } catch {}
     }
   })
@@ -339,7 +346,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       void reportProgressNow(!playing)
       if (playing) {
         void reportPlaybackStart(server, {
-          ItemId: item.Id,
+          ItemId: currentItem.Id,
           MediaSourceId: mediaSourceId,
           AudioStreamIndex: currentAudioIndex >= 0 ? currentAudioIndex : undefined,
           SubtitleStreamIndex: currentSubtitleIndex >= 0 ? currentSubtitleIndex : undefined,
@@ -352,8 +359,8 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       const dur = (player.duration || 0) * 1000
       setDurationMs(dur)
       durationMsRef.current = dur
-      if (prefs.resumeLastPosition && item.UserData?.PlaybackPositionTicks && player.currentTime < 1) {
-    const resumeMs = item.UserData.PlaybackPositionTicks / 10000
+      if (prefs.resumeLastPosition && currentItem.UserData?.PlaybackPositionTicks && player.currentTime < 1) {
+    const resumeMs = currentItem.UserData.PlaybackPositionTicks / 10000
     p_seekTo(resumeMs)
     setPositionMs(resumeMs)
   }
@@ -370,7 +377,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       setIsPlaying(false)
       void reportProgressNow(true)
       void handleCloseInternal()
-      if (prefs.autoPlayNextEpisode && item.Type === 'Episode' && item.SeriesId) {
+      if (prefs.autoPlayNextEpisode && currentItem.Type === 'Episode' && currentItem.SeriesId) {
         try {
           await playNextEpisode()
         } catch {}
@@ -386,7 +393,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     pingTimerRef.current = setInterval(() => {
       if (player.playing) {
         void reportPlaybackPing(server, {
-          ItemId: item.Id,
+          ItemId: currentItem.Id,
           PositionTicks: msToTicks(player.currentTime * 1000),
           CanSeek: true,
           IsPaused: false,
@@ -417,10 +424,10 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   }
 
   const playNextEpisode = useCallback(async () => {
-    if (!item.SeriesId || !item.SeasonId || item.IndexNumber == null) return
-    const res = await jellyfinGetEpisodes(server, item.SeriesId, item.SeasonId)
+    if (!currentItem.SeriesId || !currentItem.SeasonId || currentItem.IndexNumber == null) return
+    const res = await jellyfinGetEpisodes(server, currentItem.SeriesId, currentItem.SeasonId)
     if (!res.ok || !res.episodes) return
-    const next = res.episodes.find((e) => e.IndexNumber === (item.IndexNumber ?? -1) + 1)
+    const next = res.episodes.find((e) => e.IndexNumber === (currentItem.IndexNumber ?? -1) + 1)
     if (!next) return
     const stream = await jellyfinGetStream(server, next.Id, {
       maxBitrate: prefs.maxBitrate > 0 ? prefs.maxBitrate : undefined,
@@ -435,11 +442,13 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     const subIdx = stream.subtitleStreams.find((s) => s.IsDefault)?.Index ?? -1
     setCurrentAudioIndex(audioIdx)
     setCurrentSubtitleIndex(subIdx)
+    setCurrentItem(next) // 切换到下一集后更新内部 item，标题/集数/封面都跟着变
+    setPositionMs(0)
     if (playerRef.current) {
       playerRef.current.replace({ uri: stream.url })
       playerRef.current.play()
     }
-  }, [item, server, prefs.maxBitrate])
+  }, [currentItem, server, prefs.maxBitrate])
 
   const showSeekToast = useCallback((text: string) => {
     seekToastText.current = text
@@ -485,8 +494,8 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
 
   const handleCloseInternalRef = useRef<() => void>(() => {})
   const handleCastPick = useCallback((target: UpnpDevice) => {
-    if (!item?.Id) return
-    void useJellyfinCastStore.getState().startCast(server, target, item.Id, item.Name, {
+    if (!currentItem?.Id) return
+    void useJellyfinCastStore.getState().startCast(server, target, currentItem.Id, currentItem.Name, {
       startPositionSeconds: positionMs / 1000,
       durationSeconds: durationMs / 1000,
     }).then((r) => {
@@ -613,6 +622,8 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
           const base = horizontalSeekBaseRef.current ?? basePos
           const target = Math.max(0, Math.min(durationMsRef.current - 500, base + seekDeltaMs))
           setHorizontalSeekDeltaMs(seekDeltaMs)
+          // 屏幕中间显示"目标时间 / 总时间"，让用户知道滑动到了哪里
+          setSeekPreviewText(`${msToTimecode(target)} / ${msToTimecode(durationMsRef.current)}`)
           if (playerRef.current) {
             playerRef.current.currentTime = target / 1000
             setPositionMs(target)
@@ -642,6 +653,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
         setBrightnessPct(null)
         setVolumePct(null)
         setHorizontalSeekDeltaMs(null)
+        setSeekPreviewText(null)
         horizontalSeekBaseRef.current = null
         void reportProgressNow()
       })
@@ -649,6 +661,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
         setBrightnessPct(null)
         setVolumePct(null)
         setHorizontalSeekDeltaMs(null)
+        setSeekPreviewText(null)
         horizontalSeekBaseRef.current = null
       }),
     [videoWidth, showOverlay, reportProgressNow],
@@ -717,23 +730,25 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       .minDistance(0)
       .runOnJS(true)
       .onBegin((e) => {
+        // 单击就立即 seek：Pan 手势的 onEnd 在无 onUpdate 时不可靠触发，
+        // 把 p_seekTo 移到 onBegin/onUpdate 才能让单击 + 拖拽都生效。
         const width = progressBarWidthRef.current || 1
         const xRatio = Math.max(0, Math.min(1, e.x / width))
+        const targetMs = xRatio * durationMs
         setSeeking(true)
         showControls()
-        setPositionMs(xRatio * durationMs)
+        setPositionMs(targetMs)
+        p_seekTo(targetMs)
       })
       .onUpdate((e) => {
         const width = progressBarWidthRef.current || 1
         const xRatio = Math.max(0, Math.min(1, e.x / width))
-        setPositionMs(xRatio * durationMs)
-      })
-      .onEnd((e) => {
-        const width = progressBarWidthRef.current || 1
-        const xRatio = Math.max(0, Math.min(1, e.x / width))
         const targetMs = xRatio * durationMs
-        setSeeking(false)
+        setPositionMs(targetMs)
         p_seekTo(targetMs)
+      })
+      .onEnd(() => {
+        setSeeking(false)
         void reportProgressNow()
       }),
     [durationMs, showControls, reportProgressNow],
@@ -827,6 +842,15 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
           </View>
         </Animated.View>
 
+        {/* Horizontal swipe seek preview (center of screen) */}
+        {seekPreviewText !== null && (
+          <View pointerEvents="none" style={styles.seekPreviewOverlay}>
+            <View style={styles.seekPreviewCard}>
+              <Text style={styles.seekPreviewText}>{seekPreviewText}</Text>
+            </View>
+          </View>
+        )}
+
         {controlsVisible && (
           <Animated.View
             pointerEvents="box-none"
@@ -837,11 +861,11 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
                 <Icon name="chevronLeft" size={26} color="#fff" />
               </TouchableOpacity>
               <View style={styles.titleWrap}>
-                <Text style={styles.title} numberOfLines={1}>{item.Name}</Text>
-                {item.SeriesName && (
+                <Text style={styles.title} numberOfLines={1}>{currentItem.Name}</Text>
+                {currentItem.SeriesName && (
                   <Text style={styles.seriesName} numberOfLines={1}>
-                    {item.SeriesName}
-                    {item.IndexNumber != null ? ` · 第 ${item.IndexNumber} 集` : ''}
+                    {currentItem.SeriesName}
+                    {currentItem.IndexNumber != null ? ` · 第 ${currentItem.IndexNumber} 集` : ''}
                   </Text>
                 )}
               </View>
@@ -849,7 +873,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
                 <Icon name="connectedTv" size={22} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity onPress={toggleLandscape} style={styles.topBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Icon name="rotate" size={22} color="#fff" />
+                <Icon name={isLandscape ? 'exitFullscreen' : 'fullscreen'} size={22} color="#fff" />
               </TouchableOpacity>
             </View>
 
@@ -885,6 +909,12 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
                   <Icon name="fastForward" size={30} color="#fff" />
                 </TouchableOpacity>
 
+                {currentItem.Type === 'Episode' && currentItem.SeriesId ? (
+                  <TouchableOpacity onPress={() => void playNextEpisode()} style={styles.btn} disabled={!!error}>
+                    <Icon name="skipNext" size={30} color="#fff" />
+                  </TouchableOpacity>
+                ) : null}
+
                 <TouchableOpacity onPress={toggleMute} style={styles.btn}>
                   <Icon name={isVolumeMutedIcon ? 'volumeMute' : 'volumeHigh'} size={26} color="#fff" />
                 </TouchableOpacity>
@@ -904,10 +934,6 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
                     />
                   </TouchableOpacity>
                 ) : null}
-
-                <TouchableOpacity onPress={toggleLandscape} style={styles.btn}>
-                  <Icon name={isLandscape ? 'exitFullscreen' : 'fullscreen'} size={26} color="#fff" />
-                </TouchableOpacity>
               </View>
             </View>
           </Animated.View>
@@ -1056,6 +1082,23 @@ const styles = StyleSheet.create({
     minWidth: 200,
     alignItems: 'center',
   },
+  // 横滑快进预览（中央"目标时间 / 总时间"）
+  seekPreviewOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  seekPreviewCard: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  seekPreviewText: { color: '#fff', fontSize: 18, fontWeight: '600' },
   overlayText: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 8 },
   overlayBar: {
     width: 160,
