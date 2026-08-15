@@ -21,6 +21,7 @@ import {
 import { jellyfinGetEpisodes } from '@/lib/api/jellyfin'
 import { enqueueProgress, enqueueStop } from '@/lib/api/jellyfinPlaybackQueue'
 import { useJellyfinPlaybackStore } from '@/stores/jellyfinPlaybackStore'
+import { useJellyfinStore } from '@/stores/jellyfinStore'
 import { getSystemCurrentVolume, getSystemMaxVolume, setSystemVolume } from '@/lib/systemVolume'
 import { useImmersive } from '@/lib/immersive'
 import Icon from '@/components/Icon'
@@ -92,7 +93,16 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const [playMethod, setPlayMethod] = useState<PlaybackReportMethod>('DirectPlay')
   // 当前播放的 item prop 的内部副本；播放下一集时 setCurrentItem(next) 更新（item prop 是父组件传入不可变）
   const [currentItem, setCurrentItem] = useState<JellyfinItem>(item)
-  useEffect(() => { setCurrentItem(item) }, [item])
+  // 同步给 ref 让事件监听器（sourceLoad / playingChange / playToEnd / 轮询）始终读到最新值，
+  // 避免陈旧闭包在播下一集时把上报 ItemId 写成旧 item
+  const currentItemRef = useRef<JellyfinItem>(item)
+  useEffect(() => {
+    setCurrentItem(item)
+    currentItemRef.current = item
+  }, [item])
+  useEffect(() => {
+    currentItemRef.current = currentItem
+  }, [currentItem])
 
   const [trackSheetVisible, setTrackSheetVisible] = useState(false)
   const [speedSheetVisible, setSpeedSheetVisible] = useState(false)
@@ -168,6 +178,9 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       void enqueueProgress(server, payload)
     }
   }, [currentItem.Id, server, playMethod, mediaSourceId, currentAudioIndex, currentSubtitleIndex])
+  // 让 setInterval（不被 currentItem 变化触发）始终调到最新的 reportProgressNow（带最新 ItemId）
+  const reportProgressNowRef = useRef(reportProgressNow)
+  useEffect(() => { reportProgressNowRef.current = reportProgressNow }, [reportProgressNow])
 
   const handleCloseInternal = useCallback(async () => {
     if (reportedStoppedRef.current) return
@@ -176,8 +189,10 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       const posMs = player.currentTime * 1000
       const durMs = durationMs > 0 ? durationMs : 1
       const pct = (posMs / durMs) * 100
+      // 用 ref 读最新 ItemId，避免自动播下一集后旧闭包写错 itemId
+      const itemId = currentItemRef.current.Id
       const payload = {
-        ItemId: currentItem.Id,
+        ItemId: itemId,
         PositionTicks: msToTicks(posMs),
         CanSeek: true,
         IsPaused: true,
@@ -194,13 +209,15 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
         void enqueueStop(server, payload)
       }
       if (pct >= prefs.markPlayedThresholdPct) {
-        void markPlayed(server, currentItem.Id, true)
+        void markPlayed(server, itemId, true)
       } else if (pct < prefs.resetPositionThresholdPct) {
-        void markPlayed(server, currentItem.Id, false)
+        void markPlayed(server, itemId, false)
       }
       reportedStoppedRef.current = true
+      // 主动刷新"继续观看"列表（播放器关闭时一定走了这里）
+      void useJellyfinStore.getState().refreshResume()
     }
-  }, [currentItem.Id, server, durationMs, playMethod, mediaSourceId, currentAudioIndex, currentSubtitleIndex, prefs.markPlayedThresholdPct, prefs.resetPositionThresholdPct])
+  }, [server, durationMs, playMethod, mediaSourceId, currentAudioIndex, currentSubtitleIndex, prefs.markPlayedThresholdPct, prefs.resetPositionThresholdPct])
 
   useEffect(() => { handleCloseInternalRef.current = handleCloseInternal }, [handleCloseInternal])
 
@@ -334,6 +351,9 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     // 设为 0.25（4 Hz）开启 timeUpdate，跟 expo-audio 的 playbackStatusUpdate 对齐
     p.timeUpdateEventInterval = 0.25
     p.playbackRate = prefs.defaultPlaybackSpeed
+    // expo-video Android 默认 preservesPitch = false（iOS 默认 true），导致加速播放时音调跟速度走（"chipmunk effect"）
+    // expo-audio Android 默认 true，所以音频/视频播放器音调不一致。强制 true 让 ExoPlayer 用音调保持算法
+    p.preservesPitch = true
     if (!prefs.resumeLastPosition || !currentItem.UserData?.PlaybackPositionTicks) {
       try { p.play() } catch {}
     }
@@ -343,10 +363,10 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     if (!player) return
     const subPlaying = player.addListener('playingChange', ({ isPlaying: playing }) => {
       setIsPlaying(playing)
-      void reportProgressNow(!playing)
+      void reportProgressNowRef.current(!playing)
       if (playing) {
         void reportPlaybackStart(server, {
-          ItemId: currentItem.Id,
+          ItemId: currentItemRef.current.Id,
           MediaSourceId: mediaSourceId,
           AudioStreamIndex: currentAudioIndex >= 0 ? currentAudioIndex : undefined,
           SubtitleStreamIndex: currentSubtitleIndex >= 0 ? currentSubtitleIndex : undefined,
@@ -359,12 +379,14 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       const dur = (player.duration || 0) * 1000
       setDurationMs(dur)
       durationMsRef.current = dur
-      if (prefs.resumeLastPosition && currentItem.UserData?.PlaybackPositionTicks && player.currentTime < 1) {
-    const resumeMs = currentItem.UserData.PlaybackPositionTicks / 10000
-    p_seekTo(resumeMs)
-    setPositionMs(resumeMs)
-  }
-  try { player.play() } catch {}
+      // 用 currentItemRef 读最新 item 的 UserData（playNextEpisode 切换后也是新的）
+      const it = currentItemRef.current
+      if (prefs.resumeLastPosition && it.UserData?.PlaybackPositionTicks && player.currentTime < 1) {
+        const resumeMs = it.UserData.PlaybackPositionTicks / 10000
+        p_seekTo(resumeMs)
+        setPositionMs(resumeMs)
+      }
+      try { player.play() } catch {}
     })
     const subTime = player.addListener('timeUpdate', ({ currentTime }) => {
       setPositionMs(currentTime * 1000)
@@ -375,9 +397,10 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     })
     const subEnd = player.addListener('playToEnd', async () => {
       setIsPlaying(false)
-      void reportProgressNow(true)
+      void reportProgressNowRef.current(true)
       void handleCloseInternal()
-      if (prefs.autoPlayNextEpisode && currentItem.Type === 'Episode' && currentItem.SeriesId) {
+      const it = currentItemRef.current
+      if (prefs.autoPlayNextEpisode && it.Type === 'Episode' && it.SeriesId) {
         try {
           await playNextEpisode()
         } catch {}
@@ -388,12 +411,12 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     })
 
     progressTimerRef.current = setInterval(() => {
-      if (player.playing) void reportProgressNow()
+      if (player.playing) void reportProgressNowRef.current()
     }, PROGRESS_INTERVAL_MS)
     pingTimerRef.current = setInterval(() => {
       if (player.playing) {
         void reportPlaybackPing(server, {
-          ItemId: currentItem.Id,
+          ItemId: currentItemRef.current.Id,
           PositionTicks: msToTicks(player.currentTime * 1000),
           CanSeek: true,
           IsPaused: false,
@@ -429,8 +452,12 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     if (!res.ok || !res.episodes) return
     const next = res.episodes.find((e) => e.IndexNumber === (currentItem.IndexNumber ?? -1) + 1)
     if (!next) return
+    // 若下一集本身已有保存进度（用户之前看过一段），把 startPositionTicks 传给 PlaybackInfo，
+    // 同时 replace() 后 seek 到该位置 —— 与初次播放从 currentItem.UserData 恢复保持一致
+    const resumeTicks = prefs.resumeLastPosition ? next.UserData?.PlaybackPositionTicks : undefined
     const stream = await jellyfinGetStream(server, next.Id, {
       maxBitrate: prefs.maxBitrate > 0 ? prefs.maxBitrate : undefined,
+      startPositionTicks: resumeTicks,
     })
     if (!stream.ok || !stream.url) return
     playSessionIdRef.current = generatePlaySessionId()
@@ -443,12 +470,28 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     setCurrentAudioIndex(audioIdx)
     setCurrentSubtitleIndex(subIdx)
     setCurrentItem(next) // 切换到下一集后更新内部 item，标题/集数/封面都跟着变
-    setPositionMs(0)
     if (playerRef.current) {
       playerRef.current.replace({ uri: stream.url })
+      // preservePitch 是 player 实例属性，replace 不重置；显式再设一次以防其他代码路径意外清掉
+      playerRef.current.preservesPitch = true
+      // 若有保存进度，replace 后立即 seek；否则 sourceLoad 监听器（基于 currentItemRef.current）会按需 seek
+      if (resumeTicks && resumeTicks > 0) {
+        const resumeMs = resumeTicks / 10000
+        // 等 sourceLoad 完成（player.currentTime 重置）再 seek；用一个短暂延迟
+        setTimeout(() => {
+          if (playerRef.current) {
+            playerRef.current.currentTime = resumeMs / 1000
+            setPositionMs(resumeMs)
+          }
+        }, 100)
+      } else {
+        setPositionMs(0)
+      }
       playerRef.current.play()
     }
-  }, [currentItem, server, prefs.maxBitrate])
+    // 主动刷新"继续观看"列表，让服务端进度同步到主界面（避免依赖 30s TTL 缓存）
+    void useJellyfinStore.getState().refreshResume()
+  }, [currentItem, server, prefs.maxBitrate, prefs.resumeLastPosition])
 
   const showSeekToast = useCallback((text: string) => {
     seekToastText.current = text

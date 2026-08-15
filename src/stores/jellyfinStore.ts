@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { JellyfinServerConfig, JellyfinLibrary, JellyfinItem, JellyfinUser, ServiceConfig } from '@/types'
-import { jellyfinLogin } from '@/lib/api/jellyfin'
+import { jellyfinLogin, jellyfinGetResumeItems } from '@/lib/api/jellyfin'
 
 interface JellyfinState {
   serviceId: string | null
@@ -21,6 +21,8 @@ interface JellyfinState {
   resetForService: (serviceId: string) => void
   logout: () => void
   initWithService: (service: ServiceConfig) => Promise<void>
+  // 仅刷 "继续观看" resume 列表（播放完/下一集后调用，主界面即自动反映最新进度）
+  refreshResume: () => Promise<void>
 }
 
 export const useJellyfinStore = create<JellyfinState>((set, get) => ({
@@ -56,5 +58,11 @@ export const useJellyfinStore = create<JellyfinState>((set, get) => ({
     } else {
       set({ error: result.error ?? 'Login failed', isLoading: false })
     }
+  },
+  refreshResume: async () => {
+    const { server } = get()
+    if (!server) return
+    const r = await jellyfinGetResumeItems(server)
+    if (r.ok) set({ resumeItems: r.items ?? [] })
   },
 }))

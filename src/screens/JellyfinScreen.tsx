@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, BackHandler, StyleSheet, Dimensions, Modal, Platform, StatusBar } from 'react-native'
+import { useIsFocused } from '@react-navigation/native'
 import { startActivityAsync } from 'expo-intent-launcher'
 import { useJellyfinStore } from '@/stores/jellyfinStore'
 import { useJellyfinPlaybackStore } from '@/stores/jellyfinPlaybackStore'
@@ -138,7 +139,9 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     setLoading(false)
   }, [service, setServer, setUser, setLibraries, setResumeItems])
 
-  useEffect(() => { loadServer() }, [])
+  const isFocused = useIsFocused()
+  // 进入主界面（tab 聚焦）时强制重读 — 让"继续观看"反映最新服务端进度
+  useEffect(() => { if (isFocused) void loadServer() }, [isFocused, loadServer])
 
   const viewRef = useRef(view)
   const drawerOpenRef = useRef(drawerOpen)
