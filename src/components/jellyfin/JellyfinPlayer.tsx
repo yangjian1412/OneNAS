@@ -185,41 +185,45 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const handleCloseInternal = useCallback(async () => {
     if (reportedStoppedRef.current) return
     const player = playerRef.current
-    if (player) {
-      const posMs = player.currentTime * 1000
-      const durMs = durationMs > 0 ? durationMs : 1
-      const pct = (posMs / durMs) * 100
-      // 用 ref 读最新 ItemId，避免自动播下一集后旧闭包写错 itemId
-      const itemId = currentItemRef.current.Id
-      const payload = {
-        ItemId: itemId,
-        PositionTicks: msToTicks(posMs),
-        CanSeek: true,
-        IsPaused: true,
-        IsMuted: player.muted,
-        Volume: 100,
-        PlayMethod: playMethod,
-        MediaSourceId: mediaSourceId,
-        PlaySessionId: playSessionIdRef.current,
-        AudioStreamIndex: currentAudioIndex >= 0 ? currentAudioIndex : undefined,
-        SubtitleStreamIndex: currentSubtitleIndex >= 0 ? currentSubtitleIndex : undefined,
-      }
-      const r = await reportPlaybackStop(server, payload)
-      if (!r.ok) {
-        void enqueueStop(server, payload)
-      }
-      if (pct >= prefs.markPlayedThresholdPct) {
-        void markPlayed(server, itemId, true)
-      } else if (pct < prefs.resetPositionThresholdPct) {
-        void markPlayed(server, itemId, false)
-      }
-      reportedStoppedRef.current = true
-      // 主动刷新"继续观看"列表（播放器关闭时一定走了这里）
-      void useJellyfinStore.getState().refreshResume()
+    const posMs = player ? player.currentTime * 1000 : positionMs
+    const durMs = durationMs > 0 ? durationMs : 1
+    const pct = (posMs / durMs) * 100
+    // 用 ref 读最新 ItemId，避免自动播下一集后旧闭包写错 itemId
+    const itemId = currentItemRef.current.Id
+    const payload = {
+      ItemId: itemId,
+      PositionTicks: msToTicks(posMs),
+      CanSeek: true,
+      IsPaused: true,
+      IsMuted: player?.muted ?? false,
+      Volume: 100,
+      PlayMethod: playMethod,
+      MediaSourceId: mediaSourceId,
+      PlaySessionId: playSessionIdRef.current,
+      AudioStreamIndex: currentAudioIndex >= 0 ? currentAudioIndex : undefined,
+      SubtitleStreamIndex: currentSubtitleIndex >= 0 ? currentSubtitleIndex : undefined,
     }
-  }, [server, durationMs, playMethod, mediaSourceId, currentAudioIndex, currentSubtitleIndex, prefs.markPlayedThresholdPct, prefs.resetPositionThresholdPct])
+    const r = await reportPlaybackStop(server, payload)
+    if (!r.ok) {
+      void enqueueStop(server, payload)
+    }
+    if (pct >= prefs.markPlayedThresholdPct) {
+      void markPlayed(server, itemId, true)
+    } else if (pct < prefs.resetPositionThresholdPct) {
+      void markPlayed(server, itemId, false)
+    }
+    reportedStoppedRef.current = true
+    // 主动刷新"继续观看"列表（播放器关闭时一定走了这里）
+    void useJellyfinStore.getState().refreshResume()
+  }, [server, positionMs, durationMs, playMethod, mediaSourceId, currentAudioIndex, currentSubtitleIndex, prefs.markPlayedThresholdPct, prefs.resetPositionThresholdPct])
 
   useEffect(() => { handleCloseInternalRef.current = handleCloseInternal }, [handleCloseInternal])
+
+  // 统一的关闭入口：先 await handleCloseInternal（上报 stop + markPlayed + refreshResume），再触发卸载
+  const handleClose = useCallback(async () => {
+    await handleCloseInternalRef.current?.()
+    onClose()
+  }, [onClose])
 
   useEffect(() => {
     if (!visible) return
@@ -398,9 +402,9 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     const subEnd = player.addListener('playToEnd', async () => {
       setIsPlaying(false)
       void reportProgressNowRef.current(true)
-      void handleCloseInternal()
+      await handleCloseInternalRef.current?.()
       const it = currentItemRef.current
-      if (prefs.autoPlayNextEpisode && it.Type === 'Episode' && it.SeriesId) {
+      if (useJellyfinPlaybackStore.getState().autoPlayNextEpisode && it.Type === 'Episode' && it.SeriesId) {
         try {
           await playNextEpisode()
         } catch {}
@@ -447,13 +451,15 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   }
 
   const playNextEpisode = useCallback(async () => {
-    if (!currentItem.SeriesId || !currentItem.SeasonId || currentItem.IndexNumber == null) return
-    const res = await jellyfinGetEpisodes(server, currentItem.SeriesId, currentItem.SeasonId)
+    // 读 ref 避免闭包陈旧：playToEnd listener 只在 [player] 初始化时注册一次，
+    // 捕获的 playNextEpisode 永远是初始版本，但 currentItemRef.current 始终最新
+    const cur = currentItemRef.current
+    if (!cur.SeriesId || !cur.SeasonId || cur.IndexNumber == null) return
+    await handleCloseInternalRef.current?.()
+    const res = await jellyfinGetEpisodes(server, cur.SeriesId, cur.SeasonId)
     if (!res.ok || !res.episodes) return
-    const next = res.episodes.find((e) => e.IndexNumber === (currentItem.IndexNumber ?? -1) + 1)
+    const next = res.episodes.find((e) => e.IndexNumber === (cur.IndexNumber ?? -1) + 1)
     if (!next) return
-    // 若下一集本身已有保存进度（用户之前看过一段），把 startPositionTicks 传给 PlaybackInfo，
-    // 同时 replace() 后 seek 到该位置 —— 与初次播放从 currentItem.UserData 恢复保持一致
     const resumeTicks = prefs.resumeLastPosition ? next.UserData?.PlaybackPositionTicks : undefined
     const stream = await jellyfinGetStream(server, next.Id, {
       maxBitrate: prefs.maxBitrate > 0 ? prefs.maxBitrate : undefined,
@@ -491,7 +497,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     }
     // 主动刷新"继续观看"列表，让服务端进度同步到主界面（避免依赖 30s TTL 缓存）
     void useJellyfinStore.getState().refreshResume()
-  }, [currentItem, server, prefs.maxBitrate, prefs.resumeLastPosition])
+  }, [server, prefs.maxBitrate, prefs.resumeLastPosition])
 
   const showSeekToast = useCallback((text: string) => {
     seekToastText.current = text
@@ -535,7 +541,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     showControls()
   }, [showControls])
 
-  const handleCloseInternalRef = useRef<() => void>(() => {})
+  const handleCloseInternalRef = useRef<() => Promise<void>>(async () => {})
   const handleCastPick = useCallback((target: UpnpDevice) => {
     if (!currentItem?.Id) return
     void useJellyfinCastStore.getState().startCast(server, target, currentItem.Id, currentItem.Name, {
@@ -802,7 +808,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const isVolumeMutedIcon = isMuted || (volumePct !== null && volumePct < 0.01)
 
   return (
-    <Modal visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} animationType="fade" onRequestClose={handleClose} statusBarTranslucent>
       <GestureHandlerRootView style={styles.container}>
       <View style={[styles.container, { backgroundColor: '#000' }]}>
         <GestureDetector gesture={composedGesture}>
@@ -811,7 +817,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
               <View style={styles.center}>
                 <Icon name="alertCircle" size={48} color="#ff5252" />
                 <Text style={styles.errorText}>{error}</Text>
-                <TouchableOpacity style={styles.errorBtn} onPress={onClose}>
+                <TouchableOpacity style={styles.errorBtn} onPress={handleClose}>
                   <Text style={styles.errorBtnText}>关闭</Text>
                 </TouchableOpacity>
               </View>
@@ -900,7 +906,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
             style={[styles.controlsOverlay, { opacity: controlsOpacity }]}
           >
             <View style={[styles.topBar, { paddingTop: pt + 4 }]}>
-              <TouchableOpacity onPress={onClose} style={styles.topBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={handleClose} style={styles.topBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Icon name="chevronLeft" size={26} color="#fff" />
               </TouchableOpacity>
               <View style={styles.titleWrap}>
