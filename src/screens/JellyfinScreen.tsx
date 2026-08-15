@@ -179,7 +179,7 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     }
     if (onRequestClose) { onRequestClose(); return true }
     return false
-  }, [goBack, onRequestClose])
+  }, [view, goBack, onRequestClose])
 
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack)
