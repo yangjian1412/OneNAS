@@ -42,7 +42,7 @@ export default function JellyfinItemGrid({ server, items, onItemPress, emptyText
       <View style={styles.badgeRow}>
         {item.UserData?.Played && (
           <View style={[styles.badge, { backgroundColor: t.success }]}>
-            <Icon name="playCircle" size={12} color="#fff" />
+            <Icon name="check" size={14} color="#fff" />
           </View>
         )}
         {item.Type === 'Folder' && (

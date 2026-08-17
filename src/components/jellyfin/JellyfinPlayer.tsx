@@ -32,7 +32,7 @@ import { useJellyfinCastStore } from '@/stores/jellyfinCastStore'
 import type { UpnpDevice } from '@/lib/upnp/types'
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
-const HIDE_CONTROLS_MS = 3000
+const HIDE_CONTROLS_MS = 5000
 const PROGRESS_INTERVAL_MS = 10_000
 const PING_INTERVAL_MS = 60_000
 const DOUBLE_TAP_MAX_MS = 300
@@ -142,10 +142,11 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
     setControlsVisible(true)
     Animated.timing(controlsOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start()
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
-    if (isPlaying && !seeking && !fastScrubSideRef.current) {
+    // 不依赖 isPlaying：暂停时显示控件也应在 5s 后自动消失（用户拖进度条/长按快进时除外）
+    if (!seeking && !fastScrubSideRef.current) {
       hideTimerRef.current = setTimeout(hideControls, HIDE_CONTROLS_MS)
     }
-  }, [controlsOpacity, isPlaying, seeking, hideControls])
+  }, [controlsOpacity, seeking, hideControls])
 
   // Auto-hide when playing and no special state
   useEffect(() => {
