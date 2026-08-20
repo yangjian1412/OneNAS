@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { View, Text, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, StatusBar, StyleSheet, Image, Pressable, PanResponder } from 'react-native'
+import { View, Text, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, StatusBar, StyleSheet, Image, Pressable, PanResponder, KeyboardAvoidingView } from 'react-native'
 import * as FileSystem from 'expo-file-system/legacy'
 import { startActivityAsync } from 'expo-intent-launcher'
 import { VideoView, useVideoPlayer } from 'expo-video'
@@ -201,14 +201,16 @@ export default function FilePreviewModal({ visible, file, server, token, backend
             <SystemViewer url={rawUrl} headers={authHeaders} fileName={file.name} onOpened={handleClose} />
           )
         ) : editing ? (
-          <TextInput
-            style={[styles.editor, { backgroundColor: t.inputBg, color: t.text, borderColor: t.border }]}
-            value={editContent}
-            onChangeText={setEditContent}
-            multiline
-            autoFocus
-            textAlignVertical="top"
-          />
+          <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+            <TextInput
+              style={[styles.editor, { backgroundColor: t.inputBg, color: t.text, borderColor: t.border }]}
+              value={editContent}
+              onChangeText={setEditContent}
+              multiline
+              autoFocus
+              textAlignVertical="top"
+            />
+          </KeyboardAvoidingView>
         ) : (
           <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
             <Text style={[styles.contentText, { color: t.text }]} selectable>{content}</Text>

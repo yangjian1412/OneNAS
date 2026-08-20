@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, ScrollView } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { JellyfinMediaStream } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
@@ -41,6 +42,7 @@ export default function PlayerTrackSheet({
   onClose,
 }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const translateY = useRef(new Animated.Value(400)).current
 
   useEffect(() => {
@@ -71,7 +73,7 @@ export default function PlayerTrackSheet({
         <Animated.View
           style={[
             styles.sheet,
-            { backgroundColor: t.card, transform: [{ translateY }] },
+            { backgroundColor: t.card, paddingBottom: insets.bottom + 16, transform: [{ translateY }] },
           ]}
         >
           <View style={styles.handle} />

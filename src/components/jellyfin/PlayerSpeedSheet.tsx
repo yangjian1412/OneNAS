@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, ScrollView } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { VideoPlayer } from 'expo-video'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
@@ -16,6 +17,7 @@ interface Props {
 
 export default function PlayerSpeedSheet({ visible, currentSpeed, player, onClose, onSelectSpeed }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const translateY = useRef(new Animated.Value(300)).current
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export default function PlayerSpeedSheet({ visible, currentSpeed, player, onClos
         <Animated.View
           style={[
             styles.sheet,
-            { backgroundColor: t.card, transform: [{ translateY }] },
+            { backgroundColor: t.card, paddingBottom: insets.bottom + 16, transform: [{ translateY }] },
           ]}
         >
           <View style={styles.handle} />

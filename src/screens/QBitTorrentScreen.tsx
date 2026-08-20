@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal, Animated } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal, Animated, KeyboardAvoidingView } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useIsFocused } from '@react-navigation/native'
 import { useQBitStore } from '@/stores/qbittorrentStore'
 import { qbitGetPreferences, qbitSetPreferences } from '@/lib/api/qbittorrent'
@@ -99,6 +100,7 @@ function isPausedState(s: string): boolean {
 
 export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const {
     server, tasks, filter, isLoading, error,
     loadHome, refresh, addUrl, pause, resume, remove, recheck,
@@ -220,9 +222,9 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
       </TouchableOpacity>
 
       <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
-        <View style={styles.modalRoot}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setAddOpen(false)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.sheetTitle, { color: t.text }]}>添加种子</Text>
             <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>URL / Magnet（每行一个）</Text>
             <TextInput
@@ -239,7 +241,7 @@ export default function QBitTorrentScreen({ service, onRequestClose }: Props) {
               <TouchableOpacity onPress={onAddSubmit}><Text style={[styles.actionText, { color: t.primary }]}>添加</Text></TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <ServiceDrawer
@@ -302,7 +304,8 @@ function SettingsScreen({ visible, onClose, server, t }: SettingsScreenProps) {
 
   return (
     <FullScreenModal visible={visible} onClose={onClose} title="基本设置" t={t}>
-      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         <Text style={[styles.fieldHint, { color: t.textMuted }]}>单位：K=KB/s · M=MB/s · G=GB/s（留空 = 不限）</Text>
 
         <Text style={[styles.fieldLabel, { color: t.textSecondary, marginTop: 6 }]}>全局下载限速</Text>
@@ -322,6 +325,7 @@ function SettingsScreen({ visible, onClose, server, t }: SettingsScreenProps) {
           <TouchableOpacity onPress={handleSave} disabled={saving}><Text style={[styles.actionText, { color: t.primary }]}>{saving ? '保存中…' : '保存'}</Text></TouchableOpacity>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </FullScreenModal>
   )
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, Modal, Animated, BackHandler, AppState, StyleSheet, Platform, StatusBar, Dimensions } from 'react-native'
+import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, Modal, Animated, BackHandler, AppState, StyleSheet, Platform, StatusBar, Dimensions, KeyboardAvoidingView } from 'react-native'
 import * as DocumentPicker from 'expo-document-picker'
 import { useIsFocused, useNavigation } from '@react-navigation/native'
 import { useAppStore, FileSortBy, FileSortDir } from '@/stores/appStore'
@@ -784,7 +784,7 @@ export default function FileScreen() {
       <Modal visible={!!actionItem} transparent animationType="slide" onRequestClose={closeActionSheet}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={closeActionSheet} activeOpacity={1} />
-          <View style={[styles.actionSheet, { backgroundColor: t.card }]}>
+          <View style={[styles.actionSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.actionTitle, { color: t.text }]} numberOfLines={1}>{actionItem?.name}</Text>
             {actionItem && !actionItem.isDirectory && (
               <TouchableOpacity style={styles.actionButton} onPress={() => download(actionItem)}>
@@ -833,14 +833,14 @@ export default function FileScreen() {
         </View>
       </Modal>
       <Modal visible={!!editMode} transparent animationType="slide" onRequestClose={() => setEditMode(null)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setEditMode(null)} activeOpacity={1} />
-          <View style={[styles.editSheet, { backgroundColor: t.card }]}>
+          <View style={[styles.editSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.actionTitle, { color: t.text }]}>{editMode === 'folder' ? '新建文件夹' : editMode === 'rename' ? '重命名' : ''}</Text>
             <TextInput autoFocus style={[styles.editInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]} value={editText} onChangeText={setEditText} placeholder={'名称'} placeholderTextColor={t.textMuted} />
             <View style={styles.editActions}><TouchableOpacity onPress={() => setEditMode(null)}><Text style={[styles.actionText, { color: t.textMuted }]}>取消</Text></TouchableOpacity><TouchableOpacity onPress={submitEdit} disabled={actionLoading}><Text style={[styles.actionText, { color: t.primary, fontWeight: '700' }]}>{actionLoading ? '处理中...' : '确定'}</Text></TouchableOpacity></View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       <FolderPickerModal
         visible={pickerOpen && !!selectedServer && !!token}
@@ -870,7 +870,7 @@ export default function FileScreen() {
       )}
 
       <Modal visible={!!shareCreateItem} animationType="slide" onRequestClose={() => setShareCreateItem(null)}>
-        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
+        <KeyboardAvoidingView behavior="padding" style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>创建分享</Text>
             <TouchableOpacity onPress={() => setShareCreateItem(null)}><Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text></TouchableOpacity>
@@ -905,7 +905,7 @@ export default function FileScreen() {
               <Text style={styles.shareCreateBtnText}>{shareCreating ? '创建中...' : '创建并复制链接'}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={shareManageOpen} animationType="slide" onRequestClose={() => setShareManageOpen(false)}>
@@ -957,7 +957,7 @@ export default function FileScreen() {
       <Modal visible={!!detailsItem} transparent animationType="slide" onRequestClose={() => setDetailsItem(null)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setDetailsItem(null)} activeOpacity={1} />
-          <View style={[styles.detailsSheet, { backgroundColor: t.card }]}>
+          <View style={[styles.detailsSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.detailsSheetHeader}>
               <Text style={[styles.detailsSheetTitle, { color: t.text }]}>详细信息</Text>
               <TouchableOpacity onPress={() => setDetailsItem(null)}>
@@ -1014,7 +1014,7 @@ export default function FileScreen() {
       <Modal visible={sortOpen} transparent animationType="slide" onRequestClose={() => setSortOpen(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setSortOpen(false)} activeOpacity={1} />
-          <View style={[styles.sortSheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sortSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.sortSheetTitle, { color: t.text }]}>排序方式</Text>
             {(['name', 'size', 'modified'] as FileSortBy[]).map((by) => (
               <TouchableOpacity key={by} style={[styles.sortOption, { borderBottomColor: t.border }]} onPress={() => setFileSort({ by, dir: fileSort.dir })}>
@@ -1094,7 +1094,7 @@ export default function FileScreen() {
       </Modal>
 
       <Modal visible={searchModalOpen} animationType="slide" onRequestClose={() => { if (searchLoading) { stopSearch() } else { searchAbortRef.current?.abort(); setSearchResults([]); setSearchModalOpen(false) } }}>
-        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
+        <KeyboardAvoidingView behavior="padding" style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>搜索</Text>
             <TouchableOpacity onPress={() => { searchAbortRef.current?.abort(); setSearchResults([]); setSearchModalOpen(false) }}>
@@ -1160,7 +1160,7 @@ export default function FileScreen() {
               />
             </>
           )}
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <FilePreviewModal
@@ -1177,7 +1177,7 @@ export default function FileScreen() {
       <Modal visible={searchCategoryOpen} transparent animationType="slide" onRequestClose={() => setSearchCategoryOpen(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setSearchCategoryOpen(false)} activeOpacity={1} />
-          <View style={[styles.categorySheet, { backgroundColor: t.card }]}>
+          <View style={[styles.categorySheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.categorySheetTitle, { color: t.text }]}>搜索类别</Text>
             {SEARCH_CATEGORIES.map((cat) => (
               <TouchableOpacity key={cat.value} style={[styles.categoryOption, { borderBottomColor: t.border }]} onPress={() => { setSearchCategory(cat.value as SearchCategory); setSearchCategoryOpen(false) }}>

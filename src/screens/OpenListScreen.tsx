@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal, KeyboardAvoidingView } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useIsFocused } from '@react-navigation/native'
 import * as DocumentPicker from 'expo-document-picker'
 import { useOpenListStore, joinOpenListPath } from '@/stores/openlistStore'
@@ -47,6 +48,7 @@ const SORT_LABELS: Record<OpenListSortBy, string> = { name: '名称', size: '大
 
 export default function OpenListScreen({ service, onRequestClose }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const addDownload = useAppStore((s) => s.addDownload)
   const {
     server, path, files, loading, error,
@@ -509,9 +511,9 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
 
       {/* 新建文件夹 */}
       <Modal visible={mkdirOpen} transparent animationType="slide" onRequestClose={() => setMkdirOpen(false)}>
-        <View style={styles.modalRoot}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setMkdirOpen(false)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.sheetTitle, { color: t.text }]}>新建文件夹</Text>
             <TextInput
               autoFocus
@@ -526,14 +528,14 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
               <TouchableOpacity onPress={onMkdirSubmit}><Text style={[styles.actionText, { color: t.primary }]}>创建</Text></TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 文件/文件夹操作 */}
       <Modal visible={!!actionItem} transparent animationType="slide" onRequestClose={() => setActionItem(null)}>
         <View style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setActionItem(null)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.sheetTitle, { color: t.text }]} numberOfLines={1}>{actionItem?.name}</Text>
             {actionItem && !actionItem.is_dir && (
               <TouchableOpacity style={styles.menuRow} onPress={() => download(actionItem)}>
@@ -586,9 +588,9 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
 
       {/* 重命名 / 移动 / 复制 */}
       <Modal visible={!!editMode} transparent animationType="slide" onRequestClose={() => setEditMode(null)}>
-        <View style={styles.modalRoot}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setEditMode(null)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.sheetTitle, { color: t.text }]}>{'重命名'}</Text>
             <TextInput
               autoFocus
@@ -607,7 +609,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       <FolderPickerModal
         visible={pickerOpen}
@@ -640,7 +642,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       <Modal visible={!!detailItem} transparent animationType="slide" onRequestClose={() => setDetailItem(null)}>
         <View style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setDetailItem(null)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.sheetTitle, { color: t.text }]} numberOfLines={1}>{detailItem?.name}</Text>
             {detailLoading ? (
               <View style={styles.center}><ActivityIndicator color={t.primary} /></View>
@@ -663,7 +665,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       <Modal visible={sortOpen} transparent animationType="slide" onRequestClose={() => setSortOpen(false)}>
         <View style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setSortOpen(false)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.sheetTitle, { color: t.text }]}>排序方式</Text>
             {(['name', 'size', 'modified'] as OpenListSortBy[]).map((by) => (
               <TouchableOpacity key={by} style={styles.sortOption} onPress={() => setSortBy(by)}>
@@ -687,9 +689,9 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
 
       {/* 下载工具（aria2）设置 */}
       <Modal visible={dlOpen} transparent animationType="slide" onRequestClose={() => setDlOpen(false)}>
-        <View style={styles.modalRoot}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setDlOpen(false)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
               <Text style={[styles.sheetTitle, { color: t.text }]}>下载工具设置</Text>
               <TouchableOpacity onPress={() => setDlOpen(false)} style={{ padding: 4 }}>
@@ -728,7 +730,7 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
               <TouchableOpacity onPress={onDlSave}><Text style={[styles.actionText, { color: t.primary }]}>保存</Text></TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <OpenListPreviewModal

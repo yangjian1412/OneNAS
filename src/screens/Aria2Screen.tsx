@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal, Animated, FlatList } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, StyleSheet, TextInput, Alert, Modal, Animated, FlatList, KeyboardAvoidingView } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useIsFocused } from '@react-navigation/native'
 import { useAria2Store } from '@/stores/aria2Store'
 import type { Aria2Task, ServiceConfig } from '@/types'
@@ -61,6 +62,7 @@ function fileName(task: Aria2Task): string {
 
 export default function Aria2Screen({ service, onRequestClose }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const {
     server, version, globalStat, globalOption,
     active, waiting, stopped, waitingHasMore, loadingPage,
@@ -234,9 +236,9 @@ const onLoadMore = tab === 'waiting' ? loadWaitingPage : null
       </TouchableOpacity>
 
       <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
-        <View style={styles.modalRoot}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalRoot}>
           <TouchableOpacity style={styles.backdrop} onPress={() => setAddOpen(false)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.sheetTitle, { color: t.text }]}>添加下载</Text>
             <TextInput
               multiline
@@ -252,7 +254,7 @@ const onLoadMore = tab === 'waiting' ? loadWaitingPage : null
               <TouchableOpacity onPress={onAddSubmit}><Text style={[styles.actionText, { color: t.primary }]}>下载</Text></TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <ServiceDrawer
@@ -379,7 +381,8 @@ function SettingsScreen({ visible, onClose, globalOption, onSave, t }: SettingsS
 
   return (
     <FullScreenModal visible={visible} onClose={onClose} title="下载设置" t={t}>
-      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         <Text style={[styles.fieldHint, { color: t.textMuted }]}>单位：K=KB/s · M=MB/s · G=GB/s（留空 = 不限）</Text>
 
         <Text style={[styles.fieldLabel, { color: t.textSecondary, marginTop: 6 }]}>全局下载限速</Text>
@@ -417,6 +420,7 @@ function SettingsScreen({ visible, onClose, globalOption, onSave, t }: SettingsS
           <TouchableOpacity onPress={handleSave} disabled={saving}><Text style={[styles.actionText, { color: t.primary }]}>{saving ? '保存中…' : '保存'}</Text></TouchableOpacity>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </FullScreenModal>
   )
 }

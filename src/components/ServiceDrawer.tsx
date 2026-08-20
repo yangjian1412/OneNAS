@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Icon, { IconName } from '@/components/Icon'
 
 export interface DrawerItem {
@@ -33,6 +34,7 @@ interface Props {
 const DRAWER_W = Dimensions.get('window').width * 0.75
 
 export default function ServiceDrawer({ visible, onClose, userInfo, versionInfo, items, t }: Props) {
+  const insets = useSafeAreaInsets()
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
 
   useEffect(() => {
@@ -91,7 +93,7 @@ export default function ServiceDrawer({ visible, onClose, userInfo, versionInfo,
           </View>
 
           {versionInfo ? (
-            <View style={styles.bottomSection}>
+            <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
               <View style={[styles.divider, { backgroundColor: t.border }]} />
               <Text style={[styles.versionLabel, { color: t.textMuted }]}>服务器信息</Text>
               {versionInfo.version ? (

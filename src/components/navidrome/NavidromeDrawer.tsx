@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { NavidromeServerConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
@@ -17,6 +18,7 @@ const DRAWER_W = Dimensions.get('window').width * 0.75
 
 export default function NavidromeDrawer({ visible, server, serverVersion, onClose, onCommonSettings, onLyricsSettings }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
 
   useEffect(() => {
@@ -68,7 +70,7 @@ export default function NavidromeDrawer({ visible, server, serverVersion, onClos
             </TouchableOpacity>
           </View>
 
-          <View style={styles.bottomSection}>
+          <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
             <View style={[styles.divider, { backgroundColor: t.border }]} />
             <Text style={[styles.versionLabel, { color: t.textMuted }]}>服务器信息</Text>
             <Text style={[styles.versionValue, { color: t.text }]}>版本号: {serverVersion || '...'}</Text>

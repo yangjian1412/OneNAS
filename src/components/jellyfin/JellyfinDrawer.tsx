@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { JellyfinServerConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
@@ -17,6 +18,7 @@ const DRAWER_W = Dimensions.get('window').width * 0.75
 
 export default function JellyfinDrawer({ visible, server, serverVersion, onClose, onServerSettings, onPlaybackSettings }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export default function JellyfinDrawer({ visible, server, serverVersion, onClose
 
           </View>
 
-          <View style={styles.bottomSection}>
+          <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
             <View style={[styles.divider, { backgroundColor: t.border }]} />
             <View style={styles.versionRow}>
               <Text style={[styles.versionValue, { color: t.text }]}>服务器版本 {serverVersion || '...'}</Text>

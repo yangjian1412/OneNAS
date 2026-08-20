@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { View, Text, Modal, TouchableOpacity, ScrollView, StyleSheet, TextInput, ActivityIndicator, Alert } from 'react-native'
+import { View, Text, Modal, TouchableOpacity, ScrollView, StyleSheet, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Icon from '@/components/Icon'
 import { useTheme } from '@/lib/theme'
@@ -97,7 +97,7 @@ export default function FolderPickerModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: t.bg, paddingBottom: insets.bottom }]}>
+      <KeyboardAvoidingView behavior="padding" style={[styles.container, { backgroundColor: t.bg, paddingBottom: insets.bottom }]}>
         <View style={[styles.header, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
           <Text style={[styles.title, { color: t.text }]}>{title}</Text>
           <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -121,7 +121,7 @@ export default function FolderPickerModal({
         </ScrollView>
 
         {/* 列表 */}
-        <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 12 }}>
+        <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 12 }} keyboardShouldPersistTaps="handled">
           {segments.length > 0 && (
             <TouchableOpacity
               style={[styles.row, { borderBottomColor: t.border }]}
@@ -200,7 +200,7 @@ export default function FolderPickerModal({
             <Text style={{ color: '#fff', fontWeight: '700' }}>使用当前目录</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl, StyleSheet, Modal, Switch, Animated, BackHandler } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useIsFocused } from '@react-navigation/native'
 import { useAppStore } from '@/stores/appStore'
 import { PortainerConfig, PortainerContainer, PortainerDashboardData } from '@/types'
@@ -291,10 +292,11 @@ export default function PortainerScreen() {
 
 function ContainerDetailModal({ detail, error, loading, onClose }: { detail: any | null; error: string | null; loading: boolean; onClose: () => void }) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   return (
     <Modal visible={!!detail || loading || !!error} transparent animationType="slide" onRequestClose={onClose}>
       <View style={modalStyles.overlay}>
-        <View style={[modalStyles.panel, { backgroundColor: t.card }]}>
+        <View style={[modalStyles.panel, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
           <View style={modalStyles.header}>
             <Text style={[modalStyles.title, { color: t.text }]} numberOfLines={1}>{stripName(detail?.Name ? [detail.Name] : detail?.Names) || '容器详情'}</Text>
             <TouchableOpacity onPress={onClose}><Text style={{ color: t.primary, fontSize: 15 }}>关闭</Text></TouchableOpacity>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, TextInput, Alert, KeyboardAvoidingView, Platform, NativeEventEmitter, NativeModules } from 'react-native'
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, TextInput, Alert, KeyboardAvoidingView, NativeEventEmitter, NativeModules } from 'react-native'
 import FullScreenModal from '@/components/FullScreenModal'
 import Icon from '@/components/Icon'
 import { useTheme } from '@/lib/theme'
@@ -127,7 +127,7 @@ export default function CastDeviceListModal({ visible, onClose, onPick }: Props)
 
   return (
     <FullScreenModal visible={visible} onClose={onClose} title="选择投屏设备" t={t}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <View style={[styles.container, { backgroundColor: t.bg }]}>
           {devices.length > 0 ? (
             // 已有设备：列表立即显示，顶部可选"搜索中…"提示

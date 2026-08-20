@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { View, Text, TextInput, TouchableOpacity, Alert, Modal, StyleSheet, Switch, Animated, BackHandler, ScrollView, KeyboardAvoidingView } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useIsFocused } from '@react-navigation/native'
 import { NestableScrollContainer, NestableDraggableFlatList, RenderItemParams } from 'react-native-draggable-flatlist'
 import { useAppStore } from '@/stores/appStore'
@@ -12,9 +13,11 @@ import Icon from '@/components/Icon'
 import * as Clipboard from 'expo-clipboard'
 import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
-import { File, Paths } from 'expo-file-system'
+import Constants from 'expo-constants'
 
 const SERVICE_TYPES: ServiceType[] = ['jellyfin', 'emby', 'navidrome', 'audiobookshelf', 'immich', 'aria2', 'qbittorrent', 'openlist', 'talebook', 'komga']
+
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0'
 
 interface ServiceRow {
   key: string
@@ -77,6 +80,7 @@ export default function SettingsScreen() {
   const [exportKey, setExportKey] = useState('0')
   const [importKey, setImportKey] = useState('0')
   const [importOpen, setImportOpen] = useState(false)
+  const insets = useSafeAreaInsets()
   const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -426,7 +430,7 @@ export default function SettingsScreen() {
       <View style={[styles.card, { backgroundColor: t.card }]}>
         <View style={{ paddingVertical: 14, paddingHorizontal: 14 }}>
           <Text style={{ color: t.text, fontSize: 14, fontWeight: '700' }}>One NAS</Text>
-          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版本 v1.0.1beta2</Text>
+          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版本 v{APP_VERSION}</Text>
           <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版权所有 © 六分仪</Text>
         </View>
       </View>
@@ -434,7 +438,7 @@ export default function SettingsScreen() {
       <Modal visible={!!tagPickerSlot} transparent animationType="fade" onRequestClose={() => setTagPickerSlot(null)}>
         <View style={styles.pickerOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setTagPickerSlot(null)} activeOpacity={1} />
-          <View style={[styles.picker, { backgroundColor: t.card }]}>
+          <View style={[styles.picker, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.pickerTitle, { color: t.text }]}>添加标签</Text>
             <TouchableOpacity style={[styles.pickerItem, { borderBottomColor: t.border }]} onPress={() => { if (tagPickerSlot) clearTag(tagPickerSlot); setTagPickerSlot(null) }}>
               <Text style={[styles.pickerItemText, { color: t.textMuted }]}>无</Text>
@@ -454,9 +458,9 @@ export default function SettingsScreen() {
         </View>
       </Modal>
       <Modal visible={exportKeyOpen} transparent animationType="slide" onRequestClose={() => setExportKeyOpen(false)}>
-        <View style={styles.pickerOverlay}>
+        <KeyboardAvoidingView behavior="padding" style={styles.pickerOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setExportKeyOpen(false)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.pickerTitle, { color: t.text }]}>导出配置</Text>
             <Text style={[styles.ioHint, { color: t.textMuted }]}>输入加密密钥，配置将 AES 加密后导出（默认 0）</Text>
             <TextInput
@@ -480,13 +484,13 @@ export default function SettingsScreen() {
               <TouchableOpacity onPress={() => setExportKeyOpen(false)}><Text style={[styles.clearText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       
       <Modal visible={importOpen} transparent animationType="slide" onRequestClose={() => setImportOpen(false)}>
-        <View style={styles.pickerOverlay}>
+        <KeyboardAvoidingView behavior="padding" style={styles.pickerOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setImportOpen(false)} activeOpacity={1} />
-          <View style={[styles.sheet, { backgroundColor: t.card }]}>
+          <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.pickerTitle, { color: t.text }]}>导入配置</Text>
             <TextInput
               style={[styles.keyInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
@@ -509,7 +513,7 @@ export default function SettingsScreen() {
               <TouchableOpacity onPress={() => setImportOpen(false)}><Text style={[styles.clearText, { color: t.textMuted }]}>取消</Text></TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   )
@@ -560,6 +564,7 @@ interface WebDavConfigModalProps {
 }
 
 function WebDavConfigModal({ visible, onClose, initial, onSave, onClear, t }: WebDavConfigModalProps) {
+  const insets = useSafeAreaInsets()
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [username, setUsername] = useState('')
@@ -596,7 +601,7 @@ function WebDavConfigModal({ visible, onClose, initial, onSave, onClear, t }: We
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
-        <View style={[styles.sheet, { backgroundColor: t.card }]}>
+        <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.sheetHeader}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.sheetTitle, { color: t.text }]}>WebDAV 配置</Text>
@@ -658,6 +663,7 @@ interface PortainerConfigModalProps {
 }
 
 function PortainerConfigModal({ visible, onClose, initial, onSave, onClear, t }: PortainerConfigModalProps) {
+  const insets = useSafeAreaInsets()
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [apiToken, setApiToken] = useState('')
@@ -712,7 +718,7 @@ function PortainerConfigModal({ visible, onClose, initial, onSave, onClear, t }:
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
-        <View style={[styles.sheet, { backgroundColor: t.card }]}>
+        <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.sheetHeader}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.sheetTitle, { color: t.text }]}>Portainer 配置</Text>

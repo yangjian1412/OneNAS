@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
 import type { TalebookServerConfig } from '@/types'
@@ -25,6 +26,7 @@ export default function TalebookDrawer({
   onClose,
 }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
 
   useEffect(() => {
@@ -75,7 +77,7 @@ export default function TalebookDrawer({
             </TouchableOpacity>
           </View>
 
-          <View style={styles.bottomSection}>
+          <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
             <View style={[styles.divider, { backgroundColor: t.border }]} />
             <View style={styles.versionRow}>
               <Text style={[styles.versionLabel, { color: t.textMuted }]}>类型</Text>

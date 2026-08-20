@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '@/lib/theme'
 import { AudiobookshelfServerConfig } from '@/types'
 import Icon from '@/components/Icon'
@@ -16,6 +17,7 @@ const DRAWER_W = Dimensions.get('window').width * 0.75
 
 export default function AudiobookshelfDrawer({ visible, server, serverVersion, onClose, onPlaybackSettings }: Props) {
   const t = useTheme()
+  const insets = useSafeAreaInsets()
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
 
   useEffect(() => {
@@ -66,7 +68,7 @@ export default function AudiobookshelfDrawer({ visible, server, serverVersion, o
             </TouchableOpacity>
           </View>
 
-          <View style={styles.bottomSection}>
+          <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 16 }]}>
             <View style={[styles.divider, { backgroundColor: t.border }]} />
             <View style={styles.versionRow}>
               <Text style={[styles.versionLabel, { color: t.textMuted }]}>类型</Text>

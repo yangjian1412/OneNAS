@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { View, Text, Modal, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native'
+import { View, Text, Modal, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, KeyboardAvoidingView, ScrollView } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '@/lib/theme'
 import type { TalebookLoginMode } from '@/types'
@@ -40,7 +40,7 @@ export default function TalebookLoginModal({ visible, initialMode, initialUserna
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
           <View style={[styles.sheet, { backgroundColor: t.bg, paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.header}>
