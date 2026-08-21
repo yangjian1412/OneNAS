@@ -73,6 +73,8 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
   const [editMode, setEditMode] = useState<EditMode>(null)
   const [editTarget, setEditTarget] = useState<OpenListFile | null>(null)
   const [editText, setEditText] = useState('')
+  const editInputRef = useRef<TextInput>(null)
+  const [editSelection, setEditSelection] = useState<{ start: number; end: number } | undefined>(undefined)
   const [editBusy, setEditBusy] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerMode, setPickerMode] = useState<'copy' | 'move'>('copy')
@@ -349,8 +351,20 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
       return
     }
     setEditText(mode === 'rename' && f ? f.name : '')
+    const initial = mode === 'rename' && f ? f.name : ''
+    setEditSelection(initial.length > 0 ? { start: initial.length, end: initial.length } : undefined)
     setEditMode(mode)
   }, [path])
+
+  useEffect(() => {
+    if (editMode === null) return
+    const t = setTimeout(() => {
+      editInputRef.current?.setNativeProps({
+        selection: { start: editText.length, end: editText.length },
+      })
+    }, 50)
+    return () => clearTimeout(t)
+  }, [editMode])
 
   const closePicker = useCallback(() => {
     setPickerOpen(false)
@@ -593,7 +607,11 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
           <View style={[styles.sheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.sheetTitle, { color: t.text }]}>{'重命名'}</Text>
             <TextInput
+              ref={editInputRef}
               autoFocus
+              scrollEnabled
+              selection={editSelection}
+              onSelectionChange={(e) => setEditSelection(e.nativeEvent.selection)}
               style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
               value={editText}
               onChangeText={setEditText}

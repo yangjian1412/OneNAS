@@ -97,8 +97,8 @@ export default function FolderPickerModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior="padding" style={[styles.container, { backgroundColor: t.bg, paddingBottom: insets.bottom }]}>
-        <View style={[styles.header, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
+      <KeyboardAvoidingView behavior="padding" style={[styles.container, { backgroundColor: t.bg, paddingBottom: insets.bottom + 16 }]}>
+        <View style={[styles.header, { backgroundColor: t.headerBg, borderBottomColor: t.border, paddingTop: insets.top + 12 }]}>
           <Text style={[styles.title, { color: t.text }]}>{title}</Text>
           <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Icon name="x" size={24} color={t.text} />
@@ -179,7 +179,7 @@ export default function FolderPickerModal({
         )}
 
         {/* 底栏：新建按钮 + 确认 */}
-        <View style={[styles.footer, { borderTopColor: t.border, backgroundColor: t.headerBg }]}>
+        <View style={[styles.footer, { borderTopColor: t.border, backgroundColor: t.headerBg, paddingBottom: insets.bottom + 16 }]}>
           {createFolder && !creating && (
             <TouchableOpacity style={[styles.iconBtn, { borderColor: t.border }]} onPress={() => setCreating(true)}>
               <Icon name="plus" size={18} color={t.primary} />
@@ -213,7 +213,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    paddingTop: 40,
   },
   title: { fontSize: 17, fontWeight: '700' },
   closeBtn: { padding: 4 },

@@ -64,6 +64,8 @@ export default function FileScreen() {
   const [actionItem, setActionItem] = useState<FileItem | null>(null)
   const [editMode, setEditMode] = useState<EditMode>(null)
   const [editText, setEditText] = useState('')
+  const editInputRef = useRef<TextInput>(null)
+  const [editSelection, setEditSelection] = useState<{ start: number; end: number } | undefined>(undefined)
   const [actionLoading, setActionLoading] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerMode, setPickerMode] = useState<'copy' | 'move'>('copy')
@@ -350,8 +352,20 @@ export default function FileScreen() {
       return
     }
     setEditMode(mode)
-    setEditText(mode === 'folder' ? '' : item?.name ?? '')
+    const initial = mode === 'folder' ? '' : item?.name ?? ''
+    setEditText(initial)
+    setEditSelection(initial.length > 0 ? { start: initial.length, end: initial.length } : undefined)
   }
+
+  useEffect(() => {
+    if (editMode === null) return
+    const t = setTimeout(() => {
+      editInputRef.current?.setNativeProps({
+        selection: { start: editText.length, end: editText.length },
+      })
+    }, 50)
+    return () => clearTimeout(t)
+  }, [editMode])
 
   const closePicker = () => {
     setPickerOpen(false)
@@ -837,7 +851,7 @@ export default function FileScreen() {
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setEditMode(null)} activeOpacity={1} />
           <View style={[styles.editSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
             <Text style={[styles.actionTitle, { color: t.text }]}>{editMode === 'folder' ? '新建文件夹' : editMode === 'rename' ? '重命名' : ''}</Text>
-            <TextInput autoFocus style={[styles.editInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]} value={editText} onChangeText={setEditText} placeholder={'名称'} placeholderTextColor={t.textMuted} />
+            <TextInput ref={editInputRef} autoFocus scrollEnabled selection={editSelection} onSelectionChange={(e) => setEditSelection(e.nativeEvent.selection)} style={[styles.editInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]} value={editText} onChangeText={setEditText} placeholder={'名称'} placeholderTextColor={t.textMuted} />
             <View style={styles.editActions}><TouchableOpacity onPress={() => setEditMode(null)}><Text style={[styles.actionText, { color: t.textMuted }]}>取消</Text></TouchableOpacity><TouchableOpacity onPress={submitEdit} disabled={actionLoading}><Text style={[styles.actionText, { color: t.primary, fontWeight: '700' }]}>{actionLoading ? '处理中...' : '确定'}</Text></TouchableOpacity></View>
           </View>
         </KeyboardAvoidingView>
