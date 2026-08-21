@@ -7,6 +7,7 @@ import { useOpenListStore, joinOpenListPath } from '@/stores/openlistStore'
 import { useAppStore } from '@/stores/appStore'
 import type { OpenListFile, ServiceConfig } from '@/types'
 import { openListGetFileUrl, openListGet, openListList, openListMkdir } from '@/lib/api/openlist'
+import type { FolderEntry } from '@/lib/sort'
 import { aria2Ping } from '@/lib/api/aria2'
 import { checkStoragePermission, openAllFilesSettings, enqueueDownload } from '@/lib/downloadManager'
 import { useTheme } from '@/lib/theme'
@@ -634,11 +635,15 @@ export default function OpenListScreen({ service, onRequestClose }: Props) {
         title={pickerMode === 'copy' ? '复制到' : '移动到'}
         initialPath="/"
         excludePathPrefix={pickerExclude}
+        sort={{ by: sortBy, dir: sortDir }}
         listFolders={async (targetPath: string) => {
           if (!server) return { ok: false, error: '未配置 OpenList' }
           try {
             const list = await openListList(server, targetPath)
-            return { ok: true, folders: list.filter((f) => f.is_dir).map((f) => f.name) }
+            const folders: FolderEntry[] = list
+              .filter((f) => f.is_dir)
+              .map((f) => ({ name: f.name, size: f.size ?? 0, modified: f.modified ?? '' }))
+            return { ok: true, folders }
           } catch (e: any) {
             return { ok: false, error: e?.message ?? '加载失败' }
           }

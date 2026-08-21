@@ -13,3 +13,27 @@ export function sortFiles(items: FileItem[], sort: FileSort): FileItem[] {
   }
   return [...dirs.sort(compare), ...files.sort(compare)]
 }
+
+export interface FolderEntry {
+  name: string
+  size: number
+  modified: string
+}
+
+export type FolderSortBy = 'name' | 'size' | 'modified'
+export interface FolderSort {
+  by: FolderSortBy
+  dir: 'asc' | 'desc'
+}
+
+export function sortFolderEntries(entries: FolderEntry[], sort: FolderSort): FolderEntry[] {
+  const arr = [...entries]
+  const cmp = (a: FolderEntry, b: FolderEntry) => {
+    if (sort.by === 'size') return a.size - b.size
+    if (sort.by === 'modified') return (a.modified ?? '').localeCompare(b.modified ?? '')
+    return a.name.localeCompare(b.name, undefined, { numeric: true })
+  }
+  arr.sort(cmp)
+  if (sort.dir === 'desc') arr.reverse()
+  return arr
+}

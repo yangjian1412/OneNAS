@@ -11,6 +11,7 @@ import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '@/lib/theme'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { sortFiles } from '@/lib/sort'
+import type { FolderEntry } from '@/lib/sort'
 import ServiceBar from '@/components/ServiceBar'
 import ServiceCard from '@/components/ServiceCard'
 import { isAudiobookshelfService, isTalebookService } from '@/lib/constants'
@@ -861,12 +862,15 @@ export default function FileScreen() {
         title={pickerMode === 'copy' ? '复制到' : '移动到'}
         initialPath="/"
         excludePathPrefix={pickerExclude}
+        sort={fileSort}
         listFolders={async (path: string) => {
           if (!selectedServer || !token) return { ok: false, error: '未连接服务器' }
           const r = await fmListDir(selectedServer, token, path, fileBackend, webdavServer)
           if (!r.ok) return { ok: false, error: r.error }
-          const names = (r.files ?? []).filter((f) => f.isDirectory).map((f) => f.name)
-          return { ok: true, folders: names }
+          const folders: FolderEntry[] = (r.files ?? [])
+            .filter((f) => f.isDirectory)
+            .map((f) => ({ name: f.name, size: f.size, modified: f.modified }))
+          return { ok: true, folders }
         }}
         createFolder={async (parentPath: string, name: string) => {
           if (!selectedServer || !token) return { ok: false, error: '未连接服务器' }

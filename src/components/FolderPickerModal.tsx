@@ -3,25 +3,28 @@ import { View, Text, Modal, TouchableOpacity, ScrollView, StyleSheet, TextInput,
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Icon from '@/components/Icon'
 import { useTheme } from '@/lib/theme'
+import type { FolderEntry, FolderSort } from '@/lib/sort'
+import { sortFolderEntries } from '@/lib/sort'
 
 interface FolderPickerModalProps {
   visible: boolean
   title: string
   initialPath: string
-  listFolders: (path: string) => Promise<{ ok: boolean; folders?: string[]; error?: string }>
+  listFolders: (path: string) => Promise<{ ok: boolean; folders?: FolderEntry[]; error?: string }>
   createFolder?: (parentPath: string, name: string) => Promise<{ ok: boolean; error?: string }>
   excludePathPrefix?: string
+  sort: FolderSort
   onConfirm: (path: string) => void
   onClose: () => void
 }
 
 export default function FolderPickerModal({
-  visible, title, initialPath, listFolders, createFolder, excludePathPrefix, onConfirm, onClose,
+  visible, title, initialPath, listFolders, createFolder, excludePathPrefix, sort, onConfirm, onClose,
 }: FolderPickerModalProps) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const [currentPath, setCurrentPath] = useState<string>('/')
-  const [folders, setFolders] = useState<string[]>([])
+  const [folders, setFolders] = useState<FolderEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -35,13 +38,13 @@ export default function FolderPickerModal({
     setError(null)
     const res = await listFolders(path)
     if (res.ok) {
-      setFolders(res.folders ?? [])
+      setFolders(sortFolderEntries(res.folders ?? [], sort))
     } else {
       setFolders([])
       setError(res.error ?? '加载失败')
     }
     setLoading(false)
-  }, [listFolders])
+  }, [listFolders, sort])
 
   useEffect(() => {
     if (visible) {
@@ -138,17 +141,17 @@ export default function FolderPickerModal({
           ) : folders.length === 0 ? (
             <View style={styles.center}><Text style={{ color: t.textMuted }}>空文件夹</Text></View>
           ) : (
-            folders.map((name) => {
-              const excluded = isExcluded(name)
+            folders.map((folder) => {
+              const excluded = isExcluded(folder.name)
               return (
                 <TouchableOpacity
-                  key={name}
+                  key={folder.name}
                   style={[styles.row, { borderBottomColor: t.border }, excluded && { opacity: 0.4 }]}
-                  onPress={() => !excluded && enterFolder(name)}
+                  onPress={() => !excluded && enterFolder(folder.name)}
                   disabled={excluded}
                 >
                   <Icon name="folderEmpty" size={20} color={excluded ? t.textMuted : t.primary} />
-                  <Text style={[styles.rowText, { color: excluded ? t.textMuted : t.text, marginLeft: 8 }]} numberOfLines={1}>{name}</Text>
+                  <Text style={[styles.rowText, { color: excluded ? t.textMuted : t.text, marginLeft: 8 }]} numberOfLines={1}>{folder.name}</Text>
                   {excluded && <Text style={[styles.hint, { color: t.textMuted, marginLeft: 'auto' }]}>不可选</Text>}
                 </TouchableOpacity>
               )
