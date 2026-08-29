@@ -32,7 +32,7 @@ import CastRemotePage from '@/components/CastRemotePage'
 import JellyfinServerSettings from '@/components/jellyfin/JellyfinServerSettings'
 import JellyfinPlaybackSettings from '@/components/jellyfin/JellyfinPlaybackSettings'
 
-type ViewType = 'home' | 'items' | 'seasons' | 'episodes' | 'searchResults' | 'detail'
+type ViewType = 'home' | 'items' | 'episodes' | 'searchResults' | 'detail'
 
 interface Props {
   service: ServiceConfig
@@ -154,14 +154,15 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
 
   const prevViewRef = useRef<ViewType>('home')
   useEffect(() => {
-    if (view !== 'detail') prevViewRef.current = view
+    if (view === 'items' || view === 'searchResults') {
+      prevViewRef.current = view
+    }
   }, [view])
 
   const goBack = useCallback(() => {
     const v = viewRef.current
     if (v === 'detail') { setView(prevViewRef.current); setDetailItem(null); setDetailSeriesId(null) }
-    else if (v === 'episodes') { setView('items'); setCurrentItems([]); setCurrentSeasons([]) }
-    else if (v === 'seasons') { setView('items'); setCurrentSeasons([]) }
+    else if (v === 'episodes') { setView('detail'); setCurrentSeasons([]) }
     else if (v === 'items' || v === 'searchResults') { setView('home'); setCurrentItems([]); setSearchQuery('') }
   }, [])
 
