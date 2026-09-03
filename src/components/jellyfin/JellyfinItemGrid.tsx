@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Dimensions } from 'react-native'
+import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, StyleSheet, Dimensions } from 'react-native'
 import type { JellyfinItem, JellyfinServerConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
 import JellyfinPoster from './JellyfinPoster'
@@ -12,9 +12,12 @@ interface Props {
   items: JellyfinItem[]
   onItemPress: (item: JellyfinItem) => void
   emptyText?: string
+  onEndReached?: () => void
+  loadingMore?: boolean
+  hasMore?: boolean
 }
 
-export default function JellyfinItemGrid({ server, items, onItemPress, emptyText = '暂无内容' }: Props) {
+export default function JellyfinItemGrid({ server, items, onItemPress, emptyText = '暂无内容', onEndReached, loadingMore, hasMore }: Props) {
   const t = useTheme()
   if (!server) return null
   if (items.length === 0) {
@@ -61,6 +64,15 @@ export default function JellyfinItemGrid({ server, items, onItemPress, emptyText
     </TouchableOpacity>
   )
 
+  const footer = loadingMore ? (
+    <View style={styles.footer}>
+      <ActivityIndicator size="small" color={t.primary} />
+      <Text style={[styles.footerText, { color: t.textMuted }]}>加载更多...</Text>
+    </View>
+  ) : hasMore === false ? (
+    <Text style={[styles.footerText, styles.footerEnd, { color: t.textMuted }]}>没有更多了</Text>
+  ) : null
+
   return (
     <FlatList
       data={items}
@@ -69,6 +81,9 @@ export default function JellyfinItemGrid({ server, items, onItemPress, emptyText
       numColumns={3}
       contentContainerStyle={styles.list}
       columnWrapperStyle={styles.row}
+      onEndReached={onEndReached}
+      onEndReachedThreshold={0.5}
+      ListFooterComponent={footer}
     />
   )
 }
@@ -89,4 +104,10 @@ const styles = StyleSheet.create({
   rating: { fontSize: 11, marginTop: 2, fontWeight: '600' },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   empty: { fontSize: 14 },
+  footer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 16, gap: 8,
+  },
+  footerText: { fontSize: 13 },
+  footerEnd: { textAlign: 'center', paddingVertical: 16 },
 })

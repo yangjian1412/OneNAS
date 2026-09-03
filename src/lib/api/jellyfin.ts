@@ -194,7 +194,8 @@ export async function jellyfinGetLibraryItems(
   limit = 50,
   sortBy = 'SortName',
   sortOrder: 'Ascending' | 'Descending' = 'Ascending',
-): Promise<{ ok: boolean; items?: JellyfinItem[]; error?: string }> {
+  startIndex = 0,
+): Promise<{ ok: boolean; items?: JellyfinItem[]; totalRecordCount?: number; error?: string }> {
   if (!parentId) return { ok: false, error: 'Invalid parent ID' }
 
   const ct = (collectionType ?? '').toLowerCase()
@@ -213,13 +214,13 @@ export async function jellyfinGetLibraryItems(
       includeTypes = '&IncludeItemTypes=Movie,Series&ExcludeItemTypes=CollectionFolder'; recursive = false
   }
 
-  const result = await jellyfinFetch<{ Items?: JellyfinItem[] }>(
+  const result = await jellyfinFetch<{ Items?: JellyfinItem[]; TotalRecordCount?: number }>(
     server,
-    `/Items?ParentId=${parentId}${includeTypes}&Recursive=${recursive}&SortBy=${sortBy}&SortOrder=${sortOrder}&limit=${limit}&fields=PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,Overview,Genres,ProductionYear,CommunityRating,BackdropImageTags,ImageTags,SeriesId,SeasonId,IndexNumber,SeasonNumber`,
+    `/Items?ParentId=${parentId}${includeTypes}&Recursive=${recursive}&SortBy=${sortBy}&SortOrder=${sortOrder}&limit=${limit}&startIndex=${startIndex}&fields=PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,Overview,Genres,ProductionYear,CommunityRating,BackdropImageTags,ImageTags,SeriesId,SeasonId,IndexNumber,SeasonNumber`,
   )
   if (!result.ok) return { ok: false, error: result.error }
   const items = (result.data?.Items ?? []).filter((i) => i.Id !== parentId)
-  return { ok: true, items }
+  return { ok: true, items, totalRecordCount: result.data?.TotalRecordCount }
 }
 
 export async function jellyfinGetSeasons(

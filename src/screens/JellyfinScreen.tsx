@@ -70,6 +70,8 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
   const [showPlaybackSettings, setShowPlaybackSettings] = useState(false)
   const [serverVersion, setServerVersion] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState('SortName')
   const [sortOrder, setSortOrder] = useState<'Ascending' | 'Descending'>('Ascending')
@@ -198,13 +200,25 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     setSortOrder(defaultSortOrder)
     setView('items')
     setLoading(true)
+    setHasMore(false)
 
     const cacheKey = `libItems:${cacheNs}:${lib.ItemId}`
-    const cached = await getCached<JellyfinItem[]>(cacheKey)
-    if (cached) { setCurrentItems(cached); setLoading(false) }
+    const cached = await getCached<{ items: JellyfinItem[]; totalRecordCount?: number }>(cacheKey)
+    if (cached) {
+      setCurrentItems(cached.items ?? [])
+      const total = cached.totalRecordCount ?? 0
+      setHasMore((cached.items ?? []).length < total)
+      setLoading(false)
+    }
 
-    const result = await jellyfinGetLibraryItems(server, lib.ItemId, lib.CollectionType, 50, defaultSortBy, defaultSortOrder)
-    if (result.ok) { setCurrentItems(result.items ?? []); await setCached(cacheKey, result.items ?? [], 60000) }
+    const result = await jellyfinGetLibraryItems(server, lib.ItemId, lib.CollectionType, 50, defaultSortBy, defaultSortOrder, 0)
+    if (result.ok) {
+      const items = result.items ?? []
+      const total = result.totalRecordCount ?? 0
+      setCurrentItems(items)
+      setHasMore(items.length < total)
+      await setCached(cacheKey, { items, totalRecordCount: total }, 60000)
+    }
     setLoading(false)
   }
 
@@ -242,13 +256,25 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
       setCurrentLibraryName(item.Name)
       setView('items')
       setLoading(true)
+      setHasMore(false)
 
       const folderCacheKey = `libItems:${cacheNs}:${item.Id}`
-      const cachedItems = await getCached<JellyfinItem[]>(folderCacheKey)
-      if (cachedItems) { setCurrentItems(cachedItems); setLoading(false) }
+      const cachedItems = await getCached<{ items: JellyfinItem[]; totalRecordCount?: number }>(folderCacheKey)
+      if (cachedItems) {
+        setCurrentItems(cachedItems.items ?? [])
+        const total = cachedItems.totalRecordCount ?? 0
+        setHasMore((cachedItems.items ?? []).length < total)
+        setLoading(false)
+      }
 
-      const result = await jellyfinGetLibraryItems(server, item.Id, undefined, 50, defaultSortBy, defaultSortOrder)
-      if (result.ok) { setCurrentItems(result.items ?? []); await setCached(folderCacheKey, result.items ?? [], 60000) }
+      const result = await jellyfinGetLibraryItems(server, item.Id, undefined, 50, defaultSortBy, defaultSortOrder, 0)
+      if (result.ok) {
+        const items = result.items ?? []
+        const total = result.totalRecordCount ?? 0
+        setCurrentItems(items)
+        setHasMore(items.length < total)
+        await setCached(folderCacheKey, { items, totalRecordCount: total }, 60000)
+      }
       setLoading(false)
     }
   }
@@ -260,8 +286,14 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     setSortOrder(dir)
     setShowSortDropdown(false)
     setLoading(true)
-    jellyfinGetLibraryItems(server, currentParentId, currentCollectionType, 50, value, dir).then((r) => {
-      if (r.ok) setCurrentItems(r.items ?? [])
+    setHasMore(false)
+    jellyfinGetLibraryItems(server, currentParentId, currentCollectionType, 50, value, dir, 0).then((r) => {
+      if (r.ok) {
+        const items = r.items ?? []
+        const total = r.totalRecordCount ?? 0
+        setCurrentItems(items)
+        setHasMore(items.length < total)
+      }
       setLoading(false)
     })
   }
@@ -271,11 +303,31 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     const newOrder = sortOrder === 'Ascending' ? 'Descending' : 'Ascending'
     setSortOrder(newOrder)
     setLoading(true)
-    jellyfinGetLibraryItems(server, currentParentId, currentCollectionType, 50, sortBy, newOrder).then((r) => {
-      if (r.ok) setCurrentItems(r.items ?? [])
+    setHasMore(false)
+    jellyfinGetLibraryItems(server, currentParentId, currentCollectionType, 50, sortBy, newOrder, 0).then((r) => {
+      if (r.ok) {
+        const items = r.items ?? []
+        const total = r.totalRecordCount ?? 0
+        setCurrentItems(items)
+        setHasMore(items.length < total)
+      }
       setLoading(false)
     })
   }
+
+  const loadMore = useCallback(async () => {
+    if (!server || !currentParentId || loadingMore || !hasMore) return
+    const startIndex = currentItems.length
+    setLoadingMore(true)
+    const result = await jellyfinGetLibraryItems(server, currentParentId, currentCollectionType, 50, sortBy, sortOrder, startIndex)
+    if (result.ok) {
+      const newItems = result.items ?? []
+      const total = result.totalRecordCount ?? 0
+      setCurrentItems((prev) => [...prev, ...newItems])
+      setHasMore(startIndex + newItems.length < total)
+    }
+    setLoadingMore(false)
+  }, [server, currentParentId, currentCollectionType, sortBy, sortOrder, loadingMore, hasMore, currentItems.length])
 
   const handlePlay = async (item: JellyfinItem) => {
     if (!server) return
@@ -422,7 +474,7 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
           {loading ? (
             <ActivityIndicator size="small" color={t.primary} style={{ marginTop: 20 }} />
           ) : (
-            <JellyfinItemGrid server={server!} items={currentItems} onItemPress={handleItemPress} />
+            <JellyfinItemGrid server={server!} items={currentItems} onItemPress={handleItemPress} onEndReached={loadMore} loadingMore={loadingMore} hasMore={hasMore} />
           )}
         </View>
       )}
