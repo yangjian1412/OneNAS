@@ -2,7 +2,7 @@
   "expo": {
     "name": "One NAS",
     "slug": "one-nas",
-    "version": "1.0.2beta10",
+    "version": "1.0.2beta11",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "android": {

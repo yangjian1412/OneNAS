@@ -65,14 +65,15 @@ function mapFileItem(raw: RawFileItem): FileItem {
   }
 }
 
-function resourceUrl(server: ServerConfig, path: string) {
+function resourceUrl(server: ServerConfig, path: string, query: string = '') {
   const base = buildUrl(server.protocol, server.host, server.port)
-  const suffix = path === '/' ? '' : `/${encodeURI(path.replace(/^\/+/, ''))}`
-  return `${base}/api/resources${suffix}`
+  if (path === '/') return `${base}/api/resources${query}`
+  const segments = path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')
+  return `${base}/api/resources/${segments}${query}`
 }
 
-async function requestResource(server: ServerConfig, token: string, path: string, options: RequestInit = {}) {
-  const response = await fetch(resourceUrl(server, path), {
+async function requestResource(server: ServerConfig, token: string, path: string, options: RequestInit = {}, query: string = '') {
+  const response = await fetch(resourceUrl(server, path, query), {
     ...options,
     headers: { 'X-Auth': token, ...(options.headers ?? {}) },
   })
@@ -101,7 +102,7 @@ export async function deleteResource(server: ServerConfig, token: string, path: 
 export async function renameResource(server: ServerConfig, token: string, path: string, destination: string) {
   try {
     const query = `?action=rename&destination=${encodeURIComponent(destination)}`
-    await requestResource(server, token, `${path}${query}`, { method: 'PATCH' })
+    await requestResource(server, token, path, { method: 'PATCH' }, query)
     return { ok: true as const }
   } catch (err: any) {
     return { ok: false as const, error: err.message ?? 'Rename failed' }
@@ -111,7 +112,7 @@ export async function renameResource(server: ServerConfig, token: string, path: 
 export async function copyResource(server: ServerConfig, token: string, path: string, destination: string) {
   try {
     const query = `?action=copy&destination=${encodeURIComponent(destination)}`
-    await requestResource(server, token, `${path}${query}`, { method: 'PATCH' })
+    await requestResource(server, token, path, { method: 'PATCH' }, query)
     return { ok: true as const }
   } catch (err: any) {
     return { ok: false as const, error: err.message ?? 'Copy failed' }
@@ -121,7 +122,7 @@ export async function copyResource(server: ServerConfig, token: string, path: st
 export async function uploadResource(server: ServerConfig, token: string, localUri: string, remotePath: string) {
   try {
     const file = new File(localUri)
-    const response = await file.upload(resourceUrl(server, `${remotePath}?override=true`), {
+    const response = await file.upload(resourceUrl(server, remotePath, '?override=true'), {
       httpMethod: 'POST',
       uploadType: UploadType.BINARY_CONTENT,
       headers: { 'X-Auth': token },
@@ -241,7 +242,7 @@ export async function getFileChecksum(
   server: ServerConfig, token: string, path: string, algo: string
 ): Promise<{ ok: true; data: string } | { ok: false; error: string }> {
   try {
-    const raw = await fetchJson<any>(`${resourceUrl(server, path)}?checksum=${algo}`, {
+    const raw = await fetchJson<any>(resourceUrl(server, path, `?checksum=${algo}`), {
       headers: { 'X-Auth': token },
     })
     const hash: string | undefined = raw?.checksums?.[algo]
