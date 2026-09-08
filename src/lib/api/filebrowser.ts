@@ -48,6 +48,13 @@ interface RawFileItem {
   modTime?: string
 }
 
+function normalizePath(rawPath: string, scope?: string): string {
+  if (!rawPath) return rawPath
+  if (rawPath.startsWith('/')) return rawPath
+  const prefix = scope && scope !== '/' ? '/' + scope.replace(/^\/|\/$/g, '') : ''
+  return `${prefix}/${rawPath.replace(/^\/+/, '')}`
+}
+
 function mapFileItem(raw: RawFileItem): FileItem {
   return {
     name: raw.name,
@@ -339,7 +346,7 @@ export async function searchFilesStream(
       if (!raw.path) return null
       return {
         name: pathParts.pop() ?? '',
-        path: raw.path,
+        path: normalizePath(raw.path, scope),
         isDirectory: raw.dir ?? false,
         size: raw.size ?? 0,
         modified: raw.modified ?? raw.modTime ?? '',
@@ -410,7 +417,7 @@ export async function searchFilesStream(
               if (raw.path) {
                 pushItem({
                   name: pathParts.pop() ?? '',
-                  path: raw.path,
+                  path: normalizePath(raw.path, scope),
                   isDirectory: raw.dir ?? raw.isDir ?? false,
                   size: raw.size ?? 0,
                   modified: raw.modified ?? raw.modTime ?? '',
@@ -440,7 +447,7 @@ export async function searchFilesStream(
               if (raw.path) {
                 pushItem({
                   name: pathParts.pop() ?? '',
-                  path: raw.path,
+                  path: normalizePath(raw.path, scope),
                   isDirectory: raw.dir ?? raw.isDir ?? false,
                   size: raw.size ?? 0,
                   modified: raw.modified ?? raw.modTime ?? '',
