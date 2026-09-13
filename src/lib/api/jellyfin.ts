@@ -12,7 +12,24 @@ import type {
 
 export { type JellyfinServerConfig, type JellyfinUser }
 
-const EMBY_AUTH = 'MediaBrowser Client="One NAS", Device="Android", DeviceId="one-nas-android", Version="1.0.0"'
+const JELLYFIN_AUTH_HEADER = (
+  clientName: string,
+  deviceName: string,
+  deviceId: string,
+  clientVersion: string,
+  token: string,
+): string =>
+  `MediaBrowser Client="${clientName}", Device="${deviceName}", DeviceId="${deviceId}", Version="${clientVersion}", Token="${token}"`
+
+function buildAuthHeader(server: JellyfinServerConfig): string {
+  return JELLYFIN_AUTH_HEADER(
+    'One NAS',
+    'Android',
+    'one-nas-android',
+    '1.0.0',
+    server.accessToken ?? '',
+  )
+}
 
 function jellyfinFetch<T>(
   server: JellyfinServerConfig,
@@ -21,12 +38,8 @@ function jellyfinFetch<T>(
 ): Promise<{ ok: boolean; data?: T; error?: string }> {
   const url = `${server.url}${path}`
   const headers: Record<string, string> = {
-    'X-Emby-Authorization': EMBY_AUTH,
+    Authorization: buildAuthHeader(server),
     ...(options.headers as Record<string, string>),
-  }
-  if (server.accessToken) {
-    headers['X-Emby-Token'] = server.accessToken
-    headers['Authorization'] = `MediaBrowser Token="${server.accessToken}"`
   }
   return apiFetch<T>(url, { ...options, headers })
 }
@@ -55,7 +68,7 @@ export async function jellyfinLogin(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Emby-Authorization': EMBY_AUTH,
+      Authorization: JELLYFIN_AUTH_HEADER('One NAS', 'Android', 'one-nas-android', '1.0.0', ''),
     },
     body: JSON.stringify({ Username: username, Pw: password }),
   })
@@ -133,7 +146,7 @@ export function jellyfinGetImageUrl(
   const params: string[] = []
   if (tag) params.push(`tag=${tag}`)
   if (maxWidth) params.push(`maxWidth=${maxWidth}`)
-  params.push(`api_key=${server.accessToken}`)
+  params.push(`ApiKey=${server.accessToken}`)
   if (params.length) url += `?${params.join('&')}`
   return url
 }
@@ -291,12 +304,12 @@ export async function jellyfinGetStreamUrl(
     const source = info.data.MediaSources[0]
     if (source.DirectStreamUrl) {
       const url = source.DirectStreamUrl.includes('?')
-        ? `${source.DirectStreamUrl}&api_key=${server.accessToken}`
-        : `${source.DirectStreamUrl}?api_key=${server.accessToken}`
+        ? `${source.DirectStreamUrl}&ApiKey=${server.accessToken}`
+        : `${source.DirectStreamUrl}?ApiKey=${server.accessToken}`
       return { ok: true, url }
     }
   }
-  const streamUrl = `${server.url}/Videos/${itemId}/stream.mp4?api_key=${server.accessToken}&Static=true`
+  const streamUrl = `${server.url}/Videos/${itemId}/stream.mp4?ApiKey=${server.accessToken}&Static=true`
   return { ok: true, url: streamUrl }
 }
 

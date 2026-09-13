@@ -201,6 +201,14 @@ v1.0.1 在使用中修复各自小问题
 v1.0.2 作为自己的nas主力应用，持续使用，并重点修复jellyfin的各种bug
 v1.0.2 beta 目前功能开发已完成，欢迎提出改进建议与新增服务页面的需求
 
+### v1.0.3 — Jellyfin v12 适配
+
+Jellyfin v12.0（2026-09-08）默认关闭 legacy auth，强制使用单一 `Authorization: MediaBrowser Client=..., Device=..., DeviceId=..., Version=..., Token=...` header；旧的 `X-Emby-Authorization` / `X-Emby-Token` 头与 `?api_key=` query 全部被忽略。
+
+修复：
+- 重构 `src/lib/api/jellyfin.ts` 和 `jellyfinPlayback.ts` 的 fetch 头，把 client / device / deviceId / version / token 合并到**单一** `Authorization` header（与官方 jellyfin-sdk-typescript v1.0 一致）。登录端点无 token 时 `Token=""` 占位
+- `?api_key=` → `?ApiKey=`（image / stream / playback / upnp 共 6 处）
+
 ---
 
 ## 许可证

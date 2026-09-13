@@ -12,7 +12,7 @@ import type { JellyfinServerConfig } from '@/types'
  */
 export function buildStreamUrl(server: JellyfinServerConfig, itemId: string): string {
   const base = server.url.replace(/\/+$/, '')
-  const url = `${base}/Videos/${itemId}/stream.mp4?Static=true&DeviceId=one-nas-dlna-tv&api_key=${encodeURIComponent(server.accessToken ?? '')}`
+  const url = `${base}/Videos/${itemId}/stream.mp4?Static=true&DeviceId=one-nas-dlna-tv&ApiKey=${encodeURIComponent(server.accessToken ?? '')}`
   return url
 }
 
