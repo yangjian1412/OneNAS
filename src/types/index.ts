@@ -796,7 +796,14 @@ export interface AudiobookshelfPreferences {
 
 // ===== Talebook =====
 
-export type TalebookLoginMode = 'code' | 'password' | 'guest' | ''
+export type TalebookLoginMode = 'password' | 'guest' | ''
+
+export interface GeetestParams {
+  lotNumber: string
+  captchaOutput: string
+  passToken: string
+  genTime: string
+}
 
 export interface TalebookServerConfig {
   id: string
@@ -809,6 +816,15 @@ export interface TalebookServerConfig {
   nickname?: string
   cookie?: string
   serverVersion?: string
+
+  // 新增：私有模式、站点访问码、人机验证
+  isPrivateMode?: boolean
+  siteAccessCode?: string
+  captchaCode?: string
+  geetest?: GeetestParams
+  serverType?: 'talebook' | 'mybooks' | 'opds'
+  httpBasicUser?: string
+  httpBasicPass?: string
 }
 
 export interface TalebookBook {

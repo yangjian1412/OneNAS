@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { View, Text, Modal, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native'
+import { View, Text, Modal, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, KeyboardAvoidingView, Platform, Image } from 'react-native'
 import { ServerConfig, ServiceConfig, ServiceType } from '@/types'
 import { SERVICE_TYPE_LABELS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
@@ -9,6 +9,7 @@ import { fetchContainers } from '@/lib/api/unraid'
 import { navidromeLogin } from '@/lib/api/navidrome'
 import { komgaLogin } from '@/lib/api/komga'
 import { useAppStore } from '@/stores/appStore'
+import { useTalebookStore } from '@/stores/talebookStore'
 
 function parseServerUrl(url: string): { protocol: 'http' | 'https'; host: string; port: number } {
   try {
@@ -36,7 +37,7 @@ interface Props {
   server: ServerConfig | null
   service: ServiceConfig | null
   onSaveServer: (s: ServerConfig) => void
-  onSaveService: (s: ServiceConfig) => void
+  onSaveService: (s: ServiceConfig, keepOpen?: boolean) => void
   onDelete: () => void
 }
 
@@ -60,7 +61,28 @@ export default function ConfigModal({
   const [apiKey, setApiKey] = useState('')
   const [url, setUrl] = useState('')
   const [authType, setAuthType] = useState<'none' | 'basic' | 'token' | 'apikey'>('none')
-  const [talebookLoginMode, setTalebookLoginMode] = useState<'code' | 'password' | 'guest'>('password')
+  const [talebookLoginMode, setTalebookLoginMode] = useState<'password' | 'guest'>('password')
+  const [talebookServerType, setTalebookServerType] = useState<'talebook' | 'mybooks'>('talebook')
+  const [talebookPrivateMode, setTalebookPrivateMode] = useState(false)
+  const [talebookSiteAccessCode, setTalebookSiteAccessCode] = useState('')
+  const [talebookCaptchaCode, setTalebookCaptchaCode] = useState('')
+  const [talebookLoginError, setTalebookLoginError] = useState<string | null>(null)
+  const [talebookServerSaved, setTalebookServerSaved] = useState(false)
+
+  // Talebook store access (登录 + 验证码探测)
+  const talebookLogin = useTalebookStore((s) => s.login)
+  const talebookUnlockSite = useTalebookStore((s) => s.unlockSite)
+  const talebookFetchCaptchaConfig = useTalebookStore((s) => s.fetchCaptchaConfig)
+  const talebookFetchCaptchaImage = useTalebookStore((s) => s.fetchCaptchaImage)
+  const talebookRefreshCaptcha = useTalebookStore((s) => s.refreshCaptcha)
+  const talebookSetCaptchaCode = useTalebookStore((s) => s.setCaptchaCode)
+  const talebookDismissGeetestHint = useTalebookStore((s) => s.dismissGeetestHint)
+  const talebookIsLoading = useTalebookStore((s) => s.isLoading)
+  const talebookCaptchaType = useTalebookStore((s) => s.captchaType)
+  const talebookCaptchaImageBase64 = useTalebookStore((s) => s.captchaImageBase64)
+  const talebookShowGeetestHint = useTalebookStore((s) => s.showGeetestHint)
+  const talebookUserInfo = useTalebookStore((s) => s.userInfo)
+  const talebookServer = useTalebookStore((s) => s.server)
 
   useEffect(() => {
     if (isServerType && server) {
@@ -83,9 +105,23 @@ export default function ConfigModal({
       setPassword(service.password ?? '')
       setApiKey(service.apiKey ?? '')
       if (type === 'talebook') {
-        // 登录方式：code 写到 apiKey 字段、password 写到 username/password、guest 用空
-        const mode = service.apiKey ? 'code' : (service.username ? 'password' : 'guest')
-        setTalebookLoginMode(mode as 'code' | 'password' | 'guest')
+        const mode = service.username ? 'password' : 'guest'
+        setTalebookLoginMode(mode as 'password' | 'guest')
+        // 私有模式相关字段
+        const svcAny = service as any
+        setTalebookServerType(svcAny.serverType === 'mybooks' ? 'mybooks' : 'talebook')
+        setTalebookPrivateMode(!!svcAny.isPrivateMode)
+        setTalebookSiteAccessCode(svcAny.siteAccessCode ?? '')
+        setTalebookCaptchaCode('')
+        setTalebookLoginError(null)
+        setTalebookServerSaved(!!service)
+        // 同步 talebookStore.server（不自动登录），使登录/解锁按钮可用
+        if (service.id) {
+          void useTalebookStore.getState().initServerFromService(service)
+        } else {
+          // 新服务：尚未生成 id，talebookStore 暂不同步，等待用户点击「保存服务器设置」
+          void useTalebookStore.getState().fetchCaptchaConfig()
+        }
       }
     } else {
       setName('')
@@ -111,6 +147,13 @@ export default function ConfigModal({
     setHost('')
     setPort('443')
     setProtocol('https')
+    setTalebookLoginMode('password')
+    setTalebookServerType('talebook')
+    setTalebookPrivateMode(false)
+    setTalebookSiteAccessCode('')
+    setTalebookCaptchaCode('')
+    setTalebookLoginError(null)
+    setTalebookServerSaved(false)
     if (!isServerType) {
       onSaveService({
         id: service?.id ?? '',
@@ -218,7 +261,28 @@ export default function ConfigModal({
         username: saveUsername,
         password: savePassword,
         apiKey: saveApiKey,
-      })
+        // Talebook 私有模式 + 服务类型字段（存储在 service 对象的扩展字段中）
+        isPrivateMode: isTalebook ? talebookPrivateMode : undefined,
+        siteAccessCode: isTalebook ? (talebookPrivateMode ? talebookSiteAccessCode : undefined) : undefined,
+        serverType: isTalebook ? talebookServerType : undefined,
+      }, isTalebook ? true : false)
+      if (isTalebook) {
+        setTalebookServerSaved(true)
+        // 构建 savedSvc（含可能的现有 id）并同步到 talebookStore.server，使登录按钮可用
+        const savedSvc: ServiceConfig = {
+          ...service,
+          id: service?.id || `talebook-${Date.now()}`,
+          type: normalizedType as ServiceType,
+          url,
+          username: saveUsername,
+          password: savePassword,
+          apiKey: saveApiKey,
+          isPrivateMode: talebookPrivateMode,
+          siteAccessCode: talebookPrivateMode ? talebookSiteAccessCode : undefined,
+          serverType: talebookServerType,
+        } as any
+        void useTalebookStore.getState().initServerFromService(savedSvc)
+      }
     }
   }
 
@@ -236,9 +300,15 @@ export default function ConfigModal({
               <View style={styles.titleRow}>
                 <Text style={[styles.title, { color: t.text }]}>{label}</Text>
               </View>
-              <TouchableOpacity onPress={handleSave}>
-                <Text style={[styles.saveBtn, { color: t.primary }]}>Save</Text>
-              </TouchableOpacity>
+              {type === 'talebook' ? (
+                <TouchableOpacity onPress={onClose}>
+                  <Text style={[styles.saveBtn, { color: t.primary }]}>关闭</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={handleSave}>
+                  <Text style={[styles.saveBtn, { color: t.primary }]}>Save</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <ScrollView style={styles.form} contentContainerStyle={{ paddingBottom: 32 }}>
@@ -314,61 +384,225 @@ export default function ConfigModal({
               <>
                 {type === 'talebook' ? (
                   <>
+                    {/* ===== 服务器设置 ===== */}
                     <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>Server URL</Text>
                     <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
                       placeholder="https://你的 Talebook 地址"
                       placeholderTextColor={t.textMuted}
                       value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} />
 
-                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>登录方式</Text>
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>服务类型</Text>
                     <View style={styles.authRow}>
-                      {(['code', 'password', 'guest'] as const).map((m) => {
-                        const labels = { code: '访问码', password: '账号密码', guest: '游客' }
-                        return (
-                          <TouchableOpacity
-                            key={m}
-                            style={[styles.authBtn, { borderColor: t.border },
-                              talebookLoginMode === m && { backgroundColor: t.primary, borderColor: t.primary }]}
-                            onPress={() => setTalebookLoginMode(m)}
-                          >
-                            <Text style={[styles.authBtnText, { color: t.textSecondary },
-                              talebookLoginMode === m && { color: '#fff' }]}>{labels[m]}</Text>
-                          </TouchableOpacity>
-                        )
-                      })}
+                      <TouchableOpacity
+                        style={[styles.authBtn, { borderColor: t.border },
+                          talebookServerType === 'talebook' && { backgroundColor: t.primary, borderColor: t.primary }]}
+                        onPress={() => setTalebookServerType('talebook')}
+                      >
+                        <Text style={[styles.authBtnText, { color: t.textSecondary },
+                          talebookServerType === 'talebook' && { color: '#fff' }]}>Talebook</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.authBtn, { borderColor: t.border },
+                          talebookServerType === 'mybooks' && { backgroundColor: t.primary, borderColor: t.primary }]}
+                        onPress={() => setTalebookServerType('mybooks')}
+                      >
+                        <Text style={[styles.authBtnText, { color: t.textSecondary },
+                          talebookServerType === 'mybooks' && { color: '#fff' }]}>MyBooks</Text>
+                      </TouchableOpacity>
                     </View>
 
-                    {talebookLoginMode === 'code' ? (
-                      <>
-                        <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>访问码</Text>
-                        <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-                          placeholder="服务端设置的访问码"
-                          placeholderTextColor={t.textMuted}
-                          value={apiKey} onChangeText={setApiKey}
-                          autoCapitalize="none" autoCorrect={false} />
-                      </>
-                    ) : talebookLoginMode === 'password' ? (
-                      <>
-                        <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>用户名</Text>
-                        <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-                          placeholder="Username" placeholderTextColor={t.textMuted}
-                          value={username} onChangeText={setUsername}
-                          autoCapitalize="none" autoCorrect={false} />
-                        <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>密码</Text>
-                        <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-                          placeholder="Password" secureTextEntry
-                          placeholderTextColor={t.textMuted}
-                          value={password} onChangeText={setPassword}
-                          autoCapitalize="none" autoCorrect={false} />
-                      </>
-                    ) : (
-                      <Text style={[styles.fieldLabel, { color: t.textMuted, marginTop: 8 }]}>
-                        游客模式无需账号密码，仅可浏览公开内容
+                    <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>私有模式</Text>
+                    <View style={styles.authRow}>
+                      <TouchableOpacity
+                        style={[styles.authBtn, { borderColor: t.border },
+                          talebookPrivateMode && { backgroundColor: t.primary, borderColor: t.primary }]}
+                        onPress={() => setTalebookPrivateMode(true)}
+                      >
+                        <Text style={[styles.authBtnText, { color: t.textSecondary },
+                          talebookPrivateMode && { color: '#fff' }]}>启用</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.authBtn, { borderColor: t.border },
+                          !talebookPrivateMode && { backgroundColor: t.primary, borderColor: t.primary }]}
+                        onPress={() => setTalebookPrivateMode(false)}
+                      >
+                        <Text style={[styles.authBtnText, { color: t.textSecondary },
+                          !talebookPrivateMode && { color: '#fff' }]}>关闭</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.primaryBtn, { backgroundColor: t.primary, marginTop: 8 }]}
+                      onPress={handleSave}
+                    >
+                      <Text style={styles.primaryBtnText}>保存服务器设置</Text>
+                    </TouchableOpacity>
+
+                    {talebookServerSaved && (
+                      <Text style={[styles.savedHint, { color: t.primary }]}>
+                        {talebookPrivateMode ? '已保存，请完成站点解锁与登录' : '已保存，请登录'}
                       </Text>
                     )}
-                    <Text style={[styles.fieldLabel, { color: t.textMuted, marginTop: 12 }]}>
-                      提示：保存后到 Talebook 首页抽屉里点「登录」完成登录会话。
-                    </Text>
+
+                    {/* ===== 解锁站点（私有模式，前置条件） ===== */}
+                    {talebookPrivateMode && talebookServerSaved && (
+                      <View style={[styles.section, { borderColor: t.border }]}>
+                        <Text style={[styles.sectionTitle, { color: t.text }]}>① 解锁站点</Text>
+                        <Text style={[styles.hint, { color: t.textMuted, marginTop: 4 }]}>
+                          请输入服务端「管理 → 系统设置 → 邀请/访问码」配置的访问码
+                        </Text>
+                        <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text, marginTop: 12 }]}
+                          placeholder="站点访问码"
+                          placeholderTextColor={t.textMuted}
+                          value={talebookSiteAccessCode} onChangeText={setTalebookSiteAccessCode}
+                          autoCapitalize="none" autoCorrect={false} />
+
+                        {talebookCaptchaType === 'image' && talebookCaptchaImageBase64 ? (
+                          <View style={{ marginTop: 12 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <Text style={[styles.fieldLabel, { color: t.textSecondary, marginTop: 0 }]}>人机验证</Text>
+                              <TouchableOpacity onPress={talebookRefreshCaptcha}>
+                                <Text style={{ color: t.primary, fontSize: 12 }}>刷新</Text>
+                              </TouchableOpacity>
+                            </View>
+                            <Image source={{ uri: `data:image/png;base64,${talebookCaptchaImageBase64}` }} style={styles.captchaImage} />
+                            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text, marginTop: 4 }]}
+                              placeholder="请输入验证码"
+                              placeholderTextColor={t.textMuted}
+                              value={talebookCaptchaCode} onChangeText={(v) => { setTalebookCaptchaCode(v); talebookSetCaptchaCode(v) }}
+                              autoCapitalize="none" autoCorrect={false} />
+                          </View>
+                        ) : null}
+
+                        <TouchableOpacity
+                          style={[styles.primaryBtn, { backgroundColor: t.primary, marginTop: 12 }]}
+                          onPress={async () => {
+                            setTalebookLoginError(null)
+                            const result = await talebookUnlockSite({ accessCode: talebookSiteAccessCode })
+                            if (result.ok) {
+                              // 重新探测登录场景的验证码配置
+                              void useTalebookStore.getState().fetchCaptchaConfig()
+                            } else {
+                              setTalebookLoginError(result.error ?? '解锁失败')
+                            }
+                          }}
+                          disabled={talebookIsLoading}
+                        >
+                          {talebookIsLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.primaryBtnText}>解锁</Text>}
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* ===== 登录（密码或游客） ===== */}
+                    {talebookServerSaved && (
+                      <View style={[styles.section, { borderColor: t.border }]}>
+                        <Text style={[styles.sectionTitle, { color: t.text }]}>{talebookPrivateMode ? '② 登录' : '登录'}</Text>
+
+                        {talebookUserInfo?.isLogin ? (
+                          <Text style={[styles.hint, { color: t.primary, marginTop: 4 }]}>
+                            ✓ 已登录：{talebookUserInfo.nickname || talebookUserInfo.username || '已登录'}
+                          </Text>
+                        ) : (
+                          <Text style={[styles.hint, { color: t.textMuted, marginTop: 4 }]}>
+                            当前未登录
+                          </Text>
+                        )}
+
+                        {/* Tab 切换：账号密码 / 游客 */}
+                        <View style={[styles.authRow, { marginTop: 12 }]}>
+                          {(['password', 'guest'] as const).map((m) => {
+                            const labels = { password: '账号密码', guest: '游客' }
+                            return (
+                              <TouchableOpacity
+                                key={m}
+                                style={[styles.authBtn, { borderColor: t.border },
+                                  talebookLoginMode === m && { backgroundColor: t.primary, borderColor: t.primary }]}
+                                onPress={() => { setTalebookLoginMode(m); setTalebookLoginError(null) }}
+                              >
+                                <Text style={[styles.authBtnText, { color: t.textSecondary },
+                                  talebookLoginMode === m && { color: '#fff' }]}>{labels[m]}</Text>
+                              </TouchableOpacity>
+                            )
+                          })}
+                        </View>
+
+                        {talebookLoginMode === 'password' && (
+                          <>
+                            <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>用户名</Text>
+                            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                              placeholder="Username" placeholderTextColor={t.textMuted}
+                              value={username} onChangeText={setUsername}
+                              autoCapitalize="none" autoCorrect={false} />
+                            <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>密码</Text>
+                            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
+                              placeholder="Password" secureTextEntry
+                              placeholderTextColor={t.textMuted}
+                              value={password} onChangeText={setPassword}
+                              autoCapitalize="none" autoCorrect={false} />
+                          </>
+                        )}
+
+                        {talebookLoginMode === 'guest' && (
+                          <Text style={[styles.hint, { color: t.textMuted, marginTop: 12 }]}>
+                            游客模式：无需账号密码，仅可浏览公开内容。最近浏览 / 我的书架 不可用。
+                          </Text>
+                        )}
+
+                        {/* 人机验证码（login 场景） */}
+                        {talebookCaptchaType === 'image' && talebookCaptchaImageBase64 ? (
+                          <View style={{ marginTop: 12 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <Text style={[styles.fieldLabel, { color: t.textSecondary, marginTop: 0 }]}>人机验证</Text>
+                              <TouchableOpacity onPress={talebookRefreshCaptcha}>
+                                <Text style={{ color: t.primary, fontSize: 12 }}>刷新</Text>
+                              </TouchableOpacity>
+                            </View>
+                            <Image source={{ uri: `data:image/png;base64,${talebookCaptchaImageBase64}` }} style={styles.captchaImage} />
+                            <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text, marginTop: 4 }]}
+                              placeholder="请输入验证码"
+                              placeholderTextColor={t.textMuted}
+                              value={talebookCaptchaCode} onChangeText={(v) => { setTalebookCaptchaCode(v); talebookSetCaptchaCode(v) }}
+                              autoCapitalize="none" autoCorrect={false} />
+                          </View>
+                        ) : talebookCaptchaType === 'geetest' && talebookShowGeetestHint ? (
+                          <View style={[styles.hintBox, { backgroundColor: (t.warning || '#f0a020') + '15', borderColor: (t.warning || '#f0a020') + '30' }]}>
+                            <Text style={[styles.hint, { color: t.warning || '#a06000' }]}>
+                              服务端启用了极验验证，需先在 Web 端登录后再回到 App。
+                            </Text>
+                            <TouchableOpacity onPress={talebookDismissGeetestHint} style={{ marginTop: 4 }}>
+                              <Text style={{ color: t.primary, fontSize: 12 }}>知道了</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : null}
+
+                        {talebookLoginError && (
+                          <Text style={[styles.hint, { color: t.error || '#e53935', marginTop: 8 }]}>
+                            {talebookLoginError}
+                          </Text>
+                        )}
+
+                        <TouchableOpacity
+                          style={[styles.primaryBtn, { backgroundColor: t.primary, marginTop: 16 }]}
+                          onPress={async () => {
+                            setTalebookLoginError(null)
+                            const result = await talebookLogin(talebookLoginMode, {
+                              username: talebookLoginMode === 'password' ? username : undefined,
+                              password: talebookLoginMode === 'password' ? password : undefined,
+                              captchaCode: talebookCaptchaCode || undefined,
+                            })
+                            if (!result.ok) {
+                              setTalebookLoginError(result.error ?? '登录失败')
+                            } else {
+                              // 登录成功后保存（包含账号密码）
+                              handleSave()
+                            }
+                          }}
+                          disabled={talebookIsLoading}
+                        >
+                          {talebookIsLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.primaryBtnText}>登录</Text>}
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </>
                 ) : (type === 'jellyfin' || type === 'navidrome' || type === 'audiobookshelf' || type === 'emby' || type === 'komga') ? (
                   <>
@@ -540,4 +774,14 @@ const styles = StyleSheet.create({
   testBtn: { borderWidth: 1, borderRadius: 8, paddingVertical: 11, alignItems: 'center' },
   testBtnText: { fontSize: 14, fontWeight: '600' },
   deleteBtn: { fontSize: 14, fontWeight: '600', textAlign: 'center' },
+
+  // Talebook 配置 + 登录一体化样式
+  primaryBtn: { borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  savedHint: { fontSize: 12, marginTop: 6 },
+  section: { marginTop: 20, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth },
+  sectionTitle: { fontSize: 16, fontWeight: '700' },
+  hint: { fontSize: 12, lineHeight: 18 },
+  hintBox: { borderWidth: 1, borderRadius: 8, padding: 10 },
+  captchaImage: { width: '100%', height: 60, resizeMode: 'contain', marginTop: 4, borderRadius: 6 },
 })

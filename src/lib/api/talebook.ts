@@ -4,13 +4,26 @@ import type {
   TalebookBookDetail,
   TalebookIndexData,
   TalebookUserInfo,
+  GeetestParams,
 } from '@/types'
 import { apiFetch } from '@/lib/api/client'
 
-export { type TalebookServerConfig }
+export { type TalebookServerConfig, type GeetestParams }
 
 export type LoginResult =
-  | { ok: true; cookie: string; nickname: string; username: string; mode: 'code' | 'password' | 'guest' }
+  | { ok: true; cookie: string; nickname: string; username: string; mode: 'password' | 'guest' }
+  | { ok: false; error: string }
+
+export type UnlockResult =
+  | { ok: true; cookie: string; nickname: string; username: string; mode: 'code' }
+  | { ok: false; error: string }
+
+export type CaptchaConfigResult =
+  | { ok: true; type: 'image' | 'geetest' | 'none'; config?: any }
+  | { ok: false; error: string }
+
+export type CaptchaImageResult =
+  | { ok: true; imageBase64: string }
   | { ok: false; error: string }
 
 interface TalebookApiEnvelope {
@@ -59,10 +72,8 @@ function formBody(fields: Record<string, string>): string {
 
 function extractCookies(headers: Record<string, string> | undefined): string {
   if (!headers) return ''
-  // xmlhttprequest 会把所有 set-cookie 合到一行用逗号分隔（部分实现）；通常只有一个
   const setCookie = headers['set-cookie'] || ''
   if (!setCookie) return ''
-  // 只取 name=value 部分
   return setCookie
     .split(/,(?=\s*[\w-]+=)/)
     .map((s) => s.split(';')[0].trim())
@@ -84,32 +95,28 @@ function normalizeUserInfo(raw: TalebookApiEnvelope): TalebookUserInfo {
 
 // ===== Login =====
 
-export async function talebookLoginWithCode(server: TalebookServerConfig, code: string): Promise<LoginResult> {
-  const url = `${baseUrl(server)}/api/welcome`
-  const result = await apiFetch<TalebookApiEnvelope>(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: formBody({ code: code.trim() }),
-  })
-  if (!result.ok) return { ok: false, error: result.error ?? '登录失败' }
-  if (result.data?.err && result.data.err !== 'ok') {
-    return { ok: false, error: result.data.msg ?? result.data.err }
+export async function talebookLoginWithPassword(
+  server: TalebookServerConfig,
+  username: string,
+  password: string,
+  captchaCode?: string,
+  geetest?: GeetestParams
+): Promise<LoginResult> {
+  const body: Record<string, string> = {
+    username: (username || '').trim().toLowerCase(),
+    password: password ?? '',
   }
-  const cookie = extractCookies(result.headers)
-  const nickname = result.data?.user?.nickname ?? '访客'
-  const username = result.data?.user?.username ?? ''
-  return { ok: true, cookie, nickname, username, mode: 'code' }
-}
-
-export async function talebookLoginWithPassword(server: TalebookServerConfig, username: string, password: string): Promise<LoginResult> {
-  const url = `${baseUrl(server)}/api/user/sign_in`
-  const result = await apiFetch<TalebookApiEnvelope>(url, {
+  if (captchaCode) body.captcha_code = captchaCode
+  if (geetest) {
+    body.lot_number = geetest.lotNumber
+    body.captcha_output = geetest.captchaOutput
+    body.pass_token = geetest.passToken
+    body.gen_time = geetest.genTime
+  }
+  const result = await apiFetch<any>(`${baseUrl(server)}/api/user/sign_in`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: formBody({
-      username: (username || '').trim().toLowerCase(),
-      password: password ?? '',
-    }),
+    body: formBody(body),
   })
   if (!result.ok) return { ok: false, error: result.error ?? '登录失败' }
   if (result.data?.err && result.data.err !== 'ok') {
@@ -120,8 +127,84 @@ export async function talebookLoginWithPassword(server: TalebookServerConfig, us
   return { ok: true, cookie, nickname, username, mode: 'password' }
 }
 
-export async function talebookLoginAsGuest(server: TalebookServerConfig): Promise<LoginResult> {
-  return talebookLoginWithPassword(server, '', '')
+export async function talebookLoginAsGuest(server: TalebookServerConfig, captchaCode?: string, geetest?: GeetestParams): Promise<LoginResult> {
+  return talebookLoginWithPassword(server, '', '', captchaCode, geetest)
+}
+
+// ===== Private mode site unlock =====
+
+export async function talebookUnlockSite(
+  server: TalebookServerConfig,
+  siteAccessCode: string,
+  captchaCode?: string,
+  geetest?: GeetestParams
+): Promise<UnlockResult> {
+  // MyBooks: POST /api/access，JSON body，字段 invite_code
+  if (server.serverType === 'mybooks') {
+    const result = await apiFetch<any>(`${baseUrl(server)}/api/access`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invite_code: siteAccessCode.trim() }),
+    })
+    if (!result.ok) return { ok: false, error: result.error ?? '解锁失败' }
+    if (result.data?.err && result.data.err !== 'ok' && result.data.err !== 'free') {
+      return { ok: false, error: result.data.msg ?? result.data.err }
+    }
+    const cookie = extractCookies(result.headers)
+    const nickname = result.data?.user?.nickname ?? '访客'
+    const username = result.data?.user?.username ?? ''
+    return { ok: true, cookie, nickname, username, mode: 'code' }
+  }
+  // Talebook: POST /api/welcome，form-urlencoded，字段 code
+  const body: Record<string, string> = { code: siteAccessCode.trim() }
+  if (captchaCode) body.captcha_code = captchaCode
+  if (geetest) {
+    body.lot_number = geetest.lotNumber
+    body.captcha_output = geetest.captchaOutput
+    body.pass_token = geetest.passToken
+    body.gen_time = geetest.genTime
+  }
+  const result = await apiFetch<any>(`${baseUrl(server)}/api/welcome`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formBody(body),
+  })
+  if (!result.ok) return { ok: false, error: result.error ?? '解锁失败' }
+  if (result.data?.err && result.data.err !== 'ok' && result.data.err !== 'free') {
+    if (result.data.err === 'captcha.invalid') {
+      return { ok: false, error: result.data.msg ?? '人机验证失败' }
+    }
+    return { ok: false, error: result.data.msg ?? result.data.err }
+  }
+  const cookie = extractCookies(result.headers)
+  const nickname = result.data?.user?.nickname ?? '访客'
+  const username = result.data?.user?.username ?? ''
+  return { ok: true, cookie, nickname, username, mode: 'code' }
+}
+
+// ===== Captcha =====
+
+export async function talebookGetCaptchaConfig(server: TalebookServerConfig): Promise<CaptchaConfigResult> {
+  // MyBooks 后端无验证码端点
+  if (server.serverType === 'mybooks') {
+    return { ok: true, type: 'none' }
+  }
+  const result = await apiFetch<any>(`${baseUrl(server)}/api/captcha/config`, {
+    headers: withCookie({}, server.cookie),
+  })
+  if (!result.ok) return { ok: false, error: result.error ?? '获取验证码配置失败' }
+  return { ok: true, type: result.data?.type ?? 'none', config: result.data }
+}
+
+export async function talebookGetCaptchaImage(server: TalebookServerConfig): Promise<CaptchaImageResult> {
+  if (server.serverType === 'mybooks') {
+    return { ok: false, error: 'MyBooks 不支持验证码' }
+  }
+  const result = await apiFetch<any>(`${baseUrl(server)}/api/captcha/image`, {
+    headers: withCookie({}, server.cookie),
+  })
+  if (!result.ok) return { ok: false, error: result.error ?? '获取验证码图片失败' }
+  return { ok: true, imageBase64: result.data?.imageBase64 ?? '' }
 }
 
 // ===== Probes =====
@@ -132,7 +215,7 @@ export async function talebookGetUserInfo(server: TalebookServerConfig): Promise
   error?: string
 }> {
   const url = `${baseUrl(server)}/api/user/info`
-  const result = await apiFetch<TalebookApiEnvelope>(url, {
+  const result = await apiFetch<any>(url, {
     headers: withCookie({}, server.cookie),
   })
   if (!result.ok) return { ok: false, error: result.error }
@@ -150,7 +233,7 @@ export async function talebookGetIndex(server: TalebookServerConfig): Promise<{
   error?: string
 }> {
   const url = `${baseUrl(server)}/api/index?random=12&recent=12`
-  const result = await apiFetch<TalebookApiEnvelope>(url, {
+  const result = await apiFetch<any>(url, {
     headers: withCookie({}, server.cookie),
   })
   if (!result.ok) return { ok: false, error: result.error }
@@ -172,7 +255,7 @@ export async function talebookGetReading(server: TalebookServerConfig): Promise<
   error?: string
 }> {
   const url = `${baseUrl(server)}/api/reading`
-  const result = await apiFetch<TalebookApiEnvelope>(url, {
+  const result = await apiFetch<any>(url, {
     headers: withCookie({}, server.cookie),
   })
   if (!result.ok) return { ok: false, error: result.error }
@@ -187,8 +270,10 @@ export async function talebookGetShelf(server: TalebookServerConfig): Promise<{
   books?: TalebookBook[]
   error?: string
 }> {
-  const url = `${baseUrl(server)}/api/shelf`
-  const result = await apiFetch<TalebookApiEnvelope>(url, {
+  // MyBooks: /api/wants；Talebook: /api/shelf
+  const path = server.serverType === 'mybooks' ? '/api/wants' : '/api/shelf'
+  const url = `${baseUrl(server)}${path}`
+  const result = await apiFetch<any>(url, {
     headers: withCookie({}, server.cookie),
   })
   if (!result.ok) return { ok: false, error: result.error }
@@ -204,7 +289,7 @@ export async function talebookSearch(server: TalebookServerConfig, query: string
   error?: string
 }> {
   const url = `${baseUrl(server)}/api/search?name=${encodeURIComponent(query.trim())}`
-  const result = await apiFetch<TalebookApiEnvelope>(url, {
+  const result = await apiFetch<any>(url, {
     headers: withCookie({}, server.cookie),
   })
   if (!result.ok) return { ok: false, error: result.error }
@@ -222,7 +307,7 @@ export async function talebookGetBookDetail(server: TalebookServerConfig, bookId
   error?: string
 }> {
   const url = `${baseUrl(server)}/api/book/${bookId}`
-  const result = await apiFetch<TalebookApiEnvelope>(url, {
+  const result = await apiFetch<any>(url, {
     headers: withCookie({}, server.cookie),
   })
   if (!result.ok) return { ok: false, error: result.error }
@@ -236,11 +321,14 @@ export async function talebookToggleShelf(server: TalebookServerConfig, bookId: 
   ok: boolean
   error?: string
 }> {
-  const url = `${baseUrl(server)}/api/book/${bookId}/shelf`
-  const result = await apiFetch<TalebookApiEnvelope>(url, {
+  // MyBooks: /api/book/{id}/wants，body 字段 wants；Talebook: /shelf，body 字段 shelf
+  const isMybooks = server.serverType === 'mybooks'
+  const path = isMybooks ? `/api/book/${bookId}/wants` : `/api/book/${bookId}/shelf`
+  const url = `${baseUrl(server)}${path}`
+  const result = await apiFetch<any>(url, {
     method: 'POST',
     headers: { ...withCookie({ 'Content-Type': 'application/json' }, server.cookie) },
-    body: JSON.stringify({ shelf: inShelf }),
+    body: JSON.stringify(isMybooks ? { wants: inShelf } : { shelf: inShelf }),
   })
   if (!result.ok) return { ok: false, error: result.error }
   if (result.data?.err && result.data.err !== 'ok') {

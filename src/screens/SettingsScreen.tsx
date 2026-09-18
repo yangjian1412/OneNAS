@@ -201,13 +201,13 @@ export default function SettingsScreen() {
     setModalVisible(false)
   }
 
-  const handleSaveService = (service: ServiceConfig) => {
+  const handleSaveService = (service: ServiceConfig, keepOpen: boolean = false) => {
     const existing = service.id
       ? services.find((item) => item.id === service.id)
       : serviceByType(services, service.type)
     if (existing) updateService(existing.id, service)
     else addService({ ...service, id: generateId(), sortOrder: services.length })
-    setModalVisible(false)
+    if (!keepOpen) setModalVisible(false)
   }
 
   const handleDelete = () => {
