@@ -418,3 +418,176 @@ export async function navidromeScrobble(
     await fetch(buildApiUrl(server, 'scrobble', { id: songId, submission: submission ? 'true' : 'false' }))
   } catch {}
 }
+
+// ─── Playlist management (Subsonic API) ────────────────────────────────────────
+//
+// createPlaylist semantics per Subsonic spec:
+//   - if `playlistId` is given → rename (ignore songIds)
+//   - if `name` given, no `playlistId` → create new playlist with name; if `songIds` provided,
+//     the new playlist is populated immediately
+//
+// updatePlaylist supports incremental updates:
+//   - `songIdsToAdd` and `songIndexToRemove` are 0-based song indexes (NOT song ids for removal)
+//
+// deletePlaylist removes a playlist owned by the current user (admin can remove any).
+
+export interface NavidromeCreatePlaylistParams {
+  name?: string
+  playlistId?: string
+  songIds?: string[]
+  comment?: string
+  public?: boolean
+}
+
+export async function navidromeCreatePlaylist(
+  server: NavidromeServerConfig,
+  params: NavidromeCreatePlaylistParams,
+): Promise<{ ok: boolean; playlistId?: string; error?: string }> {
+  try {
+    const url = buildApiUrl(server, 'createPlaylist')
+    const body = new URLSearchParams()
+    if (params.playlistId) body.set('playlistId', params.playlistId)
+    if (params.name) body.set('name', params.name)
+    if (params.comment) body.set('comment', params.comment)
+    if (params.public != null) body.set('public', params.public ? 'true' : 'false')
+    if (params.songIds && params.songIds.length > 0) {
+      for (const id of params.songIds) body.append('songId', id)
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    })
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const data: SubsonicResponse<unknown> = await res.json()
+    const r = data['subsonic-response']
+    if (r.status !== 'ok') return { ok: false, error: r.error?.message ?? 'failed' }
+    const id = (r.playlist as any)?.id
+    return { ok: true, playlistId: typeof id === 'string' ? id : undefined }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? 'unknown error' }
+  }
+}
+
+export interface NavidromeUpdatePlaylistParams {
+  name?: string
+  comment?: string
+  public?: boolean
+  songIdsToAdd?: string[]
+  songIndexesToRemove?: number[]
+}
+
+export async function navidromeUpdatePlaylist(
+  server: NavidromeServerConfig,
+  playlistId: string,
+  params: NavidromeUpdatePlaylistParams,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const url = buildApiUrl(server, 'updatePlaylist')
+    const body = new URLSearchParams()
+    body.set('playlistId', playlistId)
+    if (params.name != null) body.set('name', params.name)
+    if (params.comment != null) body.set('comment', params.comment)
+    if (params.public != null) body.set('public', params.public ? 'true' : 'false')
+    if (params.songIdsToAdd && params.songIdsToAdd.length > 0) {
+      for (const id of params.songIdsToAdd) body.append('songIdToAdd', id)
+    }
+    if (params.songIndexesToRemove && params.songIndexesToRemove.length > 0) {
+      for (const idx of params.songIndexesToRemove) body.append('songIndexToRemove', String(idx))
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    })
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const data: SubsonicResponse<unknown> = await res.json()
+    const r = data['subsonic-response']
+    if (r.status !== 'ok') return { ok: false, error: r.error?.message ?? 'failed' }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? 'unknown error' }
+  }
+}
+
+export async function navidromeDeletePlaylist(
+  server: NavidromeServerConfig,
+  playlistId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const url = buildApiUrl(server, 'deletePlaylist', { id: playlistId })
+    const res = await fetch(url, { method: 'POST' })
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const data: SubsonicResponse<unknown> = await res.json()
+    const r = data['subsonic-response']
+    if (r.status !== 'ok') return { ok: false, error: r.error?.message ?? 'failed' }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? 'unknown error' }
+  }
+}
+
+// ─── Play queue persistence (Navidrome / Subsonic OpenSubsonic extension) ───
+//
+// savePlayQueue replaces the server-side play queue entirely. `current` marks the
+// song being played; `position` is the offset in seconds within that song. Both
+// `current` and `songs` accept song ids.
+//
+// Note: getPlayQueue is implemented by Navidrome and OpenSubsonic-compatible
+// servers; if the endpoint is missing the call returns ok=false with a friendly
+// error. We don't fail user actions when the server doesn't support it.
+
+export interface NavidromeSavePlayQueueParams {
+  current?: string
+  position?: number
+  songs: string[]
+}
+
+export async function navidromeSavePlayQueue(
+  server: NavidromeServerConfig,
+  params: NavidromeSavePlayQueueParams,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const body = new URLSearchParams()
+    if (params.current) body.set('current', params.current)
+    if (params.position != null) body.set('position', String(params.position))
+    for (const id of params.songs) body.append('id', id)
+    const url = `${buildApiUrl(server, 'savePlayQueue')}`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    })
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const data: SubsonicResponse<unknown> = await res.json()
+    const r = data['subsonic-response']
+    if (r.status !== 'ok') return { ok: false, error: r.error?.message ?? 'failed' }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? 'unknown error' }
+  }
+}
+
+export async function navidromeGetPlayQueue(
+  server: NavidromeServerConfig,
+): Promise<{ ok: boolean; current?: string; position?: number; songs?: NavidromeSong[]; error?: string }> {
+  try {
+    const url = buildApiUrl(server, 'getPlayQueue')
+    const res = await fetch(url)
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const data: SubsonicResponse<unknown> = await res.json()
+    const r = data['subsonic-response']
+    if (r.status !== 'ok') return { ok: false, error: r.error?.message ?? 'failed' }
+    const playQueue = r.playQueue as any
+    if (!playQueue) return { ok: true }
+    const entry = playQueue.entry
+    return {
+      ok: true,
+      current: playQueue.current,
+      position: typeof playQueue.position === 'number' ? playQueue.position : undefined,
+      songs: Array.isArray(entry) ? entry as NavidromeSong[] : (entry ? [entry as NavidromeSong] : []),
+    }
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? 'unknown error' }
+  }
+}

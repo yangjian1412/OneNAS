@@ -37,9 +37,10 @@ interface NavidromeState {
   logout: () => void
 
   initWithService: (service: ServiceConfig) => Promise<void>
+  refreshPlaylists: () => Promise<NavidromePlaylist[]>
 }
 
-export const useNavidromeStore = create<NavidromeState>((set) => ({
+export const useNavidromeStore = create<NavidromeState>((set, get) => ({
   server: null,
   artists: [],
   recentAlbums: [],
@@ -88,6 +89,17 @@ export const useNavidromeStore = create<NavidromeState>((set) => ({
     } else {
       set({ error: result.error ?? 'Login failed', isLoading: false })
     }
+  },
+
+  refreshPlaylists: async () => {
+    const { server } = get()
+    if (!server) return []
+    const result = await navidromeGetPlaylists(server)
+    if (result.ok && result.items) {
+      set({ playlists: result.items })
+      return result.items
+    }
+    return get().playlists
   },
 }))
 

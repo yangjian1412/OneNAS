@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
-import { View, Text, ScrollView, FlatList, TouchableOpacity, ActivityIndicator, BackHandler, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
+import { View, Text, ScrollView, FlatList, TouchableOpacity, ActivityIndicator, BackHandler, Modal, StyleSheet, Platform, StatusBar, Alert } from 'react-native'
 import { useIsFocused } from '@react-navigation/native'
 import { useNavidromeStore, loadNavidromeHome } from '@/stores/navidromeStore'
 import { useNavidromePlaybackStore } from '@/stores/navidromePlaybackStore'
@@ -30,6 +30,10 @@ import NavidromeSettings from '@/components/navidrome/NavidromeSettings'
 import NavidromeServerSettings from '@/components/navidrome/NavidromeServerSettings'
 import NavidromeMiniPlayer from '@/components/navidrome/NavidromeMiniPlayer'
 import NavidromeFullPlayer from '@/components/navidrome/NavidromeFullPlayer'
+import NavidromeSongActionSheet, { type SongActionTarget } from '@/components/navidrome/NavidromeSongActionSheet'
+import NavidromeAlbumActionSheet from '@/components/navidrome/NavidromeAlbumActionSheet'
+import NavidromePlaylistPickerModal from '@/components/navidrome/NavidromePlaylistPickerModal'
+import { MoreButton, Checkbox } from '@/components/navidrome/navidromeRowIcons'
 
 type ViewType = 'home' | 'albumDetail' | 'artistAlbums' | 'allAlbums' | 'allArtists' | 'playlistDetail' | 'search' | 'directory' | 'starred' | 'random'
 
@@ -95,6 +99,29 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
   // Playlist detail
   const [playlistDetail, setPlaylistDetail] = useState<NavidromePlaylist | null>(null)
   const [playlistSongs, setPlaylistSongs] = useState<NavidromeSong[]>([])
+
+  // Song-level action sheet target
+  const [songSheetTarget, setSongSheetTarget] = useState<SongActionTarget | null>(null)
+
+  // Album/Playlist/Artist-level action sheet
+  type SheetMode = { kind: 'album' | 'playlist' | 'artist'; title: string; subTitle?: string; starred?: boolean; songs: NavidromeSong[]; starId?: string; starKind?: 'album' | 'artist'; playlistId?: string } | null
+  const [albumSheet, setAlbumSheet] = useState<SheetMode>(null)
+
+  // Playlist picker modal
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerSongs, setPickerSongs] = useState<NavidromeSong[]>([])
+
+  // Multi-select (album / playlist detail). Artist page has no multi-select.
+  const [albumMulti, setAlbumMulti] = useState<Set<string>>(new Set())
+  const [playlistMulti, setPlaylistMulti] = useState<Set<string>>(new Set())
+  const [albumMultiMode, setAlbumMultiMode] = useState(false)
+  const [playlistMultiMode, setPlaylistMultiMode] = useState(false)
+  const isAnyMulti = albumMultiMode || playlistMultiMode
+
+  const openPicker = useCallback((songs: NavidromeSong[]) => {
+    setPickerSongs(songs)
+    setPickerOpen(true)
+  }, [])
 
   // View stack for back navigation
   const viewStackRef = useRef<ViewType[]>([])
@@ -227,10 +254,20 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
   const commRef = useRef(commonSettingsOpen)
   const lyriRef = useRef(lyricsSettingsOpen)
   const servRef = useRef(serverSettingsOpen)
+  const songRef = useRef(songSheetTarget !== null)
+  const albumSheetRef = useRef(albumSheet !== null)
+  const pickerRef = useRef(pickerOpen)
+  const fullRef = useRef(fullPlayerVisible)
+  const multiRef = useRef(isAnyMulti)
   drawRef.current = drawerOpen
   commRef.current = commonSettingsOpen
   lyriRef.current = lyricsSettingsOpen
   servRef.current = serverSettingsOpen
+  songRef.current = songSheetTarget !== null
+  albumSheetRef.current = albumSheet !== null
+  pickerRef.current = pickerOpen
+  fullRef.current = fullPlayerVisible
+  multiRef.current = isAnyMulti
 
   const handleHardwareBack = useCallback((): boolean => {
     if (loadingRef.current) { return true }
@@ -238,6 +275,11 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
     if (commRef.current) { setCommonSettingsOpen(false); return true }
     if (lyriRef.current) { setLyricsSettingsOpen(false); return true }
     if (servRef.current) { setServerSettingsOpen(false); return true }
+    if (songRef.current) { setSongSheetTarget(null); return true }
+    if (albumSheetRef.current) { setAlbumSheet(null); return true }
+    if (pickerRef.current) { setPickerOpen(false); return true }
+    if (fullRef.current) { setFullPlayerVisible(false); return true }
+    if (multiRef.current) { setAlbumMulti(new Set()); setAlbumMultiMode(false); setPlaylistMulti(new Set()); setPlaylistMultiMode(false); return true }
     if (viewStackRef.current.length > 0 || view !== 'home') { goBack(); return true }
     if (onRequestClose) { onRequestClose(); return true }
     return false
@@ -380,6 +422,64 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
     handlePlaySong(songs, startIndex)
   }
 
+  // ─── Navigation from song action sheet ────────────────────────────────────
+  const handleNavigateAlbum = useCallback(async (albumId: string) => {
+    if (!server) return
+    setLoading(true)
+    setError(null)
+    const result = await navidromeGetAlbum(server, albumId)
+    setLoading(false)
+    if (result.ok && result.album) {
+      setAlbumDetail(result.album)
+      setAlbumSongs((result.songs as any as NavidromeSong[]) ?? [])
+      setAlbumMulti(new Set())
+      viewStackRef.current.push(currentViewRef.current)
+      setView('albumDetail')
+    } else {
+      setError(result.error ?? '无法加载专辑')
+    }
+  }, [server])
+
+  const handleNavigateArtist = useCallback(async (artistId: string) => {
+    if (!server) return
+    setLoading(true)
+    const result = await navidromeGetArtist(server, artistId)
+    setLoading(false)
+    if (result.ok) {
+      setArtistDetail(result.artist ?? { id: artistId, name: '' })
+      setArtistAlbums(result.albums ?? [])
+      setArtistMulti(new Set())
+      viewStackRef.current.push(currentViewRef.current)
+      setView('artistAlbums')
+    }
+  }, [server])
+
+  // ─── Multi-select helpers ───────────────────────────────────────────────
+  const toggleSet = (set: Set<string>, id: string) => {
+    const next = new Set(set)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  }
+
+  // ─── Refresh playlist detail after song add/remove ───────────────────────
+  const refreshPlaylistDetail = useCallback(async () => {
+    if (!server || !playlistDetail) return
+    const result = await navidromeGetPlaylist(server, playlistDetail.id)
+    if (result.ok) {
+      setPlaylistDetail(result.playlist ?? playlistDetail)
+      setPlaylistSongs(result.songs ?? [])
+    }
+  }, [server, playlistDetail])
+
+  const refreshAlbumDetail = useCallback(async () => {
+    if (!server || !albumDetail) return
+    const result = await navidromeGetAlbum(server, albumDetail.id)
+    if (result.ok && result.album) {
+      setAlbumDetail(result.album)
+      setAlbumSongs((result.songs as any as NavidromeSong[]) ?? [])
+    }
+  }, [server, albumDetail])
+
   if (!server) {
     if (loading) {
       return (
@@ -479,7 +579,7 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
       )}
 
       {view === 'albumDetail' && albumDetail && (
-        <ScrollView contentContainerStyle={styles.detailContent}>
+        <ScrollView contentContainerStyle={[styles.detailContent, { paddingBottom: albumMulti.size > 0 ? 200 : 80 }]}>
           <AlbumHeader
             server={server} album={albumDetail} songs={albumSongs}
             onPlay={() => playAlbum(albumDetail, albumSongs)}
@@ -487,20 +587,51 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
               await handleStarToggle(albumDetail.id, 'album', starred)
               setAlbumDetail({ ...albumDetail, starred: starred ? undefined : new Date().toISOString() })
             }}
+            onMorePress={() => setAlbumSheet({
+              kind: 'album', title: albumDetail.name, subTitle: albumDetail.artist,
+              starred: !!albumDetail.starred, songs: albumSongs,
+              starId: albumDetail.id, starKind: 'album',
+            })}
+            onEnterMulti={() => {
+              setAlbumMulti(new Set())
+              setAlbumMultiMode(true)
+              setAlbumSheet(null)
+            }}
+            multiActive={albumMultiMode}
+            selectedCount={albumMulti.size}
+            onExitMulti={() => { setAlbumMulti(new Set()); setAlbumMultiMode(false) }}
+            onSelectAll={() => setAlbumMulti(new Set(albumSongs.map((s) => s.id ?? '').filter(Boolean) as string[]))}
           />
           <View style={{ height: 12 }} />
-          <NavidromeSongList songs={albumSongs} onSongPress={(_, i) => playAlbum(albumDetail, albumSongs, i)} emptyText="暂无曲目" />
+          <NavidromeSongList
+            songs={albumSongs}
+            onSongPress={(_, i) => {
+              if (albumMultiMode) return
+              playAlbum(albumDetail, albumSongs, i)
+            }}
+            onMorePress={(song, idx) => setSongSheetTarget({ song, source: 'album', indexInList: idx })}
+            onLongPress={(song, idx) => setSongSheetTarget({ song, source: 'album', indexInList: idx })}
+            onToggleSelect={(song) => setAlbumMulti(toggleSet(albumMulti, song.id ?? ''))}
+            isSelected={(song) => albumMulti.has(song.id ?? '')}
+            multiSelect={albumMultiMode}
+            emptyText="暂无曲目"
+          />
           <View style={{ height: 80 }} />
         </ScrollView>
       )}
 
       {view === 'artistAlbums' && artistDetail && (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: artistMulti.size > 0 ? 200 : 80 }]}>
           <ArtistHeader server={server} artist={artistDetail} />
           <View style={{ height: 12 }} />
           <Text style={[styles.sectionTitle, { color: t.text, paddingHorizontal: 16 }]}>专辑</Text>
           {artistAlbums.length > 0 ? (
-            <NavidromeAlbumGrid server={server} albums={artistAlbums} onAlbumPress={handleAlbumPress} emptyText="" />
+            <NavidromeAlbumGrid
+              server={server}
+              albums={artistAlbums}
+              onAlbumPress={handleAlbumPress}
+              emptyText=""
+            />
           ) : (
             <Text style={[styles.emptyHint, { color: t.textMuted }]}>暂无专辑</Text>
           )}
@@ -509,43 +640,45 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
       )}
 
       {view === 'playlistDetail' && playlistDetail && (
-        <FlatList
-          data={playlistSongs}
-          keyExtractor={(item, i) => item.id ?? item.title ?? String(i)}
-          ListHeaderComponent={<PlaylistHeader server={server} playlist={playlistDetail} onPlay={() => playAlbum({} as NavidromeAlbum, playlistSongs)} />}
-          ListFooterComponent={<View style={{ height: 80 }} />}
-          renderItem={({ item, index }) => {
-            const song = item as NavidromeSong
-            return (
-              <TouchableOpacity
-                style={[styles.songRow, { borderBottomColor: t.border }]}
-                activeOpacity={0.7}
-                onPress={() => playAlbum({} as NavidromeAlbum, playlistSongs, index)}
-              >
-                <View style={{ width: 36, height: 36, borderRadius: 4, marginRight: 8, backgroundColor: t.border, overflow: 'hidden' }}>
-                  <UriImage uri={navidromeGetCoverArtUrl(server, song.coverArt, 80)} />
-                </View>
-                <View style={[styles.songTrack, { backgroundColor: t.card }]}>
-                  {song.track != null ? (
-                    <Text style={[styles.songTrackText, { color: t.textMuted }]}>{song.track.toString().padStart(2, '0')}</Text>
-                  ) : (
-                    <Icon name="music" size={14} color={t.textMuted} />
-                  )}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.songTitle, { color: t.text }]} numberOfLines={1}>{song.title}</Text>
-                  <Text style={[styles.songArtist, { color: t.textMuted }]} numberOfLines={1}>{song.artist ?? '未知艺术家'}</Text>
-                </View>
-                {prefs.showPlayCount && song.playCount != null && song.playCount > 0 ? (
-                  <Text style={[styles.songCount, { color: t.warning }]}>▶{song.playCount}</Text>
-                ) : null}
-                <Text style={[styles.songDuration, { color: t.textMuted }]}>{(song.duration ? Math.round(song.duration) : 0) + 's'}</Text>
-              </TouchableOpacity>
-            )
-          }}
-          ListEmptyComponent={<Text style={[styles.emptyHint, { color: t.textMuted }]}>暂无曲目</Text>}
-          contentContainerStyle={{ paddingTop: 8, paddingBottom: 32 }}
-        />
+        <ScrollView
+          contentContainerStyle={[styles.detailContent, { paddingBottom: playlistMulti.size > 0 ? 200 : 80 }]}
+        >
+          <PlaylistHeader
+            server={server} playlist={playlistDetail}
+            songCount={playlistSongs.length}
+            onPlay={() => playAlbum({} as NavidromeAlbum, playlistSongs)}
+            onMorePress={() => setAlbumSheet({
+              kind: 'playlist', title: playlistDetail.name,
+              subTitle: playlistDetail.owner ?? undefined,
+              songs: playlistSongs,
+              playlistId: playlistDetail.id,
+            })}
+            onEnterMulti={() => {
+              setPlaylistMulti(new Set())
+              setPlaylistMultiMode(true)
+              setAlbumSheet(null)
+            }}
+            multiActive={playlistMultiMode}
+            selectedCount={playlistMulti.size}
+            onExitMulti={() => { setPlaylistMulti(new Set()); setPlaylistMultiMode(false) }}
+            onSelectAll={() => setPlaylistMulti(new Set(playlistSongs.map((s) => s.id ?? '').filter(Boolean) as string[]))}
+          />
+          <View style={{ height: 12 }} />
+          <NavidromeSongList
+            songs={playlistSongs}
+            onSongPress={(_, i) => {
+              if (playlistMultiMode) return
+              playAlbum({} as NavidromeAlbum, playlistSongs, i)
+            }}
+            onMorePress={(song, idx) => setSongSheetTarget({ song, source: 'playlist', indexInList: idx })}
+            onLongPress={(song, idx) => setSongSheetTarget({ song, source: 'playlist', indexInList: idx })}
+            onToggleSelect={(song) => setPlaylistMulti(toggleSet(playlistMulti, song.id ?? ''))}
+            isSelected={(song) => playlistMulti.has(song.id ?? '')}
+            multiSelect={playlistMultiMode}
+            emptyText="暂无曲目"
+          />
+          <View style={{ height: 80 }} />
+        </ScrollView>
       )}
 
       {view === 'search' && (
@@ -565,7 +698,13 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
           {searchData.songs.length > 0 && (
             <View>
               <Text style={[styles.sectionTitle, { color: t.text, paddingHorizontal: 16, marginTop: 16 }]}>歌曲</Text>
-              <NavidromeSongList songs={searchData.songs} onSongPress={(_, i) => playAlbum({} as any, searchData.songs, i)} emptyText="" />
+              <NavidromeSongList
+                songs={searchData.songs}
+                onSongPress={(_, i) => playAlbum({} as any, searchData.songs, i)}
+                onMorePress={(song, idx) => setSongSheetTarget({ song, source: 'search', indexInList: idx })}
+                onLongPress={(song, idx) => setSongSheetTarget({ song, source: 'search', indexInList: idx })}
+                emptyText=""
+              />
             </View>
           )}
           {searchData.artists.length === 0 && searchData.albums.length === 0 && searchData.songs.length === 0 && (
@@ -698,6 +837,105 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
       <NavidromeSettings visible={lyricsSettingsOpen} onClose={() => setLyricsSettingsOpen(false)} showLyrics={true} />
       <NavidromeServerSettings visible={serverSettingsOpen} onClose={() => setServerSettingsOpen(false)} serverUrl={server?.url} />
 
+      {/* Song-level action sheet (search/album/playlist/queue/nowPlaying) */}
+      <NavidromeSongActionSheet
+        visible={songSheetTarget !== null}
+        target={songSheetTarget}
+        server={server}
+        onClose={() => setSongSheetTarget(null)}
+        onAddToPlaylist={openPicker}
+        onNavigateAlbum={handleNavigateAlbum}
+        onNavigateArtist={handleNavigateArtist}
+        onRefreshPlaylist={refreshPlaylistDetail}
+        playlistId={view === 'playlistDetail' ? playlistDetail?.id : undefined}
+      />
+
+      {/* Album / Playlist / Artist level action sheet */}
+      <NavidromeAlbumActionSheet
+        visible={albumSheet !== null}
+        source={albumSheet?.kind ?? 'album'}
+        title={albumSheet?.title ?? ''}
+        subTitle={albumSheet?.subTitle}
+        starred={albumSheet?.starred}
+        server={server}
+        songs={albumSheet?.songs ?? []}
+        starId={albumSheet?.starId}
+        starKind={albumSheet?.starKind}
+        playlistId={albumSheet?.playlistId}
+        onClose={() => setAlbumSheet(null)}
+        onPlayAll={() => {
+          const s = albumSheet?.songs ?? []
+          if (s.length > 0) playList(s, 0)
+        }}
+        onAddToPlaylist={openPicker}
+        onStarToggle={async (next) => {
+          if (!albumSheet) return
+          if (albumSheet.kind === 'album' && albumDetail) {
+            setAlbumDetail({ ...albumDetail, starred: next ? new Date().toISOString() : undefined })
+          } else if (albumSheet.kind === 'artist' && artistDetail) {
+            setArtistDetail({ ...artistDetail, starred: next ? new Date().toISOString() : undefined })
+          }
+        }}
+        onPlaylistRenamed={(next) => {
+          if (playlistDetail && playlistDetail.id === next.id) {
+            setPlaylistDetail({ ...playlistDetail, name: next.name })
+          }
+        }}
+        onPlaylistDeleted={() => {
+          if (viewStackRef.current.length > 0) {
+            viewStackRef.current.pop()
+          }
+          setView('home')
+          setPlaylistDetail(null)
+          setPlaylistSongs([])
+        }}
+      />
+
+      {/* Playlist picker modal (加入歌单…) */}
+      <NavidromePlaylistPickerModal
+        visible={pickerOpen}
+        songs={pickerSongs}
+        server={server}
+        onClose={() => setPickerOpen(false)}
+      />
+
+      {/* Multi-select bottom bar (album/playlist detail) */}
+      {isAnyMulti ? (
+        <MultiSelectBar
+          t={t}
+          counts={{
+            album: albumMulti.size,
+            playlist: playlistMulti.size,
+          }}
+          source={playlistMultiMode ? 'playlist' : 'album'}
+          onPlay={() => {
+            const source = playlistMultiMode ? 'playlist' : 'album'
+            const idSet = playlistMultiMode ? playlistMulti : albumMulti
+            const list = source === 'album' ? albumSongs : playlistSongs
+            const selected = list.filter((s) => idSet.has(s.id ?? ''))
+            if (selected.length > 0) playList(selected, 0)
+          }}
+          onAddQueue={() => {
+            const source = playlistMultiMode ? 'playlist' : 'album'
+            const idSet = playlistMultiMode ? playlistMulti : albumMulti
+            const list = source === 'album' ? albumSongs : playlistSongs
+            const selected = list.filter((s) => idSet.has(s.id ?? ''))
+            useNavidromePlayerStore.getState().appendToQueue(selected)
+          }}
+          onAddPlaylist={() => {
+            const source = playlistMultiMode ? 'playlist' : 'album'
+            const idSet = playlistMultiMode ? playlistMulti : albumMulti
+            const list = source === 'album' ? albumSongs : playlistSongs
+            const selected = list.filter((s) => idSet.has(s.id ?? ''))
+            if (selected.length > 0) openPicker(selected)
+          }}
+          onCancel={() => {
+            setAlbumMulti(new Set()); setAlbumMultiMode(false)
+            setPlaylistMulti(new Set()); setPlaylistMultiMode(false)
+          }}
+        />
+      ) : null}
+
       {queueLen > 0 && currentIdx >= 0 && !fullPlayerVisible && (
         <NavidromeMiniPlayer onPress={() => setFullPlayerVisible(true)} />
       )}
@@ -705,10 +943,59 @@ export default function NavidromeScreen({ service, onRequestClose }: Props) {
         visible={fullPlayerVisible}
         onClose={() => setFullPlayerVisible(false)}
         server={server}
+        onSongMorePress={(song) => setSongSheetTarget({ song, source: 'nowPlaying' })}
+        onQueueSongMorePress={(song) => setSongSheetTarget({ song, source: 'queue' })}
       />
     </View>
   )
 }
+
+function MultiSelectBar({ t, counts, source, onPlay, onAddQueue, onAddPlaylist, onCancel }: {
+  t: ReturnType<typeof useTheme>
+  counts: { album: number; playlist: number }
+  source: 'album' | 'playlist'
+  onPlay: () => void
+  onAddQueue: () => void
+  onAddPlaylist: () => void
+  onCancel: () => void
+}) {
+  const n = counts[source]
+  return (
+    <View style={[multiStyles.bar, { backgroundColor: t.card, borderTopColor: t.border }]}>
+      <View style={multiStyles.row}>
+        <TouchableOpacity onPress={onPlay} disabled={n === 0} style={[multiStyles.btn, { backgroundColor: t.primary, opacity: n === 0 ? 0.4 : 1 }]}>
+          <Text style={multiStyles.btnText}>播放 {n} 首</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onAddQueue} disabled={n === 0} style={[multiStyles.btn, { backgroundColor: t.bg, borderColor: t.border, opacity: n === 0 ? 0.4 : 1 }]}>
+          <Text style={[multiStyles.btnText, { color: t.text }]}>加入队列</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={multiStyles.row}>
+        <TouchableOpacity onPress={onAddPlaylist} disabled={n === 0} style={[multiStyles.btn, { backgroundColor: t.bg, borderColor: t.border, opacity: n === 0 ? 0.4 : 1 }]}>
+          <Text style={[multiStyles.btnText, { color: t.text }]}>加入歌单…</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onCancel} style={[multiStyles.btn, { backgroundColor: t.bg, borderColor: t.border }]}>
+          <Text style={[multiStyles.btnText, { color: t.textMuted }]}>取消多选</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  )
+}
+
+const multiStyles = StyleSheet.create({
+  bar: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 24,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  row: { flexDirection: 'row', gap: 8 },
+  btn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 10, borderWidth: 1 },
+  btnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+})
 
 function AlbumRow({ server, albums, onPress }: { server: NavidromeServerConfig; albums: NavidromeAlbum[]; onPress: (a: NavidromeAlbum) => void }) {
   const t = useTheme()
@@ -835,9 +1122,44 @@ function HomeSection({
   )
 }
 
-function AlbumHeader({ server, album, songs, onPlay, onStarToggle }: { server: NavidromeServerConfig; album: NavidromeAlbum; songs: NavidromeSong[]; onPlay: () => void; onStarToggle?: (starred: boolean) => void }) {
+function AlbumHeader({ server, album, songs, onPlay, onStarToggle, onMorePress, onEnterMulti, multiActive, selectedCount, onExitMulti, onSelectAll }: {
+  server: NavidromeServerConfig
+  album: NavidromeAlbum
+  songs: NavidromeSong[]
+  onPlay: () => void
+  onStarToggle?: (starred: boolean) => void
+  onMorePress?: () => void
+  onEnterMulti?: () => void
+  multiActive?: boolean
+  selectedCount?: number
+  onExitMulti?: () => void
+  onSelectAll?: () => void
+}) {
   const t = useTheme()
   const isStarred = !!album.starred
+
+  if (multiActive) {
+    return (
+      <View style={[styles.detailHeader, { backgroundColor: t.card, padding: 12 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ color: t.text, fontSize: 15, fontWeight: '600' }}>已选 {selectedCount ?? 0} / {songs.length}</Text>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            {onSelectAll ? (
+              <TouchableOpacity onPress={onSelectAll} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: t.primary, fontSize: 14, fontWeight: '500' }}>全选</Text>
+              </TouchableOpacity>
+            ) : null}
+            {onExitMulti ? (
+              <TouchableOpacity onPress={onExitMulti} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: t.textMuted, fontSize: 14, fontWeight: '500' }}>取消</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      </View>
+    )
+  }
+
   return (
     <View style={[styles.detailHeader, { backgroundColor: t.card }]}>
       <View style={{ flexDirection: 'row', padding: 12, alignItems: 'center' }}>
@@ -856,10 +1178,20 @@ function AlbumHeader({ server, album, songs, onPlay, onStarToggle }: { server: N
               </TouchableOpacity>
             )}
             {onStarToggle && (
-              <TouchableOpacity onPress={() => onStarToggle(isStarred)} style={{ padding: 4 }}>
+              <TouchableOpacity onPress={() => onStarToggle(isStarred)} style={styles.headerIconBtn}>
                 <Icon name={isStarred ? 'star' : 'star'} size={20} color={isStarred ? t.warning : t.textMuted} />
               </TouchableOpacity>
             )}
+            {onEnterMulti && songs.length > 0 ? (
+              <TouchableOpacity onPress={onEnterMulti} style={styles.headerIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Icon name="multiSelect" size={20} color={t.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+            {onMorePress ? (
+              <View style={styles.headerIconBtn}>
+                <MoreButton onPress={onMorePress} size={28} />
+              </View>
+            ) : null}
           </View>
         </View>
       </View>
@@ -867,9 +1199,13 @@ function AlbumHeader({ server, album, songs, onPlay, onStarToggle }: { server: N
   )
 }
 
-function ArtistHeader({ server, artist }: { server: NavidromeServerConfig; artist: NavidromeArtist }) {
+function ArtistHeader({ server, artist }: {
+  server: NavidromeServerConfig
+  artist: NavidromeArtist
+}) {
   const t = useTheme()
   void server
+
   return (
     <View style={[styles.detailHeader, { backgroundColor: t.card, paddingVertical: 24 }]}>
       <View style={{ alignItems: 'center' }}>
@@ -885,8 +1221,42 @@ function ArtistHeader({ server, artist }: { server: NavidromeServerConfig; artis
   )
 }
 
-function PlaylistHeader({ server, playlist, onPlay }: { server: NavidromeServerConfig; playlist: NavidromePlaylist; onPlay: () => void }) {
+function PlaylistHeader({ server, playlist, onPlay, onMorePress, onEnterMulti, multiActive, selectedCount, onExitMulti, onSelectAll, songCount }: {
+  server: NavidromeServerConfig
+  playlist: NavidromePlaylist
+  onPlay: () => void
+  onMorePress?: () => void
+  onEnterMulti?: () => void
+  multiActive?: boolean
+  selectedCount?: number
+  onExitMulti?: () => void
+  onSelectAll?: () => void
+  songCount?: number
+}) {
   const t = useTheme()
+
+  if (multiActive) {
+    return (
+      <View style={[styles.detailHeader, { backgroundColor: t.card, padding: 12 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ color: t.text, fontSize: 15, fontWeight: '600' }}>已选 {selectedCount ?? 0} / {songCount ?? 0}</Text>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            {onSelectAll ? (
+              <TouchableOpacity onPress={onSelectAll} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: t.primary, fontSize: 14, fontWeight: '500' }}>全选</Text>
+              </TouchableOpacity>
+            ) : null}
+            {onExitMulti ? (
+              <TouchableOpacity onPress={onExitMulti} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: t.textMuted, fontSize: 14, fontWeight: '500' }}>取消</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      </View>
+    )
+  }
+
   return (
     <View style={[styles.detailHeader, { backgroundColor: t.card }]}>
       <View style={{ flexDirection: 'row', padding: 12, alignItems: 'center' }}>
@@ -898,10 +1268,22 @@ function PlaylistHeader({ server, playlist, onPlay }: { server: NavidromeServerC
           {playlist.songCount != null ? (
             <Text style={[styles.detailMeta, { color: t.textMuted }]}>{playlist.songCount} 首</Text>
           ) : null}
-          <TouchableOpacity onPress={onPlay} style={[styles.playAllBtn, { backgroundColor: t.primary, marginTop: 8 }]}>
-            <Icon name="play" size={18} color="#fff" />
-            <Text style={styles.playAllText}>播放</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <TouchableOpacity onPress={onPlay} style={[styles.playAllBtn, { backgroundColor: t.primary }]}>
+              <Icon name="play" size={18} color="#fff" />
+              <Text style={styles.playAllText}>播放</Text>
+            </TouchableOpacity>
+            {onEnterMulti && (songCount ?? 0) > 0 ? (
+              <TouchableOpacity onPress={onEnterMulti} style={styles.headerIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Icon name="multiSelect" size={20} color={t.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+            {onMorePress ? (
+              <View style={styles.headerIconBtn}>
+                <MoreButton onPress={onMorePress} size={28} />
+              </View>
+            ) : null}
+          </View>
         </View>
       </View>
     </View>
@@ -998,8 +1380,9 @@ const styles = StyleSheet.create({
   playAllBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
-    marginTop: 12, alignSelf: 'flex-start',
+    alignSelf: 'center',
   },
+  headerIconBtn: { padding: 4, alignSelf: 'center' },
   playAllText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   artistAvatar: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
   artistAvatarText: { color: '#fff', fontSize: 36, fontWeight: '700' },

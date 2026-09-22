@@ -5,13 +5,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { navidromeGetCoverArtUrl } from '@/lib/api/navidrome'
 import { getServer, playAt } from '@/lib/audioController'
 import Icon from '@/components/Icon'
+import { MoreButton } from './navidromeRowIcons'
+import type { NavidromeSong } from '@/types'
 
 interface Props {
   visible: boolean
   onClose: () => void
+  onSongMorePress?: (song: NavidromeSong) => void
 }
 
-export default function NavidromeQueueSheet({ visible, onClose }: Props) {
+export default function NavidromeQueueSheet({ visible, onClose, onSongMorePress }: Props) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const queue = useNavidromePlayerStore((s) => s.queue)
@@ -63,6 +66,11 @@ export default function NavidromeQueueSheet({ visible, onClose }: Props) {
                       {item.artist ?? '未知艺术家'}
                     </Text>
                   </View>
+                  {index !== currentIndex && onSongMorePress ? (
+                    <View style={styles.removeBtn}>
+                      <MoreButton onPress={() => onSongMorePress(item)} size={32} />
+                    </View>
+                  ) : null}
                   {index !== currentIndex && (
                     <TouchableOpacity
                       onPress={() => removeFromQueue(index)}

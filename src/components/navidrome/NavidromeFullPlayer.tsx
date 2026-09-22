@@ -15,6 +15,7 @@ import { useImmersive } from '@/lib/immersive'
 import { navidromeGetCoverArtUrl, navidromeStar, navidromeUnstar } from '@/lib/api/navidrome'
 import Icon from '@/components/Icon'
 import NavidromeQueueSheet from './NavidromeQueueSheet'
+import { MoreButton } from './navidromeRowIcons'
 import type { NavidromeSong, NavidromeServerConfig } from '@/types'
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
@@ -25,6 +26,8 @@ interface Props {
   visible: boolean
   onClose: () => void
   server: NavidromeServerConfig | null
+  onSongMorePress?: (song: NavidromeSong) => void
+  onQueueSongMorePress?: (song: NavidromeSong) => void
 }
 
 type Panel = 'cover' | 'lyrics' | 'queue'
@@ -37,7 +40,7 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`
 }
 
-export default function NavidromeFullPlayer({ visible, onClose, server }: Props) {
+export default function NavidromeFullPlayer({ visible, onClose, server, onSongMorePress, onQueueSongMorePress }: Props) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
   useImmersive(visible)
@@ -176,30 +179,39 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
           <GestureDetector gesture={swipeGesture}>
             <View style={{ flex: 1 }}>
               <View style={styles.header}>
-                <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.headerBtn}>
-                  <Icon name="expandMore" size={26} color={t.text} style={{ transform: [{ rotate: '180deg' }] }} />
-                </TouchableOpacity>
-                <View style={{ flex: 1, alignItems: 'center' }}>
+                <View style={styles.headerSide}>
+                  <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.headerBtn}>
+                    <Icon name="expandMore" size={26} color={t.text} style={{ transform: [{ rotate: '180deg' }] }} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.headerCenter}>
                   <Text style={{ color: t.textMuted, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>
                     {panel === 'lyrics' ? '歌词' : panel === 'queue' ? '队列' : '正在播放'}
                   </Text>
                 </View>
-                <TouchableOpacity
-                  onPress={async () => {
-                    if (!server) return
-                    if (starred) {
-                      await navidromeUnstar(server, { id: song.id })
-                      setStarred(false)
-                    } else {
-                      await navidromeStar(server, { id: song.id })
-                      setStarred(true)
-                    }
-                  }}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  style={styles.headerBtn}
-                >
-                  <Icon name={starred ? 'favorite' : 'favoriteBorder'} size={22} color={starred ? t.primary : t.textMuted} />
-                </TouchableOpacity>
+                <View style={styles.headerSide}>
+                  {onSongMorePress ? (
+                    <View style={styles.headerBtn}>
+                      <MoreButton onPress={() => onSongMorePress(song)} size={32} />
+                    </View>
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={async () => {
+                      if (!server) return
+                      if (starred) {
+                        await navidromeUnstar(server, { id: song.id })
+                        setStarred(false)
+                      } else {
+                        await navidromeStar(server, { id: song.id })
+                        setStarred(true)
+                      }
+                    }}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    style={styles.headerBtn}
+                  >
+                    <Icon name={starred ? 'favorite' : 'favoriteBorder'} size={22} color={starred ? t.primary : t.textMuted} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={{ flex: 1 }}>
@@ -347,7 +359,7 @@ export default function NavidromeFullPlayer({ visible, onClose, server }: Props)
             </View>
           </GestureDetector>
 
-          <NavidromeQueueSheet visible={queueVisible} onClose={() => setQueueVisible(false)} />
+          <NavidromeQueueSheet visible={queueVisible} onClose={() => setQueueVisible(false)} onSongMorePress={onQueueSongMorePress} />
         </GestureHandlerRootView>
         )}
       </Animated.View>
@@ -528,7 +540,9 @@ function QueuePanel({
 const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: 36 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: 44 },
-  headerBtn: { padding: 6, minWidth: 60 },
+  headerBtn: { padding: 6 },
+  headerSide: { flexDirection: 'row', alignItems: 'center', minWidth: 96 },
+  headerCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   coverArea: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, paddingTop: 8 },
   coverFrame: { width: COVER_SIZE, height: COVER_SIZE, borderRadius: 12, overflow: 'hidden', elevation: 8, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
   cover: { width: '100%', height: '100%' },

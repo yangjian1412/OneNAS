@@ -29,6 +29,10 @@ interface NavidromePlayerState {
   setPlayMode: (mode: PlayMode) => void
   cyclePlayMode: () => void
   removeFromQueue: (index: number) => void
+  removeMany: (predicate: (song: NavidromeSong, index: number) => boolean) => void
+  appendToQueue: (songs: NavidromeSong[]) => void
+  insertAfterCurrent: (songs: NavidromeSong[]) => void
+  replaceQueue: (songs: NavidromeSong[]) => void
   clear: () => void
 }
 
@@ -163,6 +167,42 @@ export const useNavidromePlayerStore = create<NavidromePlayerState>((set, get) =
     q.splice(index, 1)
     const ci = currentIndex > index ? currentIndex - 1 : currentIndex
     set({ queue: q, currentIndex: ci })
+  },
+
+  removeMany: (predicate) => {
+    const { queue, currentIndex } = get()
+    const currentSong = currentIndex >= 0 ? queue[currentIndex] : null
+    const next: NavidromeSong[] = []
+    for (const s of queue) {
+      if (!predicate(s, next.length)) next.push(s)
+    }
+    const ci = currentSong ? next.findIndex((s) => s.id === currentSong.id) : -1
+    set({ queue: next, currentIndex: ci })
+  },
+
+  appendToQueue: (songs) => {
+    if (!songs || songs.length === 0) return
+    set({ queue: [...get().queue, ...songs] })
+  },
+
+  insertAfterCurrent: (songs) => {
+    if (!songs || songs.length === 0) return
+    const { queue, currentIndex } = get()
+    if (currentIndex < 0) {
+      set({ queue: [...queue, ...songs], currentIndex: queue.length === 0 ? 0 : currentIndex })
+      return
+    }
+    const next = [...queue]
+    next.splice(currentIndex + 1, 0, ...songs)
+    set({ queue: next })
+  },
+
+  replaceQueue: (songs) => {
+    if (songs.length === 0) {
+      set({ queue: [], currentIndex: -1, isPlaying: false, currentTime: 0, duration: 0, isReady: false, playbackError: null })
+      return
+    }
+    set({ queue: songs, currentIndex: 0, isPlaying: true, currentTime: 0, duration: 0, isReady: false, playbackError: null })
   },
 
   clear: () => set({
