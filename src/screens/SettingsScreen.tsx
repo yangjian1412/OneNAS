@@ -9,7 +9,9 @@ import { generateId } from '@/lib/crypto'
 import { SERVICE_TYPE_LABELS, SERVICE_TYPE_ICONS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
 import ConfigModal from '@/components/ConfigModal'
+import FullScreenModal from '@/components/FullScreenModal'
 import Icon from '@/components/Icon'
+import { SERVICE_VERSIONS } from '@/lib/versionInfo'
 import * as Clipboard from 'expo-clipboard'
 import * as Sharing from 'expo-sharing'
 import * as DocumentPicker from 'expo-document-picker'
@@ -80,6 +82,8 @@ export default function SettingsScreen() {
   const [exportKey, setExportKey] = useState('0')
   const [importKey, setImportKey] = useState('0')
   const [importOpen, setImportOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
+  const [expandedSvc, setExpandedSvc] = useState<string | null>(null)
   const insets = useSafeAreaInsets()
   const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
@@ -430,7 +434,14 @@ export default function SettingsScreen() {
       <View style={[styles.card, { backgroundColor: t.card }]}>
         <View style={{ paddingVertical: 14, paddingHorizontal: 14 }}>
           <Text style={{ color: t.text, fontSize: 14, fontWeight: '700' }}>One NAS</Text>
-          <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版本 v{APP_VERSION}</Text>
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, alignSelf: 'flex-start' }}
+            onPress={() => setAboutOpen(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: t.textMuted, fontSize: 12 }}>版本 v{APP_VERSION}</Text>
+            <Icon name="chevronRight" size={14} color={t.textMuted} style={{ marginLeft: 2 }} />
+          </TouchableOpacity>
           <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>版权所有 © 六分仪</Text>
         </View>
       </View>
@@ -545,6 +556,39 @@ export default function SettingsScreen() {
         onClear={() => { setPortainerServer(null); setPortainerModalVisible(false) }}
         t={t}
       />
+      <FullScreenModal visible={aboutOpen} onClose={() => { setAboutOpen(false); setExpandedSvc(null) }} title="版本与更新" t={t}>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+          <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 12 }}>One NAS v{APP_VERSION}</Text>
+          {SERVICE_VERSIONS.map((svc) => {
+            const open = expandedSvc === svc.key
+            return (
+              <View key={svc.key} style={{ borderWidth: 1, borderColor: t.border, borderRadius: 12, marginBottom: 8, backgroundColor: t.card }}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 14 }}
+                  onPress={() => setExpandedSvc(open ? null : svc.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: t.text }}>{svc.name}</Text>
+                  <Text style={{ fontSize: 13, color: t.primary, fontWeight: '700', marginRight: 6 }}>v{svc.version}</Text>
+                  <Icon name={open ? 'chevronUp' : 'chevronDown'} size={16} color={t.textMuted} />
+                </TouchableOpacity>
+                {open && (
+                  <View style={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }}>
+                    {svc.entries.map((entry) => (
+                      <View key={entry.version} style={{ marginBottom: 8 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: t.primary, marginBottom: 2 }}>v{entry.version}</Text>
+                        {entry.items.map((item, i) => (
+                          <Text key={i} style={{ fontSize: 13, color: t.textMuted, lineHeight: 18 }}>· {item}</Text>
+                        ))}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )
+          })}
+        </ScrollView>
+      </FullScreenModal>
       <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
         <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
           <Text style={styles.toastText}>再按一次退出</Text>
