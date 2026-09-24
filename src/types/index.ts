@@ -235,6 +235,14 @@ export interface JellyfinLibrary {
   ImageTags?: Record<string, string>
 }
 
+export interface JellyfinLiveTvChannel {
+  Id: string
+  Name: string
+  Number?: number | string
+  ChannelType?: string
+  ImageTags?: Record<string, string>
+}
+
 export interface JellyfinItem {
   Id: string
   Name: string
@@ -278,6 +286,7 @@ export interface JellyfinSeason {
 export interface JellyfinPlaybackInfo {
   MediaSources: JellyfinMediaSource[]
   PlaySessionId?: string
+  ErrorCode?: string
 }
 
 export interface JellyfinMediaSource {
@@ -285,6 +294,11 @@ export interface JellyfinMediaSource {
   Path: string
   Container?: string
   DirectStreamUrl?: string
+  TranscodingUrl?: string
+  LiveStreamId?: string
+  RequiresOpening?: boolean
+  OpenToken?: string
+  SupportsTranscoding?: boolean
   SupportsDirectStream: boolean
   SupportsDirectPlay: boolean
   MediaStreams: JellyfinMediaStream[]

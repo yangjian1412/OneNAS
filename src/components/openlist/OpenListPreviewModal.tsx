@@ -51,17 +51,12 @@ export default function OpenListPreviewModal({ visible, file, filePath: filePath
       return
     }
     let cancelled = false
-    console.error('[OpenListPreview] resolve start', filePath)
     ;(async () => {
       try {
         const r = await openListResolveFileUrl(server, filePath)
         if (!cancelled) {
           setResolved(r)
           setResolveError(null)
-          console.error('[OpenListPreview] resolved', {
-            kind: r.rawUrl ? 'raw_url' : (r.url === r.proxyUrl ? 'proxy' : 'direct'),
-            url: r.url,
-          })
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -171,18 +166,15 @@ function timeoutPromise(ms: number): Promise<never> {
 }
 
 async function fetchOne(url: string, authHeader: string, alistHost: string): Promise<{ res: Response | null; timedOut: boolean; errorMsg?: string }> {
-  console.error('[OpenListPreview] fetch', url)
   try {
     const res = await Promise.race([
       fetch(url, { headers: headersFor(url, authHeader, alistHost), redirect: 'follow' }),
       timeoutPromise(TIMEOUT_MS),
     ])
-    console.error('[OpenListPreview] fetch ok', url, res.status)
     return { res, timedOut: false }
   } catch (e: any) {
     const timedOut = e?.message === 'FETCH_TIMEOUT'
     const errorMsg = timedOut ? `请求超时 (${TIMEOUT_MS / 1000}s)` : (e?.message ?? '网络错误')
-    console.error('[OpenListPreview] fetch error', url, errorMsg)
     return { res: null, timedOut, errorMsg }
   }
 }

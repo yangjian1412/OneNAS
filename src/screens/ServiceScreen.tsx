@@ -97,7 +97,6 @@ export default function ServiceScreen({ serviceId }: Props) {
   }
 
   if (isAudiobookshelfService(service)) {
-    console.log('[ABS] Routing to AudiobookshelfScreen, type=', service.type, 'name=', service.name, 'id=', service.id)
     return (
       <>
         <AudiobookshelfScreen service={service} />

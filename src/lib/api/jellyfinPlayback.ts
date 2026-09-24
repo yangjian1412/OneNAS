@@ -214,9 +214,14 @@ export async function jellyfinGetStream(
 
   let url: string
   if (source.DirectStreamUrl) {
-    url = source.DirectStreamUrl.includes('?')
-      ? `${source.DirectStreamUrl}&ApiKey=${server.accessToken}`
-      : `${source.DirectStreamUrl}?ApiKey=${server.accessToken}`
+    const abs = /^https?:\/\//i.test(source.DirectStreamUrl)
+      ? source.DirectStreamUrl
+      : `${server.url}${source.DirectStreamUrl.startsWith('/') ? '' : '/'}${source.DirectStreamUrl}`
+    url = /[?&]api_?key=/i.test(abs)
+      ? abs
+      : abs.includes('?')
+        ? `${abs}&ApiKey=${server.accessToken}`
+        : `${abs}?ApiKey=${server.accessToken}`
   } else {
     url = `${server.url}/Videos/${itemId}/stream.mp4?ApiKey=${server.accessToken}&Static=true`
   }

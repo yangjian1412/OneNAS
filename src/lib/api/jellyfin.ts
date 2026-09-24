@@ -6,8 +6,10 @@ import type {
   JellyfinItem,
   JellyfinSeason,
   JellyfinPlaybackInfo,
+  JellyfinMediaSource,
   JellyfinSession,
   JellyfinSystemInfo,
+  JellyfinLiveTvChannel,
 } from '@/types'
 
 export { type JellyfinServerConfig, type JellyfinUser }
@@ -291,26 +293,331 @@ export async function jellyfinGetEpisodes(
   return { ok: false, error: r1.error || r2.error || r3.error || '获取剧集失败' }
 }
 
+// Minimal ExoPlayer/Media3 device profile. Sending a DeviceProfile is required
+// for the server's MediaInfoHelper.SetDeviceSpecificData to compute
+// DirectStreamUrl / TranscodingUrl on each MediaSource; without it the response
+// only carries raw file info and playback falls back to stream.mp4.
+const EXOPLAYER_DEVICE_PROFILE = {
+  Name: 'One NAS ExoPlayer',
+  MaxStreamingBitrate: 4000000,
+  MaxStaticBitrate: 100000000,
+  MusicStreamingTranscodingBitrate: 384000,
+  DirectPlayProfiles: [
+    {
+      Container: 'ts,m3u8,mp4,m4v,mkv,webm,avi,mov',
+      Type: 'Video',
+      VideoCodec: 'h264,hevc,vp8,vp9,av1,mpeg4,mpeg2video',
+      AudioCodec: 'aac,mp3,ac3,eac3,opus,flac,vorbis',
+    },
+    {
+      Container: 'mp3,aac,m4a,flac,ogg,opus',
+      Type: 'Audio',
+      AudioCodec: 'aac,mp3,flac,opus,vorbis',
+    },
+  ],
+  TranscodingProfiles: [
+    {
+      Container: 'ts',
+      Type: 'Video',
+      VideoCodec: 'h264',
+      AudioCodec: 'aac,mp3,ac3,eac3',
+      Context: 'Streaming',
+      Protocol: 'hls',
+      MaxAudioChannels: '6',
+      EstimateContentLength: false,
+      EnableMpegtsM2TsMode: false,
+    },
+    {
+      Container: 'mp4',
+      Type: 'Video',
+      VideoCodec: 'h264',
+      AudioCodec: 'aac,mp3',
+      Context: 'Streaming',
+      Protocol: 'http',
+    },
+    {
+      Container: 'mp3',
+      Type: 'Audio',
+      AudioCodec: 'mp3',
+      Context: 'Streaming',
+      Protocol: 'http',
+    },
+  ],
+  ContainerProfiles: [],
+  CodecProfiles: [],
+  SubtitleProfiles: [
+    { Format: 'vtt', Type: 'External' },
+    { Format: 'srt', Type: 'External' },
+    { Format: 'ass', Type: 'External' },
+    { Format: 'ttml', Type: 'Embedded' },
+  ],
+}
+
+function withApiKey(server: JellyfinServerConfig, url: string): string {
+  if (!url) return url
+  // Absolutize FIRST: PlaybackInfo TranscodingUrl can be a relative path
+  // (/Videos/{id}/master.m3u8?...) that already embeds ApiKey. Returning the
+  // relative URL as-is makes ExoPlayer treat it as a local file path.
+  const abs = /^https?:\/\//i.test(url) ? url : `${server.url}${url.startsWith('/') ? '' : '/'}${url}`
+  if (/[?&]api_?key=/i.test(abs)) return abs
+  if (!server.accessToken) return abs
+  return abs.includes('?') ? `${abs}&ApiKey=${server.accessToken}` : `${abs}?ApiKey=${server.accessToken}`
+}
+
 export async function jellyfinGetStreamUrl(
   server: JellyfinServerConfig,
   itemId: string,
 ): Promise<{ ok: boolean; url?: string; error?: string }> {
   if (!itemId) return { ok: false, error: 'Invalid item ID' }
-  const info = await jellyfinFetch<JellyfinPlaybackInfo>(
-    server,
-    `/Videos/${itemId}/PlaybackInfo?UserId=${server.userId}&StartTimeMs=0&IsPlayback=false&AutoOpenLiveStream=false`,
-  )
+  const info = await jellyfinFetch<JellyfinPlaybackInfo>(server, `/Items/${itemId}/PlaybackInfo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      UserId: server.userId,
+      StartTimeTicks: 0,
+      IsPlayback: false,
+      AutoOpenLiveStream: false,
+      EnableDirectPlay: true,
+      EnableDirectStream: true,
+      EnableTranscoding: true,
+      DeviceProfile: EXOPLAYER_DEVICE_PROFILE,
+    }),
+  })
   if (info.ok && info.data?.MediaSources?.length) {
     const source = info.data.MediaSources[0]
-    if (source.DirectStreamUrl) {
-      const url = source.DirectStreamUrl.includes('?')
-        ? `${source.DirectStreamUrl}&ApiKey=${server.accessToken}`
-        : `${source.DirectStreamUrl}?ApiKey=${server.accessToken}`
-      return { ok: true, url }
+    const raw = source.TranscodingUrl || source.DirectStreamUrl
+    if (raw) {
+      return { ok: true, url: withApiKey(server, raw) }
     }
   }
   const streamUrl = `${server.url}/Videos/${itemId}/stream.mp4?ApiKey=${server.accessToken}&Static=true`
   return { ok: true, url: streamUrl }
+}
+
+// ─── Live TV ───────────────────────────────────────────────────────────────────
+// Jellyfin exposes Live TV through a separate top-level endpoint tree:
+//
+//   GET /LiveTv/Channels                 — list all channels (sorted by Number)
+//   GET /LiveTv/Channels/{id}            — single channel + current program
+//   GET /LiveTv/Info                     — live tv system info; returns 404 if the
+//                                          server has no tuner / no live tv enabled
+//   GET /Videos/{channelId}/stream       — the actual media stream
+//
+// Items returned by /LiveTv/Channels share the same item Id namespace as
+// /Videos/{id} and can be played via the standard JellyfinItem-style stream
+// path. The ChannelType field carries "TVChannel" / "RadioChannel" / etc.
+//
+// Reference: https://api.jellyfin.org/ (LiveTvController)
+
+export async function jellyfinGetLiveTvInfo(
+  server: JellyfinServerConfig,
+): Promise<{ ok: boolean; enabled: boolean; error?: string }> {
+  const result = await jellyfinFetch<{ IsEnabled?: boolean }>(server, '/LiveTv/Info')
+  if (!result.ok) {
+    // 404 / 401 / 403 all mean "live tv unavailable" rather than a hard failure
+    return { ok: true, enabled: false, error: result.error }
+  }
+  return { ok: true, enabled: !!result.data?.IsEnabled }
+}
+
+function mapChannels(items: any[]): JellyfinLiveTvChannel[] {
+  return items
+    .filter((v) => v && v.Id && v.Name)
+    .map((v) => ({
+      Id: v.Id,
+      Name: v.Name,
+      Number: v.Number,
+      ChannelType: v.ChannelType,
+      ImageTags: v.ImageTags,
+    }))
+}
+
+export async function jellyfinGetLiveTvChannels(
+  server: JellyfinServerConfig,
+  liveTvLibraryId?: string,
+): Promise<{ ok: boolean; channels?: JellyfinLiveTvChannel[]; error?: string; endpoint?: string }> {
+  // Strategy 1: /LiveTv/Channels (admin / tuner-level listing). Requires the
+  // authenticated user to have "Allow Live TV access" — a permission that lives
+  // in the user's Library Access settings, not in the role. On a non-admin
+  // account this endpoint may return 403 even though the Live TV library itself
+  // is visible in /Users/{id}/Views.
+  const r1 = await jellyfinFetch<{ Items?: any[] }>(
+    server,
+    `/LiveTv/Channels?userId=${server.userId}`,
+  )
+  if (r1.ok) {
+    const channels = mapChannels(r1.data?.Items ?? [])
+    return { ok: true, channels, endpoint: '/LiveTv/Channels' }
+  }
+
+  // Strategy 2: list TvChannel items inside the Live TV library. This goes
+  // through the same /Items pipeline that powers Movies / TV Shows, so any user
+  // who can see the Live TV entry in the library grid can also list its
+  // children. The Live TV library ItemId comes from the Views list with
+  // CollectionType = "livetv".
+  if (liveTvLibraryId) {
+    const r2 = await jellyfinFetch<{ Items?: any[]; TotalRecordCount?: number }>(
+      server,
+      `/Users/${server.userId}/Items?ParentId=${encodeURIComponent(liveTvLibraryId)}&IncludeItemTypes=TvChannel&Recursive=true&SortBy=SortName&fields=PrimaryImageAspectRatio,ImageTags`,
+    )
+    if (r2.ok) {
+      const channels = mapChannels(r2.data?.Items ?? [])
+      return { ok: true, channels, endpoint: `/Users/{id}/Items?ParentId=${liveTvLibraryId}` }
+    }
+    return { ok: false, error: `${r1.error}; fallback ${r2.error}`, endpoint: '/LiveTv/Channels' }
+  }
+
+  return { ok: false, error: r1.error, endpoint: '/LiveTv/Channels' }
+}
+
+// Direct stream URL for a live tv channel.
+//
+// Verified against Jellyfin 12.1.0 source + live probes on jf.liufenyi.xyz:
+//
+//   1. POST /Items/{channelId}/PlaybackInfo  — THE PlaybackInfo route
+//      (MediaInfoController, GET also exists). Body carries PlaybackInfoDto
+//      incl. DeviceProfile + AutoOpenLiveStream=true, which makes the server
+//      open the live stream and return MediaSources[0] with TranscodingUrl
+//      or DirectStreamUrl (+ LiveStreamId / PlaySessionId).
+//
+//   2. POST /LiveStreams/Open — only needed if the source comes back with
+//      RequiresOpening=true and no LiveStreamId (rare when AutoOpen is set).
+//
+//   3. GET /Videos/{channelId}/stream?Static=true — server-side fallback;
+//      empirically returns the channel's HLS playlist (application/
+//      apple.mpegurl) even without PlaybackInfo.
+//
+// NOT real endpoints on this server (each 404s — these were the v1.0.5beta
+// bugs): /LiveTv/Channels/{id}/PlaybackInfo (LiveTvController has no such
+// route), /Videos/{id}/PlaybackInfo (405/404; correct route is /Items/{id}/),
+// /LiveTv/Channels/{id}/stream.m3u8 (Lucky proxy 404s it in 0.09ms).
+export async function jellyfinGetLiveTvStreamUrl(
+  server: JellyfinServerConfig,
+  channelId: string,
+): Promise<{ ok: boolean; url?: string; error?: string; triedEndpoints?: string[] }> {
+  if (!channelId) return { ok: false, error: 'Invalid channel ID' }
+  if (!server.userId) return { ok: false, error: 'Missing user id' }
+
+  const triedEndpoints: string[] = []
+
+  const playbackBody = {
+    UserId: server.userId,
+    StartTimeTicks: 0,
+    IsPlayback: true,
+    AutoOpenLiveStream: true,
+    MaxStreamingBitrate: 4000000,
+    EnableDirectPlay: true,
+    EnableDirectStream: true,
+    EnableTranscoding: true,
+    DeviceId: 'one-nas-android',
+    DeviceProfile: EXOPLAYER_DEVICE_PROFILE,
+  }
+  const playbackQuery = new URLSearchParams({
+    UserId: server.userId,
+    StartTimeTicks: '0',
+    IsPlayback: 'true',
+    AutoOpenLiveStream: 'true',
+    MaxStreamingBitrate: '4000000',
+    EnableDirectPlay: 'true',
+    EnableDirectStream: 'true',
+    EnableTranscoding: 'true',
+    DeviceId: 'one-nas-android',
+  }).toString()
+
+  const extractUrl = (
+    data?: JellyfinPlaybackInfo,
+  ): { url?: string; source?: JellyfinMediaSource } => {
+    const source = data?.MediaSources?.[0]
+    if (!source) return {}
+    const raw = source.TranscodingUrl || source.DirectStreamUrl
+    if (raw) return { url: withApiKey(server, raw), source }
+    if (source.LiveStreamId && source.Id) {
+      const params = new URLSearchParams({
+        Static: 'true',
+        MediaSourceId: source.Id,
+        LiveStreamId: source.LiveStreamId,
+        PlaySessionId: data?.PlaySessionId ?? '',
+        DeviceId: 'one-nas-android',
+      }).toString()
+      return {
+        url: withApiKey(server, `/Videos/${channelId}/stream?${params}`),
+        source,
+      }
+    }
+    return { source }
+  }
+
+  // ─── Step 1: POST /Items/{id}/PlaybackInfo (official flow) ─────────────
+  // Critical params sent both in query (API-doc style) and body (DTO) so the
+  // route binds them regardless of which side this Jellyfin build prefers.
+  const postInfo = await jellyfinFetch<JellyfinPlaybackInfo>(
+    server,
+    `/Items/${encodeURIComponent(channelId)}/PlaybackInfo?${playbackQuery}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(playbackBody),
+    },
+  )
+  triedEndpoints.push('POST /Items/{id}/PlaybackInfo')
+
+  if (postInfo.ok && postInfo.data) {
+    const { url, source } = extractUrl(postInfo.data)
+    if (url) {
+      return { ok: true, url, triedEndpoints }
+    }
+    // Server returned a source that still needs explicit opening.
+    if (source?.RequiresOpening && !source.LiveStreamId) {
+      const open = await jellyfinFetch<JellyfinPlaybackInfo>(server, '/LiveStreams/Open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          Id: source.Id,
+          UserId: server.userId,
+          DeviceProfile: EXOPLAYER_DEVICE_PROFILE,
+          PlaySessionId: postInfo.data.PlaySessionId,
+        }),
+      })
+      triedEndpoints.push('POST /LiveStreams/Open')
+      if (open.ok && open.data) {
+        const opened = extractUrl(open.data)
+        if (opened.url) {
+          return { ok: true, url: opened.url, triedEndpoints }
+        }
+      }
+    }
+  }
+
+  // ─── Step 2: GET /Items/{id}/PlaybackInfo (legacy apiclient GET) ────────
+  const getInfo = await jellyfinFetch<JellyfinPlaybackInfo>(
+    server,
+    `/Items/${encodeURIComponent(channelId)}/PlaybackInfo?${playbackQuery}`,
+  )
+  triedEndpoints.push('GET /Items/{id}/PlaybackInfo')
+  if (getInfo.ok && getInfo.data) {
+    const { url } = extractUrl(getInfo.data)
+    if (url) {
+      return { ok: true, url, triedEndpoints }
+    }
+  }
+
+  // ─── Step 3: GET /Videos/{id}/stream?Static=true (server-side fallback) ─
+  // Empirically returns the channel's HLS playlist on this server even when
+  // PlaybackInfo yields no playable URL.
+  const directUrl = withApiKey(
+    server,
+    `/Videos/${encodeURIComponent(channelId)}/stream?Static=true&DeviceId=one-nas-android`,
+  )
+  triedEndpoints.push('GET /Videos/{id}/stream?Static=true')
+
+  return {
+    ok: true,
+    url: directUrl,
+    error: postInfo.data?.ErrorCode
+      ? `PlaybackInfo ErrorCode=${postInfo.data.ErrorCode}; using /Videos/{id}/stream fallback`
+      : 'No TranscodingUrl/LiveStreamId from PlaybackInfo; using /Videos/{id}/stream fallback',
+    triedEndpoints,
+  }
 }
 
 export async function jellyfinSearch(

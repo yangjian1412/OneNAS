@@ -17,7 +17,6 @@ interface SeriesRowProps {
 }
 
 export function KomgaSeriesRow({ title, server, items, onItemPress, rightAction }: SeriesRowProps) {
-  console.log('[KSR] render title=' + JSON.stringify(title) + ' itemsType=' + typeof items + ' itemsIsArray=' + Array.isArray(items) + ' itemsLen=' + (items && items.length !== undefined ? items.length : 'undef'))
   const t = useTheme()
   return (
     <View style={styles.section}>
@@ -51,9 +50,7 @@ interface BookRowProps {
 }
 
 export function KomgaBookRow({ title, server, items, onItemPress, rightAction }: BookRowProps) {
-  console.log('[KBR] render title=' + JSON.stringify(title) + ' serverType=' + typeof server + ' itemsType=' + typeof items + ' itemsIsArray=' + Array.isArray(items) + ' itemsKeys=' + (items && typeof items === 'object' ? Object.keys(items).slice(0, 8).join(',') : 'null') + ' itemsLen=' + (items && items.length !== undefined ? items.length : 'undef'))
   const t = useTheme()
-  console.log('[KBR] useTheme result', t)
   return (
     <View style={styles.section}>
       <View style={styles.headerRow}>

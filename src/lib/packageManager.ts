@@ -23,7 +23,6 @@ export async function launchApp(packageName: string, className: string): Promise
   }
   try {
     await native.launchApp(packageName, className)
-    console.log('[PackageManager] launchApp success:', packageName)
     return true
   } catch (e: any) {
     console.warn('[PackageManager] launchApp failed:', packageName, e?.message || e)

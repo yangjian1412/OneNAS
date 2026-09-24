@@ -327,7 +327,7 @@ export async function searchFilesStream(
     if (pendingRef.length === 0) return
     const batch = pendingRef.splice(0)
     for (const item of batch) {
-      try { onItem?.(item) } catch (e) { console.log('[search] onItem error:', e) }
+      try { onItem?.(item) } catch { /* ignore onItem errors */ }
     }
   }
 
@@ -360,41 +360,31 @@ export async function searchFilesStream(
     const cleanScope = scope && scope !== '/' ? scope.replace(/^\//, '').replace(/\/$/, '') : ''
     const searchPath = cleanScope ? `/${encodeURIComponent(cleanScope)}` : '/'
     const url = `${base}/api/search${searchPath}?query=${encodeURIComponent(query)}`
-    console.log('[search] START fetch:', url)
     const response = await fetch(url, {
       headers: { 'X-Auth': token },
       signal: controller.signal,
     })
-    console.log('[search] response ok:', response.ok, 'status:', response.status)
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
     const tryBody = (response as any).body
-    console.log('[search] body type:', typeof tryBody, 'getReader:', typeof tryBody?.getReader)
 
     if (tryBody?.getReader) {
-      console.log('[search] using streaming getReader path')
       const reader = tryBody.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
-      let readCount = 0
       let detectedFormat: 'array' | 'ndjson' | null = null
-      let firstRaw = ''
       while (true) {
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
         const { done, value } = await reader.read()
         if (done) break
-        readCount++
         const chunk = decoder.decode(value, { stream: true })
-        if (firstRaw.length < 300) firstRaw += chunk
         if (detectedFormat === null) {
           const trimmed = chunk.trim()
           if (trimmed.startsWith('[')) {
             detectedFormat = 'array'
-            console.log('[search] detected JSON array format')
           } else if (trimmed.startsWith('{')) {
             detectedFormat = 'ndjson'
-            console.log('[search] detected NDJSON format')
           }
         }
         if (detectedFormat === 'array') {
@@ -406,10 +396,8 @@ export async function searchFilesStream(
           for (const line of lines) { const item = parseLine(line); if (item) pushItem(item) }
           flushPending()
         }
-        if (readCount % 10 === 0) console.log('[search] read', readCount, 'chunks, items:', itemsRef.length)
       }
       if (detectedFormat === 'array') {
-        console.log('[search] final buffer length:', buffer.length)
         try {
           const arr = JSON.parse(buffer)
           if (Array.isArray(arr)) {
@@ -430,14 +418,10 @@ export async function searchFilesStream(
       } else {
         if (buffer.trim()) { const item = parseLine(buffer); if (item) pushItem(item) }
       }
-      console.log('[search] stream done, total reads:', readCount, 'items:', itemsRef.length)
-      console.log('[search] first raw:', JSON.stringify(firstRaw))
     } else {
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-      console.log('[search] using fallback text path')
       const text = await response.text()
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-      console.log('[search] text length:', text.length, 'first 300:', text.slice(0, 300))
       const trimmed = text.trim()
       if (trimmed.startsWith('[')) {
         try {
@@ -463,17 +447,14 @@ export async function searchFilesStream(
       }
       flushPending()
     }
-    console.log('[search] returning', itemsRef.length, 'items')
     return { ok: true, data: itemsRef }
   } catch (err: any) {
-    console.log('[search] error:', err.message, err.name)
     if (err.name === 'AbortError') {
       return { ok: false, error: 'Cancelled' }
     }
     return { ok: false, error: err.message ?? '搜索失败' }
   } finally {
-    console.log('[search] finally, flushing pending')
-    try { flushPending() } catch (e) { console.log('[search] flushPending error:', e) }
+    try { flushPending() } catch { /* ignore flush errors */ }
     signal?.removeEventListener('abort', onExtAbort)
   }
 }

@@ -15,16 +15,6 @@ let initDone = false
 let statusTimer: ReturnType<typeof setInterval> | null = null
 let lockScreenActive = false
 
-function redactUrl(url: string): string {
-  try {
-    const u = new URL(url)
-    if (u.searchParams.has('p')) u.searchParams.set('p', '***')
-    return u.toString()
-  } catch {
-    return url
-  }
-}
-
 function applyStatus(status: any) {
   try {
     if (status?.error) {
@@ -209,7 +199,6 @@ function resolveServer(): NavidromeServerConfig | null {
   const fallback = useNavidromeStore.getState().server
   if (fallback) {
     currentServer = fallback
-    console.log('[np] resolved server from store', fallback.url)
   }
   return currentServer
 }
@@ -221,8 +210,6 @@ export function getServer(): NavidromeServerConfig | null {
 function safeReplace(src: any) {
   if (!player) return
   try {
-    const url = typeof src === 'string' ? src : src?.uri
-    console.log('[np] replace', redactUrl(String(url)))
     player.replace(src)
   } catch (e) {
     console.warn('[navidrome player] replace failed', e)

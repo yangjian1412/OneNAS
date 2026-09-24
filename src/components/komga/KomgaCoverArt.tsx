@@ -33,11 +33,9 @@ export default function KomgaCoverArt({ server, seriesId, size = 64 }: Props) {
 }
 
 export function KomgaBookCoverArt({ server, bookId, size = 64 }: { server: KomgaServerConfig; bookId: string; size?: number }) {
-  console.log('[KBOCA] start', { hasServer: !!server, bookId, size, kThumbType: typeof komgaBookThumbUrl, kAuthType: typeof komgaAuthHeader })
   const t = useTheme()
   const [failed, setFailed] = useState(false)
   const uri = komgaBookThumbUrl(server, bookId)
-  console.log('[KBOCA] uri=', uri)
   if (failed) {
     return (
       <View style={[styles.placeholder, { width: size, height: size * 1.4, backgroundColor: t.card }]}>
@@ -90,7 +88,6 @@ interface BookCardProps {
 }
 
 export function KomgaBookCard({ server, book, onPress, size = 90 }: BookCardProps) {
-  console.log('[KBC] render', { hasServer: !!server, bookId: book?.id, hasMetadata: !!book?.metadata, onPressType: typeof onPress })
   const t = useTheme()
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>

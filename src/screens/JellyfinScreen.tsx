@@ -16,8 +16,11 @@ import {
   jellyfinGetStreamUrl,
   jellyfinGetSystemInfo,
   jellyfinSearch,
+  jellyfinGetLiveTvInfo,
+  jellyfinGetLiveTvChannels,
+  jellyfinGetLiveTvStreamUrl,
 } from '@/lib/api/jellyfin'
-import type { ServiceConfig, JellyfinServerConfig, JellyfinLibrary, JellyfinItem, JellyfinSeason } from '@/types'
+import type { ServiceConfig, JellyfinServerConfig, JellyfinLibrary, JellyfinItem, JellyfinSeason, JellyfinLiveTvChannel } from '@/types'
 import { useTheme } from '@/lib/theme'
 import Icon from '@/components/Icon'
 import JellyfinHeader from '@/components/jellyfin/JellyfinHeader'
@@ -27,12 +30,13 @@ import JellyfinItemGrid from '@/components/jellyfin/JellyfinItemGrid'
 import JellyfinEpisodeList from '@/components/jellyfin/JellyfinEpisodeList'
 import JellyfinItemDetail from '@/components/jellyfin/JellyfinItemDetail'
 import JellyfinDrawer from '@/components/jellyfin/JellyfinDrawer'
+import JellyfinPoster from '@/components/jellyfin/JellyfinPoster'
 import JellyfinPlayer from '@/components/jellyfin/JellyfinPlayer'
 import CastRemotePage from '@/components/CastRemotePage'
 import JellyfinServerSettings from '@/components/jellyfin/JellyfinServerSettings'
 import JellyfinPlaybackSettings from '@/components/jellyfin/JellyfinPlaybackSettings'
 
-type ViewType = 'home' | 'items' | 'episodes' | 'searchResults' | 'detail'
+type ViewType = 'home' | 'items' | 'episodes' | 'searchResults' | 'detail' | 'liveTv'
 
 interface Props {
   service: ServiceConfig
@@ -78,6 +82,11 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
   const [showSortDropdown, setShowSortDropdown] = useState(false)
   const [currentParentId, setCurrentParentId] = useState<string | null>(null)
   const [currentCollectionType, setCurrentCollectionType] = useState<string | undefined>(undefined)
+  const [liveTvChannels, setLiveTvChannels] = useState<JellyfinLiveTvChannel[]>([])
+  const [liveTvLoading, setLiveTvLoading] = useState(false)
+  const [liveTvError, setLiveTvError] = useState<string | null>(null)
+  const [liveTvEnabled, setLiveTvEnabled] = useState<boolean | null>(null)
+  const [liveTvLibraryId, setLiveTvLibraryId] = useState<string | null>(null)
 
   const SORT_OPTIONS = [
     { label: '名称', value: 'SortName', defaultDir: 'Ascending' as const },
@@ -138,6 +147,11 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     if (resume.ok) { setResumeItems(resume.items ?? []); await setCached(`${cacheNs}:resumeItems`, resume.items ?? [], 30000) }
     if (sys.ok && sys.version) setServerVersion(sys.version)
 
+    // Live TV capability probe — non-blocking, gracefully degrades to "no live tv"
+    jellyfinGetLiveTvInfo(result.server).then((info) => {
+      if (info.ok) setLiveTvEnabled(info.enabled)
+    })
+
     setLoading(false)
   }, [service, setServer, setUser, setLibraries, setResumeItems])
 
@@ -166,6 +180,7 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
     if (v === 'detail') { setView(prevViewRef.current); setDetailItem(null); setDetailSeriesId(null) }
     else if (v === 'episodes') { setView('detail'); setCurrentSeasons([]) }
     else if (v === 'items' || v === 'searchResults') { setView('home'); setCurrentItems([]); setSearchQuery('') }
+    else if (v === 'liveTv') { setView('home'); setLiveTvChannels([]) }
   }, [])
 
   // Expose a back handler that ServiceScreen can use via useFocusEffect.
@@ -191,6 +206,10 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
 
   const handleLibraryPress = async (lib: JellyfinLibrary) => {
     if (!server) return
+    if ((lib.CollectionType ?? '').toLowerCase() === 'livetv') {
+      void loadLiveTvChannels(lib)
+      return
+    }
     setCurrentLibraryName(lib.Name)
     setCurrentParentId(lib.ItemId)
     setCurrentCollectionType(lib.CollectionType)
@@ -218,6 +237,70 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
       setCurrentItems(items)
       setHasMore(items.length < total)
       await setCached(cacheKey, { items, totalRecordCount: total }, 60000)
+    }
+    setLoading(false)
+  }
+
+  const loadLiveTvChannels = async (lib: JellyfinLibrary) => {
+    if (!server) return
+    setCurrentLibraryName(lib.Name)
+    setCurrentParentId(lib.ItemId)
+    setCurrentCollectionType('livetv')
+    setLiveTvLibraryId(lib.ItemId)
+    setView('liveTv')
+    setLiveTvLoading(true)
+    setLiveTvError(null)
+    const cacheKey = `liveTvChannels:${cacheNs}:${lib.ItemId}`
+    const cached = await getCached<JellyfinLiveTvChannel[]>(cacheKey)
+    if (cached && cached.length > 0) setLiveTvChannels(cached)
+    try {
+      const result = await jellyfinGetLiveTvChannels(server, lib.ItemId)
+      if (result.ok) {
+        const list = result.channels ?? []
+        setLiveTvChannels(list)
+        await setCached(cacheKey, list, 60000)
+        if (list.length > 0) setLiveTvEnabled(true)
+      } else {
+        setLiveTvError(result.error ?? '无法获取直播频道')
+      }
+    } catch (e: any) {
+      setLiveTvError(e?.message ?? String(e))
+    }
+    setLiveTvLoading(false)
+  }
+
+  const handleLiveTvChannelPress = async (channel: JellyfinLiveTvChannel) => {
+    if (!server) return
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await jellyfinGetLiveTvStreamUrl(server, channel.Id)
+      if (!result.ok || !result.url) {
+        setError(result.error ?? '无法获取直播频道播放地址')
+        setLoading(false)
+        return
+      }
+      const url = result.url
+      if (prefs.useExternalPlayer) {
+        try {
+          await startActivityAsync('android.intent.action.VIEW', { data: url, type: 'video/*' })
+        } catch (e: any) {
+          setError(`外部播放器启动失败: ${e?.message ?? e}`)
+        }
+      } else {
+        // Reuse JellyfinPlayer by wrapping the channel as a JellyfinItem stub so the
+        // existing player props (title / backdrop / cover) keep working without
+        // adding a new player entry point.
+        const stubItem: JellyfinItem = {
+          Id: channel.Id,
+          Name: channel.Name,
+          Type: 'Movie',
+          Overview: '直播频道',
+        }
+        setPlaying({ url, item: stubItem })
+      }
+    } catch (e: any) {
+      setError(e?.message ?? String(e))
     }
     setLoading(false)
   }
@@ -449,6 +532,74 @@ export default function JellyfinScreen({ service, onRequestClose }: Props) {
         </ScrollView>
       )}
 
+      {view === 'liveTv' && (
+        <View style={styles.listSection}>
+          <View style={styles.listTitleRow}>
+            <Text style={[styles.listTitle, { color: t.text }]}>{currentLibraryName}</Text>
+            <Text style={{ color: t.textMuted, fontSize: 12 }}>
+              {liveTvChannels.length > 0 ? `${liveTvChannels.length} 个频道` : ''}
+            </Text>
+          </View>
+          {liveTvLoading && liveTvChannels.length === 0 ? (
+            <ActivityIndicator size="small" color={t.primary} style={{ marginTop: 20 }} />
+          ) : liveTvError && liveTvChannels.length === 0 ? (
+            <View style={{ paddingHorizontal: 24, paddingTop: 32, alignItems: 'center' }}>
+              <Icon name="alertCircle" size={36} color={t.warning} />
+              <Text style={[styles.emptyText, { color: t.text, marginTop: 12, textAlign: 'center' }]}>
+                {liveTvError}
+              </Text>
+              <TouchableOpacity
+                style={[styles.retryBtn, { backgroundColor: t.primary }]}
+                onPress={() => {
+                  if (liveTvLibraryId) {
+                    const lib = libraries.find((l) => l.ItemId === liveTvLibraryId)
+                    if (lib) void loadLiveTvChannels(lib)
+                  }
+                }}
+              >
+                <Text style={styles.retryBtnText}>重试</Text>
+              </TouchableOpacity>
+            </View>
+          ) : liveTvChannels.length === 0 ? (
+            <Text style={[styles.emptyText, { color: t.textMuted }]}>暂无直播频道</Text>
+          ) : (
+            <FlatList
+              data={liveTvChannels}
+              keyExtractor={(c) => c.Id}
+              contentContainerStyle={{ paddingBottom: 32 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => void handleLiveTvChannelPress(item)}
+                  style={[styles.liveTvRow, { borderBottomColor: t.border }]}
+                >
+                  <View style={[styles.liveTvNumber, { backgroundColor: t.primary }]}>
+                    <Text style={styles.liveTvNumberText} numberOfLines={1}>{item.Number ?? ''}</Text>
+                  </View>
+                  <View style={[styles.liveTvLogoWrap, { backgroundColor: t.border }]}>
+                    <JellyfinPoster
+                      server={server!}
+                      itemId={item.Id}
+                      imageTags={item.ImageTags}
+                      imageType="Primary"
+                      width={64}
+                      aspectRatio={1}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[styles.liveTvName, { color: t.text }]} numberOfLines={1}>{item.Name}</Text>
+                    <Text style={[styles.liveTvType, { color: t.textMuted }]} numberOfLines={1}>
+                      {item.ChannelType === 'RadioChannel' ? '电台' : '直播'}
+                    </Text>
+                  </View>
+                  <Icon name="play" size={20} color={t.primary} />
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </View>
+      )}
+
       {(view === 'items' || view === 'searchResults') && (
         <View style={styles.listSection}>
           <View style={styles.listTitleRow}>
@@ -601,4 +752,18 @@ const styles = StyleSheet.create({
   episodeName: { fontSize: 14, fontWeight: '500' },
   episodeMeta: { fontSize: 11, marginTop: 2 },
   episodeListContent: { paddingBottom: 32 },
+  liveTvRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  liveTvNumber: {
+    width: 48, height: 48, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 10,
+  },
+  liveTvNumberText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  liveTvLogoWrap: { width: 48, height: 48, borderRadius: 8, overflow: 'hidden' },
+  liveTvName: { fontSize: 15, fontWeight: '600' },
+  liveTvType: { fontSize: 11, marginTop: 2 },
 })
