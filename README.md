@@ -213,4 +213,6 @@ Jellyfin v12.0（2026-09-08）默认关闭 legacy auth，强制使用单一 `Aut
 
 ## 许可证
 
-[MIT](./LICENSE)
+Released under the [MIT](./LICENSE) License.
+
+Copyright (c) 2026 六分仪
