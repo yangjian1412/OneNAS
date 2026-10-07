@@ -113,8 +113,11 @@ export const SERVICE_VERSIONS: ServiceVersionInfo[] = [
   {
     key: 'aria2',
     name: 'Aria2',
-    version: '1.0.0',
-    entries: [{ version: '1.0.0', items: ['上线 Aria2：任务列表、新建下载、任务管理'] }],
+    version: '1.0.1',
+    entries: [
+      { version: '1.0.1', items: ['支持磁力链接与种子下载（纯下载模式，不做种）'] },
+      { version: '1.0.0', items: ['上线 Aria2：任务列表、新建下载、任务管理'] },
+    ],
   },
   {
     key: 'qbittorrent',

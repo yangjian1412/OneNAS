@@ -912,6 +912,11 @@ export interface Aria2Task {
   completedLength: string
   downloadSpeed: string
   uploadSpeed: string
+  uploadLength?: string
+  connections?: string
+  numSeeders?: string
+  seeder?: string
+  infoHash?: string
   files: Array<{
     path: string
     length: string

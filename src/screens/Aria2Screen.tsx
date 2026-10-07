@@ -55,8 +55,9 @@ function fileName(task: Aria2Task): string {
     const path = task.files[0].path || ''
     const name = path.split('/').filter(Boolean).pop()
     if (name) return name
-    if (task.files[0].uris && task.files[0].uris[0]) return task.files[0].uris[0].uri
   }
+  // BT/magnet 元数据获取阶段 files 为空，aria2 也不会返回 path
+  if (task.infoHash) return `BT 任务 ${task.infoHash.slice(0, 8)}…（正在获取元数据）`
   return task.gid
 }
 
@@ -105,10 +106,13 @@ export default function Aria2Screen({ service, onRequestClose }: Props) {
   const onAddSubmit = useCallback(async () => {
     const urls = addUrls.split(/\s+/).map((s) => s.trim()).filter(Boolean)
     if (urls.length === 0) {
-      Alert.alert('提示', '请输入至少一个 URL')
+      Alert.alert('提示', '请输入下载链接或磁力链接')
       return
     }
-    const gid = await addUri(urls)
+    const isMagnet = urls.length === 1 && urls[0].toLowerCase().startsWith('magnet:?')
+    // 磁力默认纯下载：aria2 seed-ratio=1.0 + seed-time=0（无限做种）会长期占上行
+    const options = isMagnet ? { 'seed-time': '0' } : undefined
+    const gid = await addUri(urls, options)
     if (gid) {
       setAddUrls('')
       setAddOpen(false)
@@ -246,7 +250,7 @@ const onLoadMore = tab === 'waiting' ? loadWaitingPage : null
               style={[styles.addInput, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
               value={addUrls}
               onChangeText={setAddUrls}
-              placeholder="http(s)://... 每行一个 URL"
+              placeholder="http(s):// 直链 / .torrent 链接 / magnet:? 磁力链接"
               placeholderTextColor={t.textMuted}
             />
             <View style={styles.sheetActions}>
@@ -304,9 +308,17 @@ function TaskRow({ task, tab, t, onPause, onUnpause, onRemove, onForceRemove, on
   const total = Number(task.totalLength) || 0
   const done = Number(task.completedLength) || 0
   const pct = total > 0 ? done / total : 0
+  const isBt = !!task.infoHash
+  const isFetchingMeta = isBt && total === 0
   const isPaused = task.status === 'paused'
   const isActive = tab === 'active'
   const isError = task.status === 'error' || task.status === 'removed'
+  const connections = Number(task.connections) || 0
+  const seeders = Number(task.numSeeders) || 0
+  const upload = Number(task.uploadLength) || 0
+  const downloaded = Number(task.completedLength) || 0
+  const ratio = downloaded > 0 ? (upload / downloaded) : 0
+  const ratioPct = (ratio * 100).toFixed(0)
   return (
     <View style={[styles.taskCard, { backgroundColor: t.card, borderColor: isError ? t.danger : t.border }]}>
       <View style={styles.taskHeader}>
@@ -314,12 +326,29 @@ function TaskRow({ task, tab, t, onPause, onUnpause, onRemove, onForceRemove, on
         <Text style={[styles.taskName, { color: t.text, flex: 1 }]} numberOfLines={2}>{fileName(task)}</Text>
       </View>
       <View style={[styles.progressBg, { backgroundColor: t.border }]}>
-        <View style={[styles.progressFill, { backgroundColor: isError ? t.danger : t.primary, width: `${Math.min(100, pct * 100)}%` }]} />
+        {isFetchingMeta ? (
+          <View style={[styles.progressFill, { backgroundColor: t.primary, width: '30%', opacity: 0.6 }]} />
+        ) : (
+          <View style={[styles.progressFill, { backgroundColor: isError ? t.danger : t.primary, width: `${Math.min(100, pct * 100)}%` }]} />
+        )}
       </View>
       <View style={styles.taskMeta}>
-        <Text style={[styles.metaText, { color: t.textMuted }]}>{formatBytes(done)} / {formatBytes(total)}</Text>
+        {isFetchingMeta ? (
+          <Text style={[styles.metaText, { color: t.textMuted }]}>正在获取元数据…</Text>
+        ) : (
+          <Text style={[styles.metaText, { color: t.textMuted }]}>{formatBytes(done)} / {formatBytes(total)}</Text>
+        )}
         {Number(task.downloadSpeed) > 0 ? <Text style={[styles.metaText, { color: t.textMuted }]}>{formatSpeed(task.downloadSpeed)}</Text> : null}
       </View>
+      {isBt ? (
+        <View style={styles.taskMeta}>
+          <Text style={[styles.metaText, { color: t.textMuted }]}>
+            {connections > 0 ? `连接 ${connections}` : null}
+            {seeders > 0 ? ` · 做种 ${seeders}` : null}
+            {downloaded > 0 && upload > 0 ? ` · 分享率 ${ratioPct}%` : null}
+          </Text>
+        </View>
+      ) : null}
       {task.errorMessage ? (
         <Text style={[styles.errorText, { color: t.danger }]} numberOfLines={3}>{task.errorMessage}</Text>
       ) : null}
@@ -330,7 +359,7 @@ function TaskRow({ task, tab, t, onPause, onUnpause, onRemove, onForceRemove, on
           <TouchableOpacity onPress={onUnpause} style={[styles.btn, { backgroundColor: t.primary }]}><Text style={[styles.btnText, { color: '#fff' }]}>继续</Text></TouchableOpacity>
         ) : null}
         <TouchableOpacity onPress={onRemove} style={[styles.btn, { backgroundColor: t.border }]}><Text style={[styles.btnText, { color: t.text }]}>删除</Text></TouchableOpacity>
-        {isError ? (
+        {isError && !isBt ? (
           <TouchableOpacity onPress={onRetry} style={[styles.btn, { backgroundColor: t.primary }]}><Text style={[styles.btnText, { color: '#fff' }]}>重试</Text></TouchableOpacity>
         ) : (
           <TouchableOpacity onPress={onForceRemove} style={[styles.btn, { backgroundColor: t.border }]}><Text style={[styles.btnText, { color: t.danger }]}>强制删除</Text></TouchableOpacity>
