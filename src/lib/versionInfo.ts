@@ -94,8 +94,9 @@ export const SERVICE_VERSIONS: ServiceVersionInfo[] = [
   {
     key: 'komga',
     name: 'Komga',
-    version: '1.0.2',
+    version: '1.0.3',
     entries: [
+      { version: '1.0.3', items: ['修复不同分辨率与阔屏适配：翻页按真实屏幕宽度对齐', '修复条漫模式页码显示与跳页/书签定位不准', '修复 RTL 翻页方向与按钮文案错位'] },
       { version: '1.0.2', items: ['阅读器重制：条漫模式、分区点击翻页、书签'] },
       { version: '1.0.1', items: ['系列书架与整本缓存'] },
       { version: '1.0.0', items: ['上线 Komga：漫画库、系列详情、阅读器'] },
