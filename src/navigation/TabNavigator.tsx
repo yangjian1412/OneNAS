@@ -58,7 +58,10 @@ export default function TabNavigator() {
           headerShown: false,
           tabBarPosition: isExpanded ? 'left' : 'bottom',
           tabBarVariant: isExpanded ? 'material' : 'uikit',
-          tabBarShowLabel: !hideTabLabels,
+          // 分栏侧栏是常驻的，没有文字认不出当前位置，所以无视「隐藏标签」设置、
+          // 强制显示文字；回到窄屏的底部 tab 时再按设置决定显不显示。
+          tabBarShowLabel: isExpanded ? true : !hideTabLabels,
+          tabBarLabelPosition: isExpanded ? 'beside-icon' : 'below-icon',
           tabBarIcon: ({ focused }) => iconFor(route.name, focused),
           tabBarLabelStyle: isExpanded
             ? { fontSize: 13, marginTop: 0, marginLeft: 12 }
@@ -70,7 +73,7 @@ export default function TabNavigator() {
             ? {
                 // 左侧栏：固定宽度 + 右侧分隔线，高度撑满；默认 sidebar 宽度 360 太宽
                 backgroundColor: t.bg,
-                width: hideTabLabels ? 88 : 176,
+                width: 176,
                 borderRightColor: t.border,
                 paddingTop: 8,
               }
