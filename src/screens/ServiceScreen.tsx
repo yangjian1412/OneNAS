@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { View, Text, StyleSheet, Animated, BackHandler } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useIsFocused } from '@react-navigation/native'
 import { useAppStore } from '@/stores/appStore'
 import ServiceCard from '@/components/ServiceCard'
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function ServiceScreen({ serviceId }: Props) {
+  const insets = useSafeAreaInsets()
   const services = useAppStore((s) => s.services)
   const service = services.find((s) => s.id === serviceId)
   const t = useTheme()
@@ -61,7 +63,7 @@ export default function ServiceScreen({ serviceId }: Props) {
         <Icon name={SERVICE_TYPE_ICONS['jellyfin'] ?? 'folderEmpty'} size={64} />
         <Text style={[styles.emptyTitle, { color: t.text }]}>未配置服务</Text>
         <Text style={[styles.emptySub, { color: t.textMuted }]}>请到设置 → 标签设置 为当前标签分配一个服务</Text>
-        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+        <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>
           </View>
@@ -74,7 +76,7 @@ export default function ServiceScreen({ serviceId }: Props) {
     return (
       <>
         <JellyfinScreen service={service} />
-        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+        <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>
           </View>
@@ -87,7 +89,7 @@ export default function ServiceScreen({ serviceId }: Props) {
     return (
       <>
         <NavidromeScreen service={service} />
-        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+        <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>
           </View>
@@ -100,7 +102,7 @@ export default function ServiceScreen({ serviceId }: Props) {
     return (
       <>
         <AudiobookshelfScreen service={service} />
-        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+        <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>
           </View>
@@ -113,7 +115,7 @@ export default function ServiceScreen({ serviceId }: Props) {
     return (
       <>
         <TalebookScreen service={service} />
-        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+        <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>
           </View>
@@ -126,7 +128,7 @@ export default function ServiceScreen({ serviceId }: Props) {
     return (
       <>
         <KomgaScreen service={service} />
-        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+        <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>
           </View>
@@ -139,7 +141,7 @@ export default function ServiceScreen({ serviceId }: Props) {
     return (
       <>
         <Aria2Screen service={service} />
-        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+        <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>
           </View>
@@ -152,7 +154,7 @@ export default function ServiceScreen({ serviceId }: Props) {
     return (
       <>
         <QBitTorrentScreen service={service} />
-        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+        <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>
           </View>
@@ -165,7 +167,7 @@ export default function ServiceScreen({ serviceId }: Props) {
     return (
       <>
         <OpenListScreen service={service} />
-        <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+        <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
             <Text style={styles.toastText}>再按一次退出</Text>
           </View>
@@ -177,7 +179,7 @@ export default function ServiceScreen({ serviceId }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <ServiceCard service={service} />
-      <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+      <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
         <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
           <Text style={styles.toastText}>再按一次退出</Text>
         </View>
@@ -191,7 +193,7 @@ const styles = StyleSheet.create({
   emptyIcon: { marginBottom: 12 },
   emptyTitle: { fontSize: 16, fontWeight: '600' },
   emptySub: { fontSize: 13, textAlign: 'center', marginTop: 4 },
-  toast: { position: 'absolute', left: 0, right: 0, bottom: 120, alignItems: 'center' },
+  toast: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   toastInner: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24 },
   toastText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 })

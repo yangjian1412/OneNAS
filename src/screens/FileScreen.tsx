@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, Modal, Animated, BackHandler, AppState, StyleSheet, Platform, StatusBar, Dimensions, KeyboardAvoidingView } from 'react-native'
+import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, Modal, Animated, BackHandler, AppState, StyleSheet, Platform, StatusBar, Dimensions, KeyboardAvoidingView, ScrollView } from 'react-native'
 import * as DocumentPicker from 'expo-document-picker'
 import { useIsFocused, useNavigation } from '@react-navigation/native'
 import { useAppStore, FileSortBy, FileSortDir } from '@/stores/appStore'
@@ -9,6 +9,7 @@ import { connectFileManager, webDavToServer, listDir as fmListDir, mkdir as fmMk
 import { getFileIcon } from '@/lib/fileTypes'
 import * as Clipboard from 'expo-clipboard'
 import { useTheme } from '@/lib/theme'
+import { useLayout } from '@/lib/useLayout'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { sortFiles } from '@/lib/sort'
 import type { FolderEntry } from '@/lib/sort'
@@ -46,6 +47,9 @@ const encodeRemotePath = (path: string) => path.replace(/^\/+/, '').split('/').m
 
 export default function FileScreen() {
   const servers = useAppStore((s) => s.servers)
+  // 响应式网格列数：手机 2 列，平板 3-4 列，大屏 5-6 列
+  const { width: layoutW, sheetMaxHeight, contentMaxWidth } = useLayout()
+  const gridCols = Math.max(2, Math.min(8, Math.floor(layoutW / 150)))
   const fbServers = servers.filter((s) => s.type === 'filebrowser')
   const fileBackend = useAppStore((s) => s.fileBackend)
   const webdavServer = useAppStore((s) => s.webdavServer)
@@ -768,10 +772,10 @@ export default function FileScreen() {
       )}
       <FlatList
         style={styles.list}
-        contentContainerStyle={[styles.listContent, showBottomBar && styles.listContentWithBar]}
-        key={`${viewMode}-${currentPath}`}
+        contentContainerStyle={[styles.listContent, showBottomBar && styles.listContentWithBar, { maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' }]}
+        key={`${viewMode}-${gridCols}-${currentPath}`}
         data={files}
-        numColumns={viewMode === 'grid' ? 2 : 1}
+        numColumns={viewMode === 'grid' ? gridCols : 1}
         keyExtractor={(item, index) => `${item.path}-${index}`}
         renderItem={viewMode === 'list' ? renderListItem : renderGridItem}
         columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
@@ -779,7 +783,7 @@ export default function FileScreen() {
       />
 
       {showBottomBar && (
-        <View style={[styles.bottomBar, { backgroundColor: t.card, borderTopColor: t.border, elevation: 12 }]}>
+        <View style={[styles.bottomBar, { backgroundColor: t.card, borderTopColor: t.border, elevation: 12, paddingBottom: insets.bottom > 0 ? insets.bottom : 8 }]}>
           <Text style={[styles.selectedCount, { color: t.text }]}>已选 {selectedPaths.length}</Text>
           <TouchableOpacity style={styles.bottomAction} onPress={bulkDownload}>
             <Text style={[styles.bottomActionText, { color: t.primary }]}>下载</Text>
@@ -799,8 +803,9 @@ export default function FileScreen() {
       <Modal visible={!!actionItem} transparent animationType="slide" onRequestClose={closeActionSheet}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={closeActionSheet} activeOpacity={1} />
-          <View style={[styles.actionSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={[styles.actionSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16, maxHeight: sheetMaxHeight }]}>
             <Text style={[styles.actionTitle, { color: t.text }]} numberOfLines={1}>{actionItem?.name}</Text>
+            <ScrollView bounces={false} style={{ flexGrow: 0 }}>
             {actionItem && !actionItem.isDirectory && (
               <TouchableOpacity style={styles.actionButton} onPress={() => download(actionItem)}>
                 <Text style={[styles.actionText, { color: t.text }]}>下载</Text>
@@ -844,6 +849,7 @@ export default function FileScreen() {
             <TouchableOpacity style={styles.actionButton} onPress={closeActionSheet}>
               <Text style={[styles.actionText, { color: t.primary, fontWeight: '700' }]}>取消</Text>
             </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -888,7 +894,7 @@ export default function FileScreen() {
       )}
 
       <Modal visible={!!shareCreateItem} animationType="slide" onRequestClose={() => setShareCreateItem(null)}>
-        <KeyboardAvoidingView behavior="padding" style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
+        <KeyboardAvoidingView behavior="padding" style={[styles.container, { backgroundColor: t.bg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>创建分享</Text>
             <TouchableOpacity onPress={() => setShareCreateItem(null)}><Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text></TouchableOpacity>
@@ -927,7 +933,7 @@ export default function FileScreen() {
       </Modal>
 
       <Modal visible={shareManageOpen} animationType="slide" onRequestClose={() => setShareManageOpen(false)}>
-        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
+        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>分享管理</Text>
             <TouchableOpacity onPress={() => setShareManageOpen(false)}><Text style={[styles.toolbarAction, { color: t.primary }]}>关闭</Text></TouchableOpacity>
@@ -975,7 +981,7 @@ export default function FileScreen() {
       <Modal visible={!!detailsItem} transparent animationType="slide" onRequestClose={() => setDetailsItem(null)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setDetailsItem(null)} activeOpacity={1} />
-          <View style={[styles.detailsSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={[styles.detailsSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16, maxHeight: sheetMaxHeight }]}>
             <View style={styles.detailsSheetHeader}>
               <Text style={[styles.detailsSheetTitle, { color: t.text }]}>详细信息</Text>
               <TouchableOpacity onPress={() => setDetailsItem(null)}>
@@ -985,6 +991,7 @@ export default function FileScreen() {
             {detailsLoading ? (
               <ActivityIndicator style={{ margin: 20 }} color={t.primary} />
             ) : detailsInfo ? (
+              <ScrollView bounces={false} style={{ flexGrow: 0 }}>
               <View style={styles.detailsBody}>
                 <View style={[styles.detailsRow, { borderBottomColor: t.border }]}>
                   <Text style={[styles.detailsLabel, { color: t.textMuted }]}>名称</Text>
@@ -1024,6 +1031,7 @@ export default function FileScreen() {
                   <DetailsChecksums server={selectedServer!} token={token!} path={detailsInfo.path} />
                 )}
               </View>
+              </ScrollView>
             ) : null}
           </View>
         </View>
@@ -1032,7 +1040,8 @@ export default function FileScreen() {
       <Modal visible={sortOpen} transparent animationType="slide" onRequestClose={() => setSortOpen(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setSortOpen(false)} activeOpacity={1} />
-          <View style={[styles.sortSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={[styles.sortSheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16, maxHeight: sheetMaxHeight }]}>
+            <ScrollView bounces={false} style={{ flexGrow: 0 }}>
             <Text style={[styles.sortSheetTitle, { color: t.text }]}>排序方式</Text>
             {(['name', 'size', 'modified'] as FileSortBy[]).map((by) => (
               <TouchableOpacity key={by} style={[styles.sortOption, { borderBottomColor: t.border }]} onPress={() => setFileSort({ by, dir: fileSort.dir })}>
@@ -1050,12 +1059,13 @@ export default function FileScreen() {
             <TouchableOpacity style={styles.sortCancel} onPress={() => setSortOpen(false)}>
               <Text style={[styles.actionText, { color: t.primary }]}>关闭</Text>
             </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
       <Modal visible={downloadManageOpen} animationType="slide" onRequestClose={() => setDownloadManageOpen(false)}>
-        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
+        <View style={[styles.container, { backgroundColor: t.bg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>下载管理</Text>
             {downloadTasks.length > 0 && (
@@ -1112,7 +1122,7 @@ export default function FileScreen() {
       </Modal>
 
       <Modal visible={searchModalOpen} animationType="slide" onRequestClose={() => { if (searchLoading) { stopSearch() } else { searchAbortRef.current?.abort(); setSearchResults([]); setSearchModalOpen(false) } }}>
-        <KeyboardAvoidingView behavior="padding" style={[styles.container, { backgroundColor: t.bg, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0, paddingBottom: insets.bottom }]}>
+        <KeyboardAvoidingView behavior="padding" style={[styles.container, { backgroundColor: t.bg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
           <View style={[styles.modalHeader, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
             <Text style={[styles.modalTitle, { color: t.text }]}>搜索</Text>
             <TouchableOpacity onPress={() => { searchAbortRef.current?.abort(); setSearchResults([]); setSearchModalOpen(false) }}>
@@ -1195,7 +1205,8 @@ export default function FileScreen() {
       <Modal visible={searchCategoryOpen} transparent animationType="slide" onRequestClose={() => setSearchCategoryOpen(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setSearchCategoryOpen(false)} activeOpacity={1} />
-          <View style={[styles.categorySheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={[styles.categorySheet, { backgroundColor: t.card, paddingBottom: insets.bottom + 16, maxHeight: sheetMaxHeight }]}>
+            <ScrollView bounces={false} style={{ flexGrow: 0 }}>
             <Text style={[styles.categorySheetTitle, { color: t.text }]}>搜索类别</Text>
             {SEARCH_CATEGORIES.map((cat) => (
               <TouchableOpacity key={cat.value} style={[styles.categoryOption, { borderBottomColor: t.border }]} onPress={() => { setSearchCategory(cat.value as SearchCategory); setSearchCategoryOpen(false) }}>
@@ -1206,11 +1217,12 @@ export default function FileScreen() {
             <TouchableOpacity style={styles.sortCancel} onPress={() => setSearchCategoryOpen(false)}>
               <Text style={[styles.actionText, { color: t.primary }]}>关闭</Text>
             </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
-      <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+      <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
         <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
           <Text style={styles.toastText}>{toastMsg}</Text>
         </View>
@@ -1297,7 +1309,11 @@ interface ActiveServiceViewProps {
 
 function ActiveServiceView({ service, onClose }: ActiveServiceViewProps) {
   const t = useTheme()
-  const slideAnim = useRef(new Animated.Value(Dimensions.get('window').width)).current
+  // 响应式滑入距离：模块级 Dimensions 快照在旋转/折叠屏展开后会滑不到位
+  const { width: winW } = useLayout()
+  const widthRef = useRef(winW)
+  widthRef.current = winW
+  const slideAnim = useRef(new Animated.Value(winW)).current
 
   useEffect(() => {
     Animated.timing(slideAnim, {
@@ -1309,7 +1325,7 @@ function ActiveServiceView({ service, onClose }: ActiveServiceViewProps) {
 
   const handleClose = () => {
     Animated.timing(slideAnim, {
-      toValue: Dimensions.get('window').width,
+      toValue: Math.max(1, widthRef.current),
       duration: 180,
       useNativeDriver: true,
     }).start(() => {
@@ -1354,10 +1370,10 @@ const styles = StyleSheet.create({
   container: { flex: 1 }, withServiceBar: { paddingTop: 96 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   emptyIcon: { fontSize: 40, marginBottom: 12 }, emptyTitle: { fontSize: 16, fontWeight: '600' }, emptySub: { fontSize: 13, textAlign: 'center', marginTop: 4 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 4, borderBottomWidth: StyleSheet.hairlineWidth }, headerButton: { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }, headerTitle: { flex: 1, alignItems: 'center' }, headerTitleText: { fontSize: 17, fontWeight: '700' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 4, borderBottomWidth: StyleSheet.hairlineWidth }, headerButton: { minWidth: 40, minHeight: 44, justifyContent: 'center', alignItems: 'center', flexShrink: 0 }, headerTitle: { flex: 1, minWidth: 0, alignItems: 'center' }, headerTitleText: { fontSize: 17, fontWeight: '700' },
   searchBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, gap: 4 }, searchInput: { flex: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, borderWidth: 1 }, searchAction: { minWidth: 56, paddingHorizontal: 6, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' }, searchActionText: { fontSize: 14, fontWeight: '600' },
   pathRow: { paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth }, pathLabel: { fontSize: 12 },
-  toolbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, gap: 6, borderBottomWidth: StyleSheet.hairlineWidth }, toolbarSpacer: { flex: 1 }, toolbarButton: { minWidth: 56, minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 }, toolbarAction: { fontSize: 14, fontWeight: '600' }, iconButton: { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }, toolbarIcon: { fontSize: 22, fontWeight: '500' },
+  toolbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, gap: 6, borderBottomWidth: StyleSheet.hairlineWidth }, toolbarSpacer: { flex: 1, minWidth: 0 }, toolbarButton: { minWidth: 56, minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6, flexShrink: 0 }, toolbarAction: { fontSize: 14, fontWeight: '600' }, iconButton: { minWidth: 40, minHeight: 44, justifyContent: 'center', alignItems: 'center', flexShrink: 0 }, toolbarIcon: { fontSize: 22, fontWeight: '500' },
   sortButton: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, paddingHorizontal: 10, height: 34 }, sortButtonText: { fontSize: 13, fontWeight: '500' },
   spinnerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 10 }, errorText: { fontSize: 13, textAlign: 'center', padding: 10 },
   list: { flex: 1 }, listContent: { paddingBottom: 48 }, listContentWithBar: { paddingBottom: 110 },
@@ -1367,7 +1383,7 @@ const styles = StyleSheet.create({
   moreButton: { width: 36, height: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', paddingHorizontal: 4 }, moreDot: { width: 4, height: 4, borderRadius: 2 },
   checkboxWrap: { width: 22, height: 22, borderWidth: 1.5, borderRadius: 4, alignItems: 'center', justifyContent: 'center' }, checkboxInner: { width: 12, height: 12, borderRadius: 2 },
   gridCheckbox: { position: 'absolute', top: 8, right: 8, padding: 4 },
-  bottomBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 76, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 4 }, selectedCount: { flex: 1, fontSize: 14, fontWeight: '700', paddingHorizontal: 6 }, bottomAction: { minWidth: 64, minHeight: 60, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }, bottomActionText: { fontSize: 14, fontWeight: '700' },
+  bottomBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 76, zIndex: 20, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 4 }, selectedCount: { flex: 1, fontSize: 14, fontWeight: '700', paddingHorizontal: 6 }, bottomAction: { minWidth: 64, minHeight: 60, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }, bottomActionText: { fontSize: 14, fontWeight: '700' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth }, modalTitle: { fontSize: 17, fontWeight: '700' },
   activeServiceRoot: { zIndex: 1000, elevation: 30 },
   activeServiceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth },
@@ -1376,7 +1392,7 @@ const styles = StyleSheet.create({
   sortSheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }, sortSheetTitle: { fontSize: 15, fontWeight: '700', marginBottom: 6 }, sortOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth }, sortOptionText: { fontSize: 16, fontWeight: '500' }, sortOptionMark: { fontSize: 18, marginLeft: 12 }, sortOptionMarkSpacer: { width: 18, marginLeft: 12 }, sortCancel: { alignItems: 'center', paddingTop: 14 },
   actionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 8 }, actionButton: { minHeight: 56, justifyContent: 'center', alignItems: 'center', borderRadius: 10, paddingHorizontal: 12 }, actionText: { fontSize: 16, fontWeight: '600' },
   editInput: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16, minHeight: 52 }, editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 28, paddingTop: 18 },
-  toast: { position: 'absolute', left: 0, right: 0, bottom: 120, alignItems: 'center' }, toastInner: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24 }, toastText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  toast: { position: 'absolute', left: 0, right: 0, alignItems: 'center' }, toastInner: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24 }, toastText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 
   shareCreateBody: { padding: 20, gap: 16 },
   sharePath: { fontSize: 15, fontWeight: '600' },

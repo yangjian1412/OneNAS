@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { View, Text, TouchableOpacity, Animated, Dimensions, Modal, StyleSheet, Platform, StatusBar } from 'react-native'
+import { View, Text, TouchableOpacity, Animated, Modal, StyleSheet } from 'react-native'
+import { useLayout } from '@/lib/useLayout'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '@/lib/theme'
 import { AudiobookshelfServerConfig } from '@/types'
@@ -13,12 +14,20 @@ interface Props {
   onPlaybackSettings: () => void
 }
 
-const DRAWER_W = Dimensions.get('window').width * 0.75
-
 export default function AudiobookshelfDrawer({ visible, server, serverVersion, onClose, onPlaybackSettings }: Props) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
+  // 响应式宽度：模块级 Dimensions 快照在旋转/折叠屏展开后会导致抽屉关不严或留缝
+  const { drawerWidth: DRAWER_W } = useLayout()
+  const drawerWRef = useRef(DRAWER_W)
+  drawerWRef.current = DRAWER_W
   const translateX = useRef(new Animated.Value(-DRAWER_W)).current
+
+  // 宽度变化时（旋转/折叠屏展开）重新对齐，防止抽屉停在半开位置
+  useEffect(() => {
+    if (!visible) return
+    translateX.setValue(0)
+  }, [DRAWER_W, visible, translateX])
 
   useEffect(() => {
     if (visible) {
@@ -27,18 +36,19 @@ export default function AudiobookshelfDrawer({ visible, server, serverVersion, o
   }, [visible, translateX])
 
   const handleClose = useCallback(() => {
-    Animated.timing(translateX, { toValue: -DRAWER_W, duration: 200, useNativeDriver: true }).start(() => {
+    const w = drawerWRef.current
+    Animated.timing(translateX, { toValue: -w, duration: 200, useNativeDriver: true }).start(() => {
       onClose()
     })
   }, [translateX, onClose])
 
-  const pt = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0
+  const pt = insets.top
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
       <View style={styles.modalContainer}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleClose} />
-        <Animated.View style={[styles.drawer, { backgroundColor: t.card, transform: [{ translateX }], paddingTop: pt + 40 }]}>
+        <Animated.View style={[styles.drawer, { width: DRAWER_W, backgroundColor: t.card, transform: [{ translateX }], paddingTop: pt + 16 }]}>
           <View style={styles.topRow}>
             <View style={{ flex: 1 }} />
             <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.closeBtn}>
@@ -93,7 +103,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    width: DRAWER_W,
     paddingHorizontal: 20,
     elevation: 16,
     shadowColor: '#000',

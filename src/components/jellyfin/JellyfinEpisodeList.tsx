@@ -1,11 +1,9 @@
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Dimensions } from 'react-native'
+import { View, Text, TouchableOpacity, FlatList, StyleSheet } from 'react-native'
 import type { JellyfinItem, JellyfinServerConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
+import { useLayout } from '@/lib/useLayout'
 import JellyfinPoster from './JellyfinPoster'
 import Icon from '@/components/Icon'
-
-const { width: SCREEN_W } = Dimensions.get('window')
-const THUMB_W = Math.round(SCREEN_W * 0.35)
 
 function ticksToMinutes(ticks?: number): string {
   if (!ticks) return ''
@@ -23,6 +21,9 @@ interface Props {
 
 export default function JellyfinEpisodeList({ server, episodes, onEpisodePress }: Props) {
   const t = useTheme()
+  // 缩略图宽度按比例但封顶，宽屏下列表不会被巨大的缩略图挤垮
+  const { width } = useLayout()
+  const THUMB_W = Math.min(Math.round(width * 0.35), 220)
   if (!server) return null
 
   if (episodes.length === 0) {

@@ -8,6 +8,7 @@ import { ServerConfig, ServiceConfig, ServiceType, WebDavConfig, NasManagementBa
 import { generateId } from '@/lib/crypto'
 import { SERVICE_TYPE_LABELS, SERVICE_TYPE_ICONS } from '@/lib/constants'
 import { useTheme } from '@/lib/theme'
+import { useLayout } from '@/lib/useLayout'
 import ConfigModal from '@/components/ConfigModal'
 import FullScreenModal from '@/components/FullScreenModal'
 import Icon from '@/components/Icon'
@@ -85,6 +86,7 @@ export default function SettingsScreen() {
   const [aboutOpen, setAboutOpen] = useState(false)
   const [expandedSvc, setExpandedSvc] = useState<string | null>(null)
   const insets = useSafeAreaInsets()
+  const { sheetMaxHeight, contentMaxWidth } = useLayout()
   const lastBackPressRef = useRef(0)
   const toastAnim = useRef(new Animated.Value(0)).current
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -449,7 +451,8 @@ export default function SettingsScreen() {
       <Modal visible={!!tagPickerSlot} transparent animationType="fade" onRequestClose={() => setTagPickerSlot(null)}>
         <View style={styles.pickerOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setTagPickerSlot(null)} activeOpacity={1} />
-          <View style={[styles.picker, { backgroundColor: t.card, paddingBottom: insets.bottom + 16 }]}>
+          <View style={[styles.picker, { backgroundColor: t.card, paddingBottom: insets.bottom + 16, maxHeight: sheetMaxHeight }]}>
+            <ScrollView bounces={false} style={{ flexGrow: 0 }}>
             <Text style={[styles.pickerTitle, { color: t.text }]}>添加标签</Text>
             <TouchableOpacity style={[styles.pickerItem, { borderBottomColor: t.border }]} onPress={() => { if (tagPickerSlot) clearTag(tagPickerSlot); setTagPickerSlot(null) }}>
               <Text style={[styles.pickerItemText, { color: t.textMuted }]}>无</Text>
@@ -465,6 +468,7 @@ export default function SettingsScreen() {
               )
             })}
             <TouchableOpacity style={styles.pickerCancel} onPress={() => setTagPickerSlot(null)}><Text style={[styles.clearText, { color: t.primary }]}>取消</Text></TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -533,7 +537,7 @@ export default function SettingsScreen() {
     <View style={[styles.container, { backgroundColor: t.bg }]}>
       <Text style={[styles.screenTitle, { color: t.text }]}>设置</Text>
       <NestableScrollContainer
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { width: '100%', maxWidth: contentMaxWidth, alignSelf: 'center' }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
       >
@@ -589,7 +593,7 @@ export default function SettingsScreen() {
           })}
         </ScrollView>
       </FullScreenModal>
-      <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+      <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
         <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
           <Text style={styles.toastText}>再按一次退出</Text>
         </View>
@@ -609,6 +613,7 @@ interface WebDavConfigModalProps {
 
 function WebDavConfigModal({ visible, onClose, initial, onSave, onClear, t }: WebDavConfigModalProps) {
   const insets = useSafeAreaInsets()
+  const { sheetMaxHeight, contentMaxWidth } = useLayout()
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [username, setUsername] = useState('')
@@ -656,7 +661,7 @@ function WebDavConfigModal({ visible, onClose, initial, onSave, onClear, t }: We
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={{ maxHeight: 480 }} contentContainerStyle={{ paddingBottom: 12 }}>
+          <ScrollView style={{ maxHeight: Math.min(480, sheetMaxHeight - 120) }} contentContainerStyle={{ paddingBottom: 12 }}>
             <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>名称</Text>
             <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
               value={name} onChangeText={setName} placeholder="WebDAV" placeholderTextColor={t.textMuted} />
@@ -708,6 +713,7 @@ interface PortainerConfigModalProps {
 
 function PortainerConfigModal({ visible, onClose, initial, onSave, onClear, t }: PortainerConfigModalProps) {
   const insets = useSafeAreaInsets()
+  const { sheetMaxHeight, contentMaxWidth } = useLayout()
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [apiToken, setApiToken] = useState('')
@@ -773,7 +779,7 @@ function PortainerConfigModal({ visible, onClose, initial, onSave, onClear, t }:
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={{ maxHeight: 480 }} contentContainerStyle={{ paddingBottom: 12 }}>
+          <ScrollView style={{ maxHeight: Math.min(480, sheetMaxHeight - 120) }} contentContainerStyle={{ paddingBottom: 12 }}>
             <Text style={[styles.fieldLabel, { color: t.textSecondary }]}>名称</Text>
             <TextInput style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
               value={name} onChangeText={setName} placeholder="Portainer" placeholderTextColor={t.textMuted} />
@@ -820,7 +826,7 @@ function PortainerConfigModal({ visible, onClose, initial, onSave, onClear, t }:
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  toast: { position: 'absolute', left: 0, right: 0, bottom: 120, alignItems: 'center' },
+  toast: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   toastInner: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24 },
   toastText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   list: { paddingTop: 12, paddingBottom: 48 },
@@ -853,22 +859,22 @@ const styles = StyleSheet.create({
   ioButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   pickerOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   modalBackdrop: { ...StyleSheet.absoluteFill },
-  picker: { borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 16, paddingBottom: 28 },
+  picker: { borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 16, paddingBottom: 28, width: '100%', maxHeight: '100%' },
   pickerTitle: { fontSize: 17, fontWeight: '700', marginBottom: 8 },
   pickerItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
   pickerItemText: { fontSize: 15, marginLeft: 12, fontWeight: '600' },
   emptyPicker: { paddingVertical: 16, fontSize: 13 },
   pickerCancel: { alignItems: 'center', paddingTop: 14 },
   clearText: { fontSize: 14, fontWeight: '600' },
-  sheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 32 },
-  sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 24, paddingTop: 16 },
+  sheet: { borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 32, maxHeight: '100%' },
+  sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 24, paddingTop: 16 },
   exportBox: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 12, minHeight: 220, textAlignVertical: 'top', fontFamily: 'monospace' },
   keyInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 10 },
   input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14, marginBottom: 8 },
   fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 4, marginTop: 6 },
   fileBackendRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
-  backendBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1 },
-  backendBtnText: { fontSize: 12, fontWeight: '600' },
+  backendBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, flexShrink: 1 },
+  backendBtnText: { fontSize: 12, fontWeight: '600', flexShrink: 1 },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   sheetSubtitle: { fontSize: 12, marginTop: 2 },
   ioHint: { fontSize: 13, marginBottom: 12 },

@@ -1,9 +1,8 @@
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import type { JellyfinLibrary, JellyfinServerConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
+import { useLayout } from '@/lib/useLayout'
 import JellyfinPoster from './JellyfinPoster'
-
-const CARD_W = (Dimensions.get('window').width - 32 - 8) / 2
 
 interface Props {
   server: JellyfinServerConfig
@@ -13,6 +12,10 @@ interface Props {
 
 export default function JellyfinLibraryGrid({ server, libraries, onLibraryPress }: Props) {
   const t = useTheme()
+  const { width, isWide, isExpanded } = useLayout()
+  // 响应式列数：宽屏并排更多媒体库卡片
+  const cols = isExpanded ? 5 : isWide ? 4 : 2
+  const CARD_W = Math.floor((width - 24 - (cols - 1) * 8) / cols)
   if (!server) return null
   const data = libraries.filter((l) => l.ItemId)
   if (data.length === 0) return null
@@ -24,7 +27,7 @@ export default function JellyfinLibraryGrid({ server, libraries, onLibraryPress 
         {data.map((lib) => (
           <TouchableOpacity
             key={lib.ItemId}
-            style={[styles.card, { backgroundColor: t.card }]}
+            style={[styles.card, { width: CARD_W, backgroundColor: t.card }]}
             onPress={() => onLibraryPress(lib)}
             activeOpacity={0.7}
           >
@@ -55,7 +58,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, gap: 8,
   },
   card: {
-    width: CARD_W,
     borderRadius: 12,
     overflow: 'hidden',
   },

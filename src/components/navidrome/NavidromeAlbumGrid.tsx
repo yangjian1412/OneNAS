@@ -1,12 +1,11 @@
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Dimensions } from 'react-native'
+import { View, Text, TouchableOpacity, FlatList, StyleSheet } from 'react-native'
+import { useLayout } from '@/lib/useLayout'
 import type { NavidromeAlbum, NavidromeArtist, NavidromePlaylist, NavidromeServerConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
 import { useNavidromePlaybackStore } from '@/stores/navidromePlaybackStore'
 import NavidromeCoverArt from './NavidromeCoverArt'
 import Icon from '@/components/Icon'
 
-const { width: SCREEN_W } = Dimensions.get('window')
-const CARD_W = (SCREEN_W - 32 - 12) / 3
 
 interface AlbumGridProps {
   server: NavidromeServerConfig | null
@@ -17,6 +16,9 @@ interface AlbumGridProps {
 
 export function NavidromeAlbumGrid({ server, albums, onAlbumPress, emptyText = '暂无专辑' }: AlbumGridProps) {
   const t = useTheme()
+  const { width } = useLayout()
+  const cols = Math.max(3, Math.min(8, Math.floor(width / 130)))
+  const CARD_W = Math.floor((width - 24 - (cols - 1) * 12) / cols)
   const showPlayCount = useNavidromePlaybackStore((s) => s.showPlayCount)
   if (albums.length === 0) {
     return (
@@ -29,7 +31,8 @@ export function NavidromeAlbumGrid({ server, albums, onAlbumPress, emptyText = '
     <FlatList
       data={albums}
       scrollEnabled={false}
-      numColumns={3}
+      key={'ndr-cols-' + cols}
+      numColumns={cols}
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.list}
       columnWrapperStyle={styles.row}
@@ -60,6 +63,9 @@ interface ArtistGridProps {
 
 export function NavidromeArtistGrid({ server, artists, onArtistPress, emptyText = '暂无艺术家' }: ArtistGridProps) {
   const t = useTheme()
+  const { width } = useLayout()
+  const cols = Math.max(3, Math.min(8, Math.floor(width / 130)))
+  const CARD_W = Math.floor((width - 24 - (cols - 1) * 12) / cols)
   if (artists.length === 0) {
     return (
       <View style={styles.emptyWrap}>
@@ -71,7 +77,8 @@ export function NavidromeArtistGrid({ server, artists, onArtistPress, emptyText 
     <FlatList
       data={artists}
       scrollEnabled={false}
-      numColumns={3}
+      key={'ndr-cols-' + cols}
+      numColumns={cols}
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.list}
       columnWrapperStyle={styles.row}
@@ -101,6 +108,9 @@ interface PlaylistGridProps {
 
 export function NavidromePlaylistGrid({ server, playlists, onPlaylistPress, emptyText = '暂无播放列表' }: PlaylistGridProps) {
   const t = useTheme()
+  const { width } = useLayout()
+  const cols = Math.max(3, Math.min(8, Math.floor(width / 130)))
+  const CARD_W = Math.floor((width - 24 - (cols - 1) * 12) / cols)
   if (playlists.length === 0) {
     return (
       <View style={styles.emptyWrap}>
@@ -111,7 +121,8 @@ export function NavidromePlaylistGrid({ server, playlists, onPlaylistPress, empt
   return (
     <FlatList
       data={playlists}
-      numColumns={3}
+      key={'ndr-cols-' + cols}
+      numColumns={cols}
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.list}
       columnWrapperStyle={styles.row}

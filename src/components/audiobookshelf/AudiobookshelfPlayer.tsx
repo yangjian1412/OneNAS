@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { View, Text, TouchableOpacity, ActivityIndicator, Modal, PanResponder, ScrollView, Alert, StyleSheet, Dimensions, PermissionsAndroid, Platform, AppState } from 'react-native'
+import { View, Text, TouchableOpacity, ActivityIndicator, Modal, PanResponder, ScrollView, Alert, StyleSheet, PermissionsAndroid, Platform, AppState } from 'react-native'
 import { useTheme } from '@/lib/theme'
+import { useLayout } from '@/lib/useLayout'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Icon from '@/components/Icon'
 import {
@@ -25,7 +26,6 @@ import { useAudiobookshelfPlaybackStore } from '@/stores/audiobookshelfPlaybackS
 import { useAudiobookshelfPlayerStore } from '@/stores/audiobookshelfPlayerStore'
 import BookmarkEditDialog from './BookmarkEditDialog'
 
-const { width: SCREEN_W } = Dimensions.get('window')
 
 let absPlayer: AudioPlayer | null = null
 function ensureAbsPlayer(): AudioPlayer | null {
@@ -57,6 +57,9 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
   const t = useTheme()
   const insets = useSafeAreaInsets()
   const prefs = useAudiobookshelfPlaybackStore()
+  // 响应式封面尺寸：横屏/平板下按高度收窄，避免封面吃掉整个屏幕
+  const { width: winW, height: winH } = useLayout()
+  const COVER_SIZE = Math.max(120, Math.min(Math.floor(winW * 0.65), Math.round(winH * 0.42)))
 
   const [session, setSession] = useState<AudiobookshelfPlaybackSession | null>(null)
   const [loading, setLoading] = useState(false)
@@ -734,7 +737,7 @@ export default function AudiobookshelfPlayer({ visible, server, item, startAt, r
               </View>
             )}
             <View style={styles.topSection}>
-              <View style={styles.coverWrap}>
+              <View style={[styles.coverWrap, { width: COVER_SIZE, height: COVER_SIZE }]}>
                 <CoverImage uri={coverUrl} />
               </View>
               <Text style={[styles.title, { color: t.text }]} numberOfLines={2}>{titleText}</Text>
@@ -1011,7 +1014,6 @@ function formatSpeed(rate: number): string {
   return rate.toFixed(2).replace(/\.?0+$/, '')
 }
 
-const COVER_SIZE = Math.floor(SCREEN_W * 0.65)
 
 const styles = StyleSheet.create({
   full: { flex: 1 },
@@ -1037,8 +1039,6 @@ const styles = StyleSheet.create({
   body: { flex: 1, justifyContent: 'space-between' },
   topSection: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 8 },
   coverWrap: {
-    width: COVER_SIZE,
-    height: COVER_SIZE,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#888',

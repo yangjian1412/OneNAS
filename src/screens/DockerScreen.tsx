@@ -50,6 +50,7 @@ function diskTypeLabel(type: string | undefined): string {
 }
 
 export default function DockerScreen() {
+  const insets = useSafeAreaInsets()
   const servers = useAppStore((s) => s.servers)
   const unraidServers = servers.filter((s) => s.type === 'unraid')
   const t = useTheme()
@@ -97,7 +98,7 @@ export default function DockerScreen() {
   }, [])
 
   const ExitToast = (
-    <Animated.View pointerEvents="none" style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
+    <Animated.View pointerEvents="none" style={[styles.toast, { bottom: 56 + insets.bottom, opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
       <View style={[styles.toastInner, { backgroundColor: '#000' }]}>
         <Text style={styles.toastText}>再按一次退出</Text>
       </View>
@@ -642,7 +643,7 @@ const modalStyles = StyleSheet.create({
   section: { marginBottom: 16, marginTop: 4 },
   sectionTitle: { fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   monoText: { fontFamily: 'monospace', fontSize: 12, marginTop: 2 },
-  toast: { position: 'absolute', left: 0, right: 0, bottom: 120, alignItems: 'center' },
+  toast: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   toastInner: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 24 },
   toastText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 })

@@ -27,7 +27,7 @@ export default function ContainerCard({ container, onStart, onStop, onRestart, o
       <View style={styles.top}>
         <View style={styles.nameRow}>
           <View style={[styles.dot, { backgroundColor: color }]} />
-          <Text style={[styles.name, { color: t.text }]}>{name}</Text>
+          <Text style={[styles.name, { color: t.text }]} numberOfLines={1}>{name}</Text>
         </View>
         <View style={[styles.badge, { backgroundColor: color + '22' }]}>
           <Text style={[styles.badgeText, { color }]}>{container.state}</Text>
@@ -65,12 +65,12 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
-  name: { fontSize: 14, fontWeight: '600' },
+  name: { fontSize: 14, fontWeight: '600', flexShrink: 1 },
   badge: { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 2, marginLeft: 8 },
   badgeText: { fontSize: 11, fontWeight: '600' },
   image: { fontSize: 12, marginTop: 4, marginLeft: 18, fontFamily: 'monospace' },
   ports: { fontSize: 11, marginTop: 2, marginLeft: 18 },
-  actions: { flexDirection: 'row', marginTop: 8, gap: 6, marginLeft: 18 },
+  actions: { flexDirection: 'row', marginTop: 8, gap: 6, marginLeft: 18, flexWrap: 'wrap' },
   btn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 6, borderWidth: 1 },
   btnText: { fontSize: 11, fontWeight: '600' },
 })

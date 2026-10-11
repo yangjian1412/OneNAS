@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { View, Text, TouchableOpacity, Modal, StyleSheet, Dimensions, ActivityIndicator, Platform, StatusBar, Animated, Alert, AppState } from 'react-native'
+import { View, Text, TouchableOpacity, Modal, StyleSheet, useWindowDimensions, ActivityIndicator, Platform, StatusBar, Animated, Alert, AppState } from 'react-native'
 import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video'
 import * as ScreenOrientation from 'expo-screen-orientation'
-import type { Orientation } from 'expo-screen-orientation'
 import * as Brightness from 'expo-brightness'
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import type { JellyfinItem, JellyfinServerConfig, JellyfinMediaStream, PlaybackReportMethod } from '@/types'
@@ -31,7 +30,6 @@ import CastDeviceListModal from '@/components/CastDeviceListModal'
 import { useJellyfinCastStore } from '@/stores/jellyfinCastStore'
 import type { UpnpDevice } from '@/lib/upnp/types'
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
 const HIDE_CONTROLS_MS = 5000
 const PROGRESS_INTERVAL_MS = 10_000
 const PING_INTERVAL_MS = 60_000
@@ -56,13 +54,13 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const t = useTheme()
   const prefs = useJellyfinPlaybackStore()
   useImmersive(visible)
+  const { width: winW, height: winH } = useWindowDimensions()
   const playerRef = useRef<VideoPlayer | null>(null)
   const playSessionIdRef = useRef<string>(generatePlaySessionId())
   const reportedStoppedRef = useRef(false)
   const initialBrightnessRef = useRef<number | null>(null)
   const lastBrightnessRef = useRef<number | null>(null)
   const initialVolumeRatioRef = useRef<number | null>(null)
-  const initialOrientationRef = useRef<Orientation | null>(null)
   const fastScrubIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const savedPlaybackRateRef = useRef<number>(1)
   const controlsVisibleRef = useRef(true)
@@ -72,7 +70,10 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const fastScrubStoppedRef = useRef(false)
   const startBrightnessRef = useRef(1)
   const startVolumeRatioRef = useRef(1)
-  const brightnessVolumeRangePx = SCREEN_H * 0.4
+  const brightnessVolumeRangePx = winH * 0.4
+  // 手势回调里需要「调用那一刻」的最新宽度，用 ref 避免闭包拿到过期值
+  const dimsRef = useRef({ w: winW, h: winH })
+  dimsRef.current = { w: winW, h: winH }
 
   const [isReady, setIsReady] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -83,7 +84,8 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   const [playbackRate, setPlaybackRate] = useState(prefs.defaultPlaybackSpeed)
   const [seeking, setSeeking] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
-  const [isLandscape, setIsLandscape] = useState(prefs.landscapeByDefault)
+  // 初始值由下面「进入时同步真实方向」的 effect 覆盖，这里只作为首帧占位
+  const [isLandscape, setIsLandscape] = useState(false)
 
   const [audioStreams, setAudioStreams] = useState<JellyfinMediaStream[]>([])
   const [subtitleStreams, setSubtitleStreams] = useState<JellyfinMediaStream[]>([])
@@ -293,10 +295,6 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
           initialVolumeRatioRef.current = max > 0 ? cur / max : 0
         }
       } catch {}
-      try {
-        const ori = await ScreenOrientation.getOrientationAsync()
-        if (!cancelled) initialOrientationRef.current = ori
-      } catch {}
     })()
     return () => {
       cancelled = true
@@ -311,8 +309,11 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       if (initialVolumeRatioRef.current != null) {
         void setSystemVolume(initialVolumeRatioRef.current).catch(() => {})
       }
-      // Always unlock orientation (will fall back to default which matches app startup)
-      void ScreenOrientation.unlockAsync().catch(() => {})
+      // 方向：退出播放器后交还给系统（DEFAULT = 跟随设备）。
+      // manifest 已是 fullUser（跟随设备+尊重系统自动旋转开关），所以不再像以前
+      // 那样"锁回进入前的方向快照"——那会和系统的旋转开关打架，导致退出时
+      // 屏幕被硬拽回某个方向。只把播放器自己加的锁清掉即可。
+      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.DEFAULT).catch(() => {})
       if (progressTimerRef.current) clearInterval(progressTimerRef.current)
       if (pingTimerRef.current) clearInterval(pingTimerRef.current)
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
@@ -334,6 +335,29 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
       }
     })
     return () => sub.remove()
+  }, [visible])
+
+  // 让横/竖屏图标始终反映「真实」屏幕方向：
+  //  - 进入播放器时同步一次（manifest 已改 fullUser，打开方向由设备决定）
+  //  - 播放器可见期间跟随系统方向变化（用户转设备时图标跟着变）
+  // 这样图标不会撒谎：以前 landscapeByDefault 只设了初值且挂载时根本没加锁，
+  // 设备已横屏时图标仍显示「切横屏」。
+  useEffect(() => {
+    if (!visible) return
+    let cancelled = false
+    const O = ScreenOrientation.Orientation
+    const sync = (o: unknown) => {
+      if (cancelled) return
+      if (o === O.LANDSCAPE_LEFT || o === O.LANDSCAPE_RIGHT) setIsLandscape(true)
+      else if (o === O.PORTRAIT_UP || o === O.PORTRAIT_DOWN) setIsLandscape(false)
+    }
+    // 立即同步一次当前方向
+    void ScreenOrientation.getOrientationAsync().then(sync).catch(() => {})
+    const sub = ScreenOrientation.addOrientationChangeListener((e) => sync(e.orientationInfo))
+    return () => {
+      cancelled = true
+      sub.remove()
+    }
   }, [visible])
 
   const toggleLandscape = useCallback(async () => {
@@ -639,8 +663,9 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   }, [fastScrubOpacity, fastScrubSide, hideControls])
 
   // --- Composed gesture (RNGH) ---
-  const videoWidth = isLandscape ? SCREEN_H : SCREEN_W
-  const videoHeight = isLandscape ? SCREEN_W : SCREEN_H
+  // winW/winH 已经是「当前实际显示方向」的尺寸，横竖屏切换后自动跟随
+  const videoWidth = winW
+  const videoHeight = winH
 
   const horizontalSeekBaseRef = useRef<number | null>(null)
 
@@ -664,7 +689,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
         const absDy = Math.abs(e.translationY)
         if (absDx > absDy && absDx > 10) {
           // Horizontal: seek (1 screen = 60s)
-          const seekDeltaMs = (e.translationX / SCREEN_W) * HORIZONTAL_SEEK_FULL_SCREEN_MS
+          const seekDeltaMs = (e.translationX / Math.max(1, dimsRef.current.w)) * HORIZONTAL_SEEK_FULL_SCREEN_MS
           const basePos = playerRef.current?.currentTime ? playerRef.current.currentTime * 1000 : 0
           if (horizontalSeekBaseRef.current === null && playerRef.current) {
             horizontalSeekBaseRef.current = playerRef.current.currentTime * 1000
@@ -727,7 +752,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   }, [hideControls, showControls])
 
   const handleDoubleTapEnd = useCallback((e: { x: number }) => {
-    const w = isLandscapeRef.current ? SCREEN_H : SCREEN_W
+    const w = Math.max(1, dimsRef.current.w)
     const xRatio = e.x / w
     if (xRatio < EDGE_ZONE_PCT) {
       seekBy(-prefs.doubleTapBackMs)
@@ -740,7 +765,7 @@ export default function JellyfinPlayer({ visible, url, item, server, onClose }: 
   }, [seekBy, togglePlay, prefs.doubleTapBackMs, prefs.doubleTapForwardMs])
 
   const handleLongPressStart = useCallback((e: { x: number }) => {
-    const w = isLandscapeRef.current ? SCREEN_H : SCREEN_W
+    const w = Math.max(1, dimsRef.current.w)
     const xRatio = e.x / w
     if (xRatio < EDGE_ZONE_PCT) startFastScrub('left')
     else if (xRatio > 1 - EDGE_ZONE_PCT) startFastScrub('right')

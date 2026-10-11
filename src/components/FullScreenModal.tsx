@@ -16,7 +16,7 @@ export default function FullScreenModal({ visible, onClose, title, children, t }
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: t.bg, paddingTop: 40, paddingBottom: insets.bottom }]}>
+      <View style={[styles.container, { backgroundColor: t.bg, paddingTop: insets.top + 12, paddingBottom: insets.bottom }]}>
         <View style={[styles.header, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
           <Text style={[styles.title, { color: t.text }]}>{title}</Text>
           <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>

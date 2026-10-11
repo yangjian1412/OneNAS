@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Dimensions } from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native'
 import type { JellyfinItem, JellyfinServerConfig } from '@/types'
 import { jellyfinGetItem, jellyfinGetSeasons, jellyfinGetImageUrl } from '@/lib/api/jellyfin'
 import { getCached, setCached } from '@/lib/api/jellyfinCache'
 import { useTheme } from '@/lib/theme'
+import { useLayout } from '@/lib/useLayout'
 import JellyfinPoster from './JellyfinPoster'
 import Icon from '@/components/Icon'
-
-const { width: SCREEN_W } = Dimensions.get('window')
-const BACKDROP_H = Math.round(SCREEN_W * 9 / 16)
-const POSTER_W = (SCREEN_W - 32 - 12) / 3
 
 interface Props {
   server: JellyfinServerConfig
@@ -29,6 +26,11 @@ function ticksToMinutes(ticks?: number): string {
 }
 
 export default function JellyfinItemDetail({ server, cacheNs, item, onPlay, onSeasonPress, onBack }: Props) {
+  // 响应式：backdrop 高度封顶（横屏/平板不让它吃掉整屏），季海报按列数算
+  const { width, isWide, isExpanded } = useLayout()
+  const cols = isExpanded ? 6 : isWide ? 4 : 3
+  const BACKDROP_H = Math.min(Math.round(width * 9 / 16), Math.round(width * 0.42))
+  const POSTER_W = Math.floor((width - 24 - (cols - 1) * 12) / cols)
   const t = useTheme()
   const [detail, setDetail] = useState<JellyfinItem>(item)
   const [seasons, setSeasons] = useState<any[]>([])
@@ -71,7 +73,7 @@ export default function JellyfinItemDetail({ server, cacheNs, item, onPlay, onSe
   }, [server, cacheNs, item.Id, item.Type])
 
   const backdropUri = detail.BackdropImageTags?.[0]
-    ? jellyfinGetImageUrl(server, detail.Id, 'Backdrop', detail.BackdropImageTags[0], Math.round(SCREEN_W * 2))
+    ? jellyfinGetImageUrl(server, detail.Id, 'Backdrop', detail.BackdropImageTags[0], Math.round(width * 2))
     : null
 
   const cast = (detail.People ?? []).filter((p) => p.Type === 'Actor').slice(0, 12)

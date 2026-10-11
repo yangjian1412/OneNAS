@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
   StatusBar,
   Modal,
   FlatList,
@@ -14,6 +13,7 @@ import {
   StyleSheet,
 } from 'react-native'
 import { useTheme } from '@/lib/theme'
+import { useLayout } from '@/lib/useLayout'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Icon from '@/components/Icon'
 import { ServiceConfig, AudiobookshelfLibraryItem, AudiobookshelfLibrary, AudiobookshelfSearchResults, AudiobookshelfBookMedia } from '@/types'
@@ -39,8 +39,6 @@ import AudiobookshelfMiniPlayer from '@/components/audiobookshelf/Audiobookshelf
 import { useAudiobookshelfPlayerStore } from '@/stores/audiobookshelfPlayerStore'
 import AudiobookshelfPlaybackSettings from '@/components/audiobookshelf/AudiobookshelfPlaybackSettings'
 
-const SCREEN_W = Dimensions.get('window').width
-
 interface Props {
   service: ServiceConfig
   onRequestClose?: () => void
@@ -56,6 +54,8 @@ const ABS_SORT_OPTIONS = [
 export default function AudiobookshelfScreen({ service, onRequestClose }: Props) {
   const t = useTheme()
   const insets = useSafeAreaInsets()
+  const { width } = useLayout()
+  const libCols = Math.max(2, Math.min(6, Math.floor(width / 220)))
 
   const server = useAudiobookshelfStore((s) => s.server)
   const prefsLoad = useAudiobookshelfPlaybackStore((s) => s.loadFromStorage)
@@ -399,7 +399,8 @@ export default function AudiobookshelfScreen({ service, onRequestClose }: Props)
             <FlatList
               data={libraryItems}
               keyExtractor={(item) => item.id}
-              numColumns={2}
+              key={'abs-lib-cols-' + libCols}
+              numColumns={libCols}
               columnWrapperStyle={{ paddingHorizontal: 12, gap: 8 }}
               contentContainerStyle={{ paddingVertical: 12, paddingBottom: 24, gap: 12 }}
               renderItem={({ item }) => (

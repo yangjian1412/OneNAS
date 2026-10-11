@@ -36,7 +36,7 @@ export default function ServiceBar({ onServicePress }: Props) {
 
 const styles = StyleSheet.create({
   wrapper: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, elevation: 20, borderBottomWidth: StyleSheet.hairlineWidth },
-  row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, paddingVertical: 10, minHeight: 92 },
+  row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, paddingVertical: 10, minHeight: 92, flexGrow: 1, justifyContent: 'center' },
   item: { alignItems: 'center', justifyContent: 'center', width: 76 },
   iconWrap: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
   label: { fontSize: 11, marginTop: 6, textAlign: 'center' },

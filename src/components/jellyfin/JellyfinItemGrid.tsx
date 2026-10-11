@@ -1,11 +1,9 @@
-import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, StyleSheet, Dimensions } from 'react-native'
+import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, StyleSheet } from 'react-native'
 import type { JellyfinItem, JellyfinServerConfig } from '@/types'
 import { useTheme } from '@/lib/theme'
+import { useLayout } from '@/lib/useLayout'
 import JellyfinPoster from './JellyfinPoster'
 import Icon from '@/components/Icon'
-
-const { width: SCREEN_W } = Dimensions.get('window')
-const POSTER_W = (SCREEN_W - 32 - 12) / 3
 
 interface Props {
   server: JellyfinServerConfig
@@ -19,6 +17,10 @@ interface Props {
 
 export default function JellyfinItemGrid({ server, items, onItemPress, emptyText = '暂无内容', onEndReached, loadingMore, hasMore }: Props) {
   const t = useTheme()
+  // 响应式列数：手机 3 列，平板 4 列，大屏 6 列。海报目标宽度约 116dp。
+  const { width } = useLayout()
+  const cols = Math.max(3, Math.min(8, Math.floor(width / 116)))
+  const POSTER_W = Math.floor((width - 24 - (cols - 1) * 12) / cols)
   if (!server) return null
   if (items.length === 0) {
     return (
@@ -75,10 +77,12 @@ export default function JellyfinItemGrid({ server, items, onItemPress, emptyText
 
   return (
     <FlatList
+      // key 绑定列数：FlatList 不支持运行中改 numColumns，必须重挂载
+      key={`jf-cols-${cols}`}
       data={items}
       renderItem={renderItem}
       keyExtractor={(item) => item.Id}
-      numColumns={3}
+      numColumns={cols}
       contentContainerStyle={styles.list}
       columnWrapperStyle={styles.row}
       onEndReached={onEndReached}

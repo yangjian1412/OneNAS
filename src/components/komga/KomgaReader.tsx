@@ -45,8 +45,8 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   const [currentBook, setCurrentBook] = useState<KomgaBook>(book)
   const [mode, setMode] = useState<ReaderMode>('paged')
   const [readingDirection, setReadingDirection] = useState<'ltr' | 'rtl'>('ltr')
-  // 模式切换时通过递增 reloadKey 触发 useEffect 重载，整页黑屏 → 重新加载 → 全新 FlatList
-  const [reloadKey, setReloadKey] = useState(0)
+  // 两个 FlatList 按 mode 条件渲染且 key 不同（paged-<dir> / webtoon），
+  // 切模式时天然卸载重建，不需要 reloadKey 强制重载
   const [bookmarkList, setBookmarkList] = useState<KomgaLocalBookmark[]>([])
   const [bookmarkSheetVisible, setBookmarkSheetVisible] = useState(false)
   const [bookmarkAddedSheetVisible, setBookmarkAddedSheetVisible] = useState(false)
@@ -86,7 +86,7 @@ export default function KomgaReader({ server, book, onClose }: Props) {
       setLoading(false)
     })
     return () => { cancelled = true }
-  }, [server, book.id, reloadKey])
+  }, [server, book.id])
 
   // 持久化 mode + direction
   useEffect(() => {
@@ -216,14 +216,18 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   }, [currentPage, goToPage, mode, viewportH])
 
   // ── 反L 9 区 tap ────────────────────────────────────────────────
-  const handleTap = (x: number, y: number) => {
+  // 用 pageX/pageY（相对根视图）而不是 locationX/locationY（相对被点中的元素）：
+  // 条漫模式里每个 item 只是「那一页图片」并随滚动偏移，用 locationY 会把
+  // 「图片中点」当成屏幕中点，导致菜单唤出位置跟着图片跑。
+  const handleTap = (pageX: number, pageY: number) => {
     if (showControls) { setShowControls(false); return }
+    const centerY = viewportH / 2
     const centerYTop = viewportH * 0.25
     const centerYBottom = viewportH * 0.75
-    const inLeftSide = x < viewportW * SIDE_RATIO
-    const inRightSide = x > viewportW * (1 - SIDE_RATIO)
+    const inLeftSide = pageX < viewportW * SIDE_RATIO
+    const inRightSide = pageX > viewportW * (1 - SIDE_RATIO)
     const inCenterX = !inLeftSide && !inRightSide
-    const isCenterMenu = inCenterX && y >= centerYTop && y <= centerYBottom
+    const isCenterMenu = inCenterX && pageY >= centerYTop && pageY <= centerYBottom
 
     if (isCenterMenu) {
       setShowControls(true)
@@ -232,10 +236,10 @@ export default function KomgaReader({ server, book, onClose }: Props) {
 
     let goPrev = false
     if (mode === 'webtoon') {
-      const goUp = inLeftSide || (inCenterX && y < centerYTop)
-      goPrev = goUp
+      // 条漫：上半屏往上翻、下半屏往下翻
+      goPrev = inLeftSide || (inCenterX && pageY < centerY)
     } else {
-      const goLeft = inLeftSide || (inCenterX && y < centerYTop)
+      const goLeft = inLeftSide || (inCenterX && pageY < centerY)
       goPrev = readingDirection === 'ltr' ? goLeft : !goLeft
     }
 
@@ -244,11 +248,10 @@ export default function KomgaReader({ server, book, onClose }: Props) {
   }
 
   // ── 切换阅读模式/方向（3 态循环：向右翻页 → 向左翻页 → 翻页模式）───
-  // 策略：模式切换 = 强制重载。setMode 持久化新模式，50ms 后递增 reloadKey，
-  // 让 useEffect 重新加载页面/书签/prefs，FlatList 完全卸载重建。
-  // 重载期间 loading=true，UI 全黑，过渡时长 = API 加载耗时。
+  // FlatList 按 mode 条件渲染且 key 不同，切模式时天然卸载重建，
+  // 无需 reloadKey 强制重载（旧实现重载会从 AsyncStorage 读回旧 mode，与写入竞态，
+  // 导致切到条漫后又被翻回普通翻页）。
   const cycleMode = useCallback(() => {
-    // 先强制保存当前进度（不等 600ms debounce），避免重载后回到旧进度
     if (currentPage >= 1) {
       void komgaUpdateReadProgress(server, book.id, { page: currentPage }).catch(() => {})
     }
@@ -260,7 +263,6 @@ export default function KomgaReader({ server, book, onClose }: Props) {
     } else {
       setMode('webtoon')
     }
-    setTimeout(() => setReloadKey((k) => k + 1), 50)
   }, [mode, readingDirection, currentPage, server, book.id])
 
   // ── 书签 ────────────────────────────────────────────────────────
@@ -322,7 +324,7 @@ export default function KomgaReader({ server, book, onClose }: Props) {
         renderItem={({ item }) => (
           <TouchableOpacity
             activeOpacity={1}
-            onPress={(e) => handleTap(e.nativeEvent.locationX, e.nativeEvent.locationY)}
+            onPress={(e) => handleTap(e.nativeEvent.pageX, e.nativeEvent.pageY)}
             style={{ width: viewportW, height: viewportH, alignItems: 'center', justifyContent: 'center' }}>
             <Image
               source={isPageCached(server.id, book.id, item.number)
@@ -386,7 +388,7 @@ export default function KomgaReader({ server, book, onClose }: Props) {
         return (
           <TouchableOpacity
             activeOpacity={1}
-            onPress={(e) => handleTap(e.nativeEvent.locationX, e.nativeEvent.locationY)}
+            onPress={(e) => handleTap(e.nativeEvent.pageX, e.nativeEvent.pageY)}
             style={{ width: viewportW, height, alignItems: 'center', backgroundColor: '#000' }}>
             <Image
               source={isPageCached(server.id, book.id, item.number)

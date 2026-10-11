@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  View, Text, Image, TouchableOpacity, StyleSheet, Animated, Dimensions, ScrollView, FlatList, Modal,
+  View, Text, Image, TouchableOpacity, StyleSheet, Animated, ScrollView, FlatList, Modal,
 } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -12,15 +12,13 @@ import {
   togglePlay, next, prev, seekTo, getServer,
 } from '@/lib/audioController'
 import { useImmersive } from '@/lib/immersive'
+import { useLayout } from '@/lib/useLayout'
 import { navidromeGetCoverArtUrl, navidromeStar, navidromeUnstar } from '@/lib/api/navidrome'
 import Icon from '@/components/Icon'
 import NavidromeQueueSheet from './NavidromeQueueSheet'
 import { MoreButton } from './navidromeRowIcons'
 import type { NavidromeSong, NavidromeServerConfig } from '@/types'
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
-const COVER_SIZE = SCREEN_W - 64
-const SHEET_HEIGHT = SCREEN_H
 
 interface Props {
   visible: boolean
@@ -44,6 +42,9 @@ export default function NavidromeFullPlayer({ visible, onClose, server, onSongMo
   const t = useTheme()
   const insets = useSafeAreaInsets()
   useImmersive(visible)
+  // 响应式：面板滑动距离、封面尺寸、手势阈值都跟随真实窗口
+  const { width: SCREEN_W, height: SCREEN_H } = useLayout()
+  const COVER_SIZE = Math.max(120, Math.min(SCREEN_W - 64, Math.round(SCREEN_H * 0.34)))
   const queue = useNavidromePlayerStore((s) => s.queue)
   const currentIndex = useNavidromePlayerStore((s) => s.currentIndex)
   const isPlaying = useNavidromePlayerStore((s) => s.isPlaying)
@@ -233,7 +234,7 @@ export default function NavidromeFullPlayer({ visible, onClose, server, onSongMo
                   pointerEvents={panel === 'cover' ? 'auto' : 'none'}
                 >
                   <View style={styles.coverArea}>
-                    <View style={[styles.coverFrame, { backgroundColor: t.border, shadowColor: '#000' }]}>
+                    <View style={[styles.coverFrame, { width: COVER_SIZE, height: COVER_SIZE, backgroundColor: t.border, shadowColor: '#000' }]}>
                       {cover ? (
                         <Image source={{ uri: cover }} style={styles.cover} resizeMode="cover" />
                       ) : (
@@ -544,7 +545,7 @@ const styles = StyleSheet.create({
   headerSide: { flexDirection: 'row', alignItems: 'center', minWidth: 96 },
   headerCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   coverArea: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, paddingTop: 8 },
-  coverFrame: { width: COVER_SIZE, height: COVER_SIZE, borderRadius: 12, overflow: 'hidden', elevation: 8, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+  coverFrame: { borderRadius: 12, overflow: 'hidden', elevation: 8, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
   cover: { width: '100%', height: '100%' },
   title: { fontSize: 22, fontWeight: '700', marginTop: 24, textAlign: 'center', paddingHorizontal: 16 },
   artist: { fontSize: 14, marginTop: 6 },
